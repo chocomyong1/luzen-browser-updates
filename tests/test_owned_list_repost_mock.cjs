@@ -11,11 +11,14 @@ assert(embedded, 'C# repost browser script missing');
 const id = '2026070507571234';
 const other = '2026070507579999';
 const title = '[1개~9,995개] 10레벨 겁화 보석 구매합니다';
-function makeRow(number, name, actionName = '재등록') {
+function makeRow(number, name, actionName = '재등록', iconClass = '') {
   const clicks = [];
+  const icon = { tagName: 'svg', className: { baseVal: iconClass }, getAttribute: () => null };
   const button = {
     tagName: 'BUTTON', isConnected: true, disabled: false, innerText: actionName, textContent: actionName,
-    value: '', title: '', getClientRects: () => [1], getAttribute: () => null,
+    value: '', title: '', className: '', getClientRects: () => [1],
+    getAttribute: key => key === 'title' ? button.title : null,
+    querySelectorAll: selector => selector === 'svg,i,img' && iconClass ? [icon] : [],
     click: () => clicks.push(number)
   };
   const titleCell = { tagName: 'TD', getAttribute: () => null };
@@ -80,4 +83,25 @@ function evaluate(rows, { number = id, name = title, click = false,
   const rows = [makeRow(id, title), makeRow(other, title)];
   assert.equal(evaluate(rows).status, 'ready');
   console.log('PASS same title belonging to different listing IDs');
+}
+{
+  const rows = [makeRow(id, title, ' ', 'lucide lucide-history'),
+    makeRow(other, title, ' ', 'lucide lucide-trash-2')];
+  assert.equal(evaluate(rows).status, 'ready');
+  assert.equal(evaluate(rows, { click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, [id]);
+  assert.deepEqual(rows[1].clicks, []);
+  console.log('PASS screenshot-style icon-only history button on exact row');
+}
+{
+  const rows = [makeRow(id, title, ' ', 'lucide lucide-trash-2')];
+  assert.equal(evaluate(rows, { click: true }).status, 'error');
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS trash icon cannot be mistaken for repost');
+}
+{
+  const rows = [makeRow(id, title, ' ')];
+  rows[0].button.title = '재등록';
+  assert.equal(evaluate(rows, { click: true }).status, 'clicked');
+  console.log('PASS tooltip title used despite whitespace-only icon text');
 }

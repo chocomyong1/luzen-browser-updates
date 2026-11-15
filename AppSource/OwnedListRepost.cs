@@ -43,6 +43,38 @@ internal static class OwnedListRepost
       for(let i=0;i<docs.length&&i<8;i++)for(const frame of docs[i].querySelectorAll('iframe,frame')){
         try{const d=frame.contentDocument;if(d&&!seen.has(d)){seen.add(d);docs.push(d)}}catch{}
       }
+      // The current My Room card UI places action icons at the right edge.
+      // Treat a history/refresh icon as repost ONLY when it is inside the
+      // already verified unique listing row; never choose an arbitrary icon
+      // from the page or infer 'first button' from visual position alone.
+      const className=e=>typeof e?.className==='string'?e.className:(e?.className?.baseVal||'');
+      const names=e=>{
+        const nested=typeof e.querySelectorAll==='function'
+          ?[...e.querySelectorAll('[title],[aria-label],svg title')].slice(0,8):[];
+        return [e.value,e.innerText,e.textContent,e.getAttribute?.('aria-label'),
+          e.getAttribute?.('title'),e.getAttribute?.('data-tooltip'),e.getAttribute?.('data-original-title'),
+          ...nested.flatMap(x=>[x.getAttribute?.('title'),x.getAttribute?.('aria-label'),x.textContent])]
+          .map(norm).filter(Boolean);
+      };
+      const repostWords=/^(재등록|재등록하기|다시등록|다시등록하기)$/;
+      const iconName=e=>{
+        const icons=typeof e.querySelectorAll==='function'
+          ?[...e.querySelectorAll('svg,i,img')].slice(0,5):[];
+        // An icon button must contain exactly one icon: a whole card/table
+        // containing several icon actions cannot pass this test.
+        if(icons.length!==1)return false;
+        const signature=[e,...icons].map(x=>[
+          className(x),x.getAttribute?.('data-icon'),x.getAttribute?.('data-testid'),
+          x.getAttribute?.('aria-label'),x.getAttribute?.('title'),
+          x.getAttribute?.('alt'),x.getAttribute?.('src')].filter(Boolean).join(' ')).join(' ').toLowerCase();
+        if (/(?:^|[^a-z])(history|rotate-ccw|rotate-cw|refresh|reload|repost|re-register|reregister|clock-rotate-left|clock-arrow)(?:$|[^a-z])/.test(signature))
+          return true;
+        // Lucide 'history' SVG also has a distinctive clock hand and rewind
+        // arrow. Use BOTH path fragments, never merely the presence of SVG.
+        const paths=typeof icons[0].querySelectorAll==='function'
+          ?[...icons[0].querySelectorAll('path')].map(x=>x.getAttribute?.('d')||'').join(' '):'';
+        return /M12\s*7v5l4\s*2/.test(paths) && /M3\s*3v5h5/.test(paths);
+      };
       const matching=[];const candidateRows=new Set();
       const attrs=['data-tid','data-listing-id','data-goods-id','data-trade-id','data-id'];
       for(const d of docs){
@@ -76,8 +108,10 @@ internal static class OwnedListRepost
         if(new RegExp('(?:^|\\D)'+arg.number+'(?!\\d)').test(text))ids.add(arg.number);
         if(!ids.has(arg.number))continue;
         if(ids.size!==1)return result('error','한 물품 행에 서로 다른 등록번호가 있어 중단했습니다');
-        const actions=[...row.querySelectorAll('button,input[type="button"],input[type="submit"],a[href],a[onclick],[role="button"]')]
-          .filter(visible).filter(e=>/^(재등록|재등록하기|다시등록|다시등록하기)$/.test(norm(e.value||e.innerText||e.textContent||e.getAttribute('aria-label')||e.title)));
+        const controls=[...new Set(row.querySelectorAll(
+          'button,input[type="button"],input[type="submit"],a[href],a[onclick],[role="button"],[onclick],[class*="cursor-pointer"]'))]
+          .filter(visible);
+        const actions=controls.filter(e=>names(e).some(v=>repostWords.test(v)) || iconName(e));
         matching.push({row,actions});
       }
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?
@@ -85,7 +119,7 @@ internal static class OwnedListRepost
         '이 페이지에서 등록번호와 제목이 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)');
       if(arg.click===null)return result('found','현재 내 등록글 목록에서 해당 등록번호·제목을 다시 확인함');
       if(matching[0].actions.length!==1)return result('error',matching[0].actions.length?
-        '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에 독립적인 재등록 버튼이 없습니다');
+        '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 재등록 문자/원형 화살표 아이콘을 확인하지 못했습니다');
       if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인');
       const button=matching[0].actions[0];
       button.click();
