@@ -1,0 +1,319 @@
+using System;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+
+namespace LuzenBrowserReplica;
+
+// ItemMania account information is separate from the original LuzenSoft/local-mode login.
+// Only DPAPI-encrypted passwords are persisted; cookies are kept in a dedicated WebView2 profile.
+internal sealed class ItemManiaCredentials
+{
+    public string UserId { get; set; } = "";
+    public string PasswordProtected { get; set; } = "";
+    public bool AutoLoginEnabled { get; set; } = true;
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(UserId) && !string.IsNullOrWhiteSpace(PasswordProtected);
+}
+
+internal static class ItemManiaAccountStore
+{
+    private static string PathName => Path.Combine(Settings.UserDirectory, "itemmania_account.json");
+    public static int Revision { get; private set; }
+    public static ItemManiaCredentials Load()
+    {
+        try
+        {
+            if (!File.Exists(PathName)) return new();
+            return JsonSerializer.Deserialize<ItemManiaCredentials>(File.ReadAllText(PathName)) ?? new();
+        }
+        catch { return new(); }
+    }
+    public static void Save(ItemManiaCredentials account)
+    {
+        Directory.CreateDirectory(Settings.UserDirectory);
+        var temp = PathName + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(account, new JsonSerializerOptions { WriteIndented = true }));
+        File.Move(temp, PathName, overwrite: true);
+        Revision++;
+    }
+    public static void Clear()
+    {
+        if (File.Exists(PathName)) File.Delete(PathName);
+        Revision++;
+    }
+    public static bool IsOfficialSite(Uri? uri) =>
+        uri is not null && uri.Scheme == Uri.UriSchemeHttps &&
+        (uri.Host.Equals("itemmania.com", StringComparison.OrdinalIgnoreCase) ||
+         uri.Host.EndsWith(".itemmania.com", StringComparison.OrdinalIgnoreCase));
+}
+
+internal sealed class ItemManiaAccountForm : Form
+{
+    private readonly TextBox _id = new() { Width = 275 };
+    private readonly TextBox _password = new() { Width = 275, UseSystemPasswordChar = true };
+    private readonly CheckBox _enabled = new() { Text = "다음 실행부터 자동 로그인 (이 Windows 사용자만)", AutoSize = true, Checked = true };
+    private readonly ItemManiaCredentials _existing = ItemManiaAccountStore.Load();
+
+    public ItemManiaAccountForm()
+    {
+        Text = "아이템매니아 로그인 설정";
+        Width = 485; Height = 350;
+        MinimumSize = MaximumSize = Size;
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false; MinimizeBox = false;
+        Font = new Font("맑은 고딕", 9);
+        Controls.Add(new Label
+        {
+            Left = 25, Top = 17, Width = 425, Height = 46,
+            Text = "아이템매니아 공식 사이트에서 사용할 계정입니다.\nWindows 암호화(DPAPI)로 저장하며 외부 서버에 별도 전송하지 않습니다."
+        });
+        Controls.Add(new Label { Text = "아이디", Left = 25, Top = 86, Width = 90, Height = 28 });
+        _id.Left = 132; _id.Top = 82; _id.Text = _existing.UserId;
+        Controls.Add(_id);
+        Controls.Add(new Label { Text = "비밀번호", Left = 25, Top = 124, Width = 90, Height = 28 });
+        _password.Left = 132; _password.Top = 121;
+        // Existing password is never displayed back in plaintext or placed into the form.
+        _password.PlaceholderText = _existing.IsConfigured ? "변경하지 않으려면 비워 두세요" : "처음 한 번 입력";
+        Controls.Add(_password);
+        _enabled.Left = 129; _enabled.Top = 164; _enabled.Checked = _existing.AutoLoginEnabled;
+        Controls.Add(_enabled);
+        var info = new Label
+        {
+            Left = 25, Top = 196, Width = 425, Height = 47,
+            ForeColor = Color.FromArgb(90, 98, 108),
+            Text = "세션이 유효하면 자동으로 로그인 상태를 유지합니다.\n만료 시 저장한 계정으로 재로그인을 시도하며 추가 인증은 수동 처리합니다."
+        };
+        Controls.Add(info);
+        var save = new Button { Text = "계정 저장", Left = 132, Top = 260, Width = 166, Height = 32 };
+        save.Click += (_, _) => SaveAccount();
+        Controls.Add(save); AcceptButton = save;
+        var clear = new Button { Text = "계정 삭제", Left = 308, Top = 260, Width = 106, Height = 32 };
+        clear.Click += (_, _) =>
+        {
+            if (MessageBox.Show(this, "저장한 아이템매니아 계정정보를 삭제할까요?\n기존 브라우저 쿠키까지 삭제하지는 않습니다.", "확인", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            ItemManiaAccountStore.Clear();
+            DialogResult = DialogResult.Cancel; Close();
+        };
+        Controls.Add(clear);
+    }
+
+    private void SaveAccount()
+    {
+        var user = _id.Text.Trim();
+        if (string.IsNullOrWhiteSpace(user)) { MessageBox.Show(this, "아이디를 입력하세요."); return; }
+        string encrypted = _existing.PasswordProtected;
+        if (!string.Equals(user, _existing.UserId, StringComparison.Ordinal)) encrypted = "";
+        try
+        {
+            if (_password.Text.Length > 0) encrypted = PasswordVault.Protect(_password.Text);
+            if (string.IsNullOrWhiteSpace(encrypted))
+            {
+                MessageBox.Show(this, "처음 연결할 때는 비밀번호를 입력해야 합니다."); return;
+            }
+            ItemManiaAccountStore.Save(new ItemManiaCredentials
+            {
+                UserId = user, PasswordProtected = encrypted, AutoLoginEnabled = _enabled.Checked
+            });
+            _password.Clear();
+            DialogResult = DialogResult.OK; Close();
+        }
+        catch (Exception ex) { MessageBox.Show(this, "계정 설정 저장 실패: " + ex.Message); }
+    }
+}
+
+internal static class ItemManiaWebViewProfile
+{
+    private static readonly Lazy<Task<CoreWebView2Environment>> Shared = new(() =>
+        CoreWebView2Environment.CreateAsync(null, System.IO.Path.Combine(Settings.UserDirectory, "ItemManiaWebView2")));
+    public static Task<CoreWebView2Environment> GetAsync() => Shared.Value;
+}
+
+// Detects a recognizable login form on the *official HTTPS ItemMania domain only*.
+// It never fills a third-party site, never bypasses 2FA/CAPTCHA, and tries at most
+// once per 10 minutes to avoid repeated attempts after invalid credentials.
+internal sealed class ItemManiaAutoLogin : IDisposable
+{
+    private readonly WebView2 _view;
+    private readonly Action<string>? _notify;
+    private readonly System.Windows.Forms.Timer _watcher = new() { Interval = 2500 };
+    private DateTime _lastAttemptUtc = DateTime.MinValue;
+    private DateTime _lastOpenLoginUtc = DateTime.MinValue;
+    private int _accountRevision = ItemManiaAccountStore.Revision;
+    private bool _checking;
+    private bool _disposed;
+
+    public ItemManiaAutoLogin(WebView2 view, Action<string>? notify = null)
+    {
+        _view = view; _notify = notify;
+        _view.NavigationCompleted += OnNavigationComplete;
+        _watcher.Tick += async (_, _) => await TryLoginAsync();
+        _watcher.Start();
+        _view.Disposed += (_, _) => Dispose();
+    }
+
+    private async void OnNavigationComplete(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        await TryLoginAsync();
+    }
+
+    public async Task TryLoginAsync()
+    {
+        if (_checking || _disposed || _view.IsDisposed || _view.CoreWebView2 is null) return;
+        if (!ItemManiaAccountStore.IsOfficialSite(_view.Source)) return;
+        if (_accountRevision != ItemManiaAccountStore.Revision)
+        {
+            _accountRevision = ItemManiaAccountStore.Revision;
+            _lastAttemptUtc = DateTime.MinValue;
+            _lastOpenLoginUtc = DateTime.MinValue;
+        }
+        if (DateTime.UtcNow - _lastAttemptUtc < TimeSpan.FromMinutes(10)) return;
+        var account = ItemManiaAccountStore.Load();
+        if (!account.IsConfigured || !account.AutoLoginEnabled) return;
+        var password = PasswordVault.Unprotect(account.PasswordProtected);
+        if (password.Length == 0) { _notify?.Invoke("저장된 아이템매니아 비밀번호를 복호화할 수 없습니다. 계정을 다시 설정하세요."); return; }
+        _checking = true;
+        try
+        {
+            // Escaped as JS string literals. Do not log or persist the generated script.
+            var userJs = JsonSerializer.Serialize(account.UserId);
+            var passJs = JsonSerializer.Serialize(password);
+            var script = """
+                (() => {
+                  if (location.protocol !== 'https:' || !/(^|\.)itemmania\.com$/i.test(location.hostname)) return 'untrusted-origin';
+                  const user = __ITEMMANIA_USER__;
+                  const pass = __ITEMMANIA_PASSWORD__;
+                  const visible = e => !!(e && e.getClientRects().length && !e.disabled && !e.readOnly);
+                  const passwords = [...document.querySelectorAll('input[type="password"]')].filter(visible);
+                  // More than one password field usually means reset/change-password: do not touch.
+                  if (passwords.length !== 1) return 'no-login-form';
+                  const password = passwords[0];
+                  const form = password.form || password.closest('form');
+                  if (!form) return 'no-login-form';
+                  const context = [location.pathname, form.getAttribute('action') || '', form.id, form.className].join(' ');
+                  const options = [...form.querySelectorAll('input:not([type="hidden"]):not([type="password"])')]
+                    .filter(visible).filter(e => /^(text|email|tel|)$/i.test(e.type));
+                  const idInput = options.find(e => /(^|\W)(id|uid|userid|user_id|login|account|member)(\W|$)/i.test(
+                       [e.name, e.id, e.getAttribute('autocomplete') || ''].join(' '))) ||
+                    (options.length === 1 ? options[0] : null);
+                  if (!idInput) return 'no-login-form';
+                  const buttons = [...form.querySelectorAll('button, input[type="submit"], a[role="button"]')].filter(visible);
+                  const submit = buttons.find(e => /로그인|log\s*in|sign\s*in/i.test(
+                       [e.textContent || '', e.value || '', e.getAttribute('aria-label') || ''].join(' '))) ||
+                    (buttons.length === 1 && /^(submit)$/i.test(buttons[0].type) ? buttons[0] : null);
+                  if (!submit || !(/login|sign|member|로그인/i.test(context) || /로그인|log\s*in|sign\s*in/i.test(submit.textContent || submit.value || '')))
+                    return 'no-login-form';
+                  if (document.querySelector('iframe[src*="captcha"], [class*="captcha"], [id*="captcha"]')) return 'needs-verification';
+                  const setValue = (el, value) => {
+                    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+                    descriptor.set.call(el, value);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                  };
+                  setValue(idInput, user);
+                  setValue(password, pass);
+                  if (submit.tagName === 'BUTTON' || submit.tagName === 'INPUT' || submit.tagName === 'A') submit.click();
+                  return 'submitted';
+                })()
+                """.Replace("__ITEMMANIA_USER__", userJs, StringComparison.Ordinal)
+                     .Replace("__ITEMMANIA_PASSWORD__", passJs, StringComparison.Ordinal);
+            string response = await _view.CoreWebView2.ExecuteScriptAsync(script);
+            var result = JsonSerializer.Deserialize<string>(response) ?? "";
+            if (result == "submitted")
+            {
+                _lastAttemptUtc = DateTime.UtcNow;
+                _notify?.Invoke("백그라운드 아이템매니아 로그인 요청 완료. 결과 확인은 등록 작업 상태로 판단합니다.");
+            }
+            else if (result == "needs-verification")
+            {
+                _lastAttemptUtc = DateTime.UtcNow;
+                _notify?.Invoke("아이템매니아 추가 인증이 필요합니다. 자동 작업을 진행할 수 없습니다.");
+            }
+            else if (result == "no-login-form" && DateTime.UtcNow - _lastOpenLoginUtc > TimeSpan.FromMinutes(2))
+            {
+                await OpenLoginLinkFromHomepageAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Navigation can interrupt script execution. Never print scripts/credentials.
+            if (!_disposed) _notify?.Invoke("자동 로그인 페이지 확인 중 오류: " + ex.GetType().Name);
+        }
+        finally { _checking = false; }
+    }
+
+    private async Task OpenLoginLinkFromHomepageAsync()
+    {
+        if (!ItemManiaAccountStore.IsOfficialSite(_view.Source)) return;
+        // Only on the front page. Clicking an arbitrary Login-labelled link from a listing
+        // or checkout page could disrupt the user's own work.
+        string path = _view.Source!.AbsolutePath.Trim('/').ToLowerInvariant();
+        if (path.Length > 0 && path != "index.html" && path != "main" && path != "main/index.html") return;
+        const string findLogin = """
+            (() => {
+              if (document.querySelector('a[href*="logout"], button[onclick*="logout"]')) return 'already-signed-in';
+              const elements = [...document.querySelectorAll('a, button')];
+              const link = elements.find(el => {
+                const text = (el.textContent || '').trim().replace(/\s+/g, ' ');
+                if (!/^(로그인|login|log in|sign in)$/i.test(text)) return false;
+                if (!el.getClientRects().length) return false;
+                const href = (el.getAttribute('href') || '').trim().toLowerCase();
+                if (href && href !== '#' && !href.startsWith('javascript:')) {
+                  try {const u = new URL(href, location.href); if (u.protocol !== 'https:' || !/(^|\.)itemmania\.com$/i.test(u.hostname)) return false;}
+                  catch {return false;}
+                }
+                return true;
+              });
+              if (!link) return 'not-found';
+              link.click();
+              return 'opened-login';
+            })()
+            """;
+        string answer = await _view.CoreWebView2.ExecuteScriptAsync(findLogin);
+        if (JsonSerializer.Deserialize<string>(answer) == "opened-login")
+        {
+            _lastOpenLoginUtc = DateTime.UtcNow;
+            _notify?.Invoke("백그라운드에서 아이템매니아 로그인 절차를 진행 중입니다.");
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _watcher.Stop(); _watcher.Dispose();
+        _view.NavigationCompleted -= OnNavigationComplete;
+    }
+}
+
+// Handles site login popups inside the same isolated, persistent profile. Leaving
+// them in a new system browser would lose the app's session/cookies.
+internal static class ItemManiaPopupHandler
+{
+    // V8 no-website-UI mode: consume requests for pop-up windows instead of
+    // creating a Form. Same-domain links can be handled inside the existing
+    // background WebView2. External domains and unsupported auth popups are
+    // blocked: never bypass verification or silently open a visible browser.
+    public static void InstallSilent(WebView2 view, Action<string>? notify)
+    {
+        if (view.CoreWebView2 is null) return;
+        view.CoreWebView2.NewWindowRequested += (_, args) =>
+        {
+            args.Handled = true;
+            if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) ||
+                !ItemManiaAccountStore.IsOfficialSite(uri))
+            {
+                notify?.Invoke("외부 팝업 또는 추가 인증이 필요하여 자동 팝업을 열지 않았습니다.");
+                return;
+            }
+            notify?.Invoke("사이트의 새 창 요청을 백그라운드 페이지에서 처리합니다.");
+            view.CoreWebView2?.Navigate(uri.AbsoluteUri);
+        };
+    }
+
+}
