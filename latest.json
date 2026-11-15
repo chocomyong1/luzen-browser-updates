@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.0",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.0/LuzenBrowser_22.2.0_BinaryUpdate.zip",
-  "sha256": "02ec609682f24c5fa2f6c7dc572e472b9500c9cbd619e6edaa516d4e79a59252",
+  "version": "22.2.1",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.1/LuzenBrowser_22.2.1_BinaryUpdate.zip",
+  "sha256": "a1d3a7bfc56df0a7e3d6e3a053689b5b0d1c6cefaf93466adde9931bfc153ec2",
   "format": "binary",
-  "releaseNotes": "V22.2: 내 등록글 재등록 대상의 등록번호와 제목 일치 검증 강화, 한 건 실제 실행 및 시험 실행 동작 개선. 실제 사이트 환경에서는 등록 결과 확인 후 사용하세요."
+  "releaseNotes": "v22.2.1: 재등록 상세 화면 확인 실패 시 본인 등록목록의 정확한 글을 재검증합니다. 번호 부분 일치·일괄 확인 누락·등록 간격 설정 이상을 수정했습니다. Windows 빌드와 오프라인 안전 테스트 통과. 실제 등록은 1건부터 확인하세요."
 }
