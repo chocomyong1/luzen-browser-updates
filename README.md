@@ -1,28 +1,22 @@
-# Luzen Browser 업데이트 배포
+# Luzen Browser 자동 업데이트 배포
 
-이 저장소는 **Luzen Browser Windows 프로그램의 자동 업데이트 배포용 공개 저장소**입니다.
+이 저장소는 **Luzen Browser Windows 프로그램의 바이너리 전용 공개 업데이트 채널**입니다.
 
-- 공개 대상: Windows용 빌드 파일 및 버전 안내 파일(`latest.json`)
-- 비공개 대상: 프로그램 소스 코드, 계정·비밀번호·쿠키, 사용자 물품 목록 및 설정
-- 설치 및 실행: 사용자 PC에 설치된 Luzen Browser가 새 버전을 확인하고, SHA-256을 검사한 후 업데이트합니다.
+## 현재 배포
 
-## 자동 업데이트 파일 형식
+- 최신 배포 파일: **22.1.0**
+- [업데이트 안내 파일 (latest.json)](./latest.json)
+- [Windows 업데이트 파일 ZIP](./releases/v22.1.0/LuzenBrowser_22.1.0_BinaryUpdate.zip)
+- 형식: ZIP 루트의 `Published/` 아래에 Windows 실행 파일과 Assets 리소스 포함
+- 검증: `latest.json`의 SHA-256이 ZIP 파일과 일치해야 설치합니다.
 
-`latest.json`은 실제 Windows 실행 파일의 배포가 준비된 뒤에 게시합니다. 업데이트 ZIP은 루트에 `Published/LuzenBrowserReplica.exe` 및 `Published/Assets/`를 포함해야 합니다.
+프로그램은 시작할 때와 주기적으로 `latest.json`을 확인합니다. 새 버전이 배포되면 다운로드 후 검증합니다. 등록·조회 작업 중에는 설치를 보류하도록 설계되어 있습니다.
 
-```json
-{
-  "schema": 1,
-  "version": "23.0.0",
-  "packageUrl": "https://<실제 파일 다운로드 주소>",
-  "sha256": "<실제 ZIP 파일의 SHA-256>",
-  "format": "binary",
-  "releaseNotes": "변경 내용"
-}
-```
+## 개인 정보와 소스 코드
 
-위 JSON은 **형식 설명용 예시**이며 실제 최신 버전을 알리는 파일이 아닙니다.
+**이 저장소에는 Windows 실행 파일 및 공개 업데이트 안내만 있습니다.**
 
-## 주의
-
-개발용 소스 ZIP이나 개인 설정 파일을 공개 배포하지 않습니다. Windows 빌드 검증과 배포 파일 준비가 완료되기 전에는 업데이트를 공개하지 않습니다.
+- 소스 코드, 사용자 계정, 비밀번호, 쿠키, 물품 목록, 개인 설정은 공개하지 않습니다.
+- 사용자 데이터는 설치 파일과 분리해 해당 PC에 저장되도록 설계되어 있습니다.
+- 실행 파일이 로스트아크/아이템매니아 등록·재등록 작업을 실제 사이트에서 성공시키는지는 별도 검증 대상입니다.
+- Windows 자동 설치·롤백의 실제 동작도 실사용 환경에서 확인해야 합니다.
