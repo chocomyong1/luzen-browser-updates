@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "version": "22.1.0",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.1.0/LuzenBrowser_22.1.0_BinaryUpdate.zip",
+  "sha256": "7038fb9052d288f9564444b39cfaed7110601f91921e23265e56d54a54df93ea",
+  "format": "binary",
+  "releaseNotes": "GitHub 자동 업데이트 채널 최초 연결. Windows 실행 파일 및 리소스 배포."
+}
