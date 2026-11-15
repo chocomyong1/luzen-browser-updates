@@ -16,7 +16,8 @@ internal sealed partial class AutomationForm
         var eligible = pending.Where(j =>
             CanConfirmImportedReviewForSingleRun(j) &&
             ListingIdentity.HasNumber(j.ListingNumber) &&
-            MyListingsImport.IsSafeDetailUrl(j.EntryUrl, j.ListingNumber) &&
+            (MyListingsImport.IsSafeDetailUrl(j.EntryUrl, j.ListingNumber) ||
+             !string.IsNullOrWhiteSpace(OwnedListUrlFor(j))) &&
             GameServerCatalog.IsSupported(j.Game, j.Server) &&
             !string.IsNullOrWhiteSpace(j.Title)).ToList();
         if (eligible.Count == 0) return 0;
@@ -24,7 +25,7 @@ internal sealed partial class AutomationForm
         int oddPrice = eligible.Count(j => string.IsNullOrWhiteSpace(j.Price) ||
             j.Price.Trim() is "1" or "0");
         string message = $"조회한 물품 중 내 기존 등록글 {eligible.Count}건을 일괄 확인하고 자동 ON을 준비합니다.\n" +
-            $"보류 유지 (등록번호/URL/서버가 불분명하거나 이전 제출 결과 미확인): {pending.Count - eligible.Count}건\n\n" +
+            $"보류 유지 (등록번호/상세·관리목록 URL/서버가 불분명하거나 이전 제출 결과 미확인): {pending.Count - eligible.Count}건\n\n" +
             "아래 내용을 사이트에서 직접 확인했을 때만 [예]를 누르세요.\n" +
             "• 선택된 모든 등록번호가 현재 내 물품입니다.\n" +
             "• 사이트에 보이는 물품 종류와 실제 가격을 확인했습니다.\n" +

@@ -1720,8 +1720,9 @@ internal sealed partial class AutomationForm : Form
 
     private static string EntryFor(ListingJob job, AutomationWorkflow flow) =>
         flow.Operation != "재등록" ? flow.EntryUrl :
-        !string.IsNullOrWhiteSpace(job.EntryUrl) ? job.EntryUrl.Trim() :
-        OwnedListUrlFor(job);
+        MyListingsImport.IsSafeDetailUrl(job.EntryUrl, job.ListingNumber) ? job.EntryUrl.Trim() :
+        !string.IsNullOrWhiteSpace(OwnedListUrlFor(job)) ? OwnedListUrlFor(job) :
+        (job.EntryUrl ?? "").Trim();
 
     private bool ValidateJob(ListingJob job, bool dryRun, out string message, bool importedReviewConfirmed = false)
     {
@@ -1892,21 +1893,23 @@ internal sealed partial class AutomationForm : Form
     {
         var now = DateTime.UtcNow;
         _config.SubmissionAttemptsUtc.RemoveAll(x => x < now.AddHours(-1));
-        if (_config.SubmissionAttemptsUtc.Count >= _config.MaxSubmissionsPerHour)
+        int hourlyLimit = Math.Clamp(_config.MaxSubmissionsPerHour, 1, 1000);
+        int serverDelay = Math.Max(21, _config.MinimumServerSeconds);
+        if (_config.SubmissionAttemptsUtc.Count >= hourlyLimit)
         {
             reason = "최근 1시간 등록 시도 횟수가 상한에 도달했습니다."; return false;
         }
         var last = _config.SubmissionAttemptsUtc.Count == 0 ? DateTime.MinValue : _config.SubmissionAttemptsUtc.Max();
-        int pace = Math.Max(_config.MinimumGlobalSeconds, (int)Math.Ceiling(3600.0 / _config.MaxSubmissionsPerHour));
+        int pace = Math.Max(Math.Max(21, _config.MinimumGlobalSeconds), (int)Math.Ceiling(3600.0 / hourlyLimit));
         var globalAllowed = last == DateTime.MinValue ? DateTime.MinValue : last.AddSeconds(pace);
         globalAllowed = globalAllowed > _nextGlobalAllowedUtc ? globalAllowed : _nextGlobalAllowedUtc;
         if (now < globalAllowed)
         {
             reason = $"전체 등록 간격 제한: {Math.Ceiling((globalAllowed - now).TotalSeconds)}초 남음"; return false;
         }
-        if (_config.LastServerAttemptUtc.TryGetValue(job.Server, out var lastServer) && now < lastServer.AddSeconds(_config.MinimumServerSeconds))
+        if (_config.LastServerAttemptUtc.TryGetValue(job.Server, out var lastServer) && now < lastServer.AddSeconds(serverDelay))
         {
-            reason = $"{job.Server} 서버 최소 간격: {Math.Ceiling((lastServer.AddSeconds(_config.MinimumServerSeconds) - now).TotalSeconds)}초 남음"; return false;
+            reason = $"{job.Server} 서버 최소 간격: {Math.Ceiling((lastServer.AddSeconds(serverDelay) - now).TotalSeconds)}초 남음"; return false;
         }
         reason = ""; return true;
     }
@@ -1967,8 +1970,14 @@ internal sealed partial class AutomationForm : Form
                             {
                                 var existing = await InspectCurrentIdentityAsync(job, token);
                                 if (!ListingIdentity.IsConfirmedExisting(existing, job))
-                                    throw new InvalidOperationException("[시험] 재등록 대상 상세 화면 확인 실패: " + existing.Error);
-                                AppendLog("[시험] 실제 제출 없이 상세 등록번호 확인: " + job.ListingNumber);
+                                {
+                                    var fallback = await LocateOwnedListFallbackAsync(job, token);
+                                    if (fallback.Status != "ready")
+                                        throw new InvalidOperationException("[시험] 상세 화면 확인 실패 및 본인 등록목록 재탐색 실패: " +
+                                            existing.Error + " / " + fallback.Message + ". 제출하지 않았습니다.");
+                                    AppendLog("[시험] 본인 등록목록에서 정확한 등록번호·제목·재등록 버튼 확인: " + job.ListingNumber);
+                                }
+                                else AppendLog("[시험] 실제 제출 없이 상세 등록번호 확인: " + job.ListingNumber);
                             }
                         }
                         AppendLog("[시험] 최종 제출 버튼은 누르지 않음: " + (i + 1));
@@ -1991,12 +2000,17 @@ internal sealed partial class AutomationForm : Form
                         {
                             var beforeRepost = await InspectCurrentIdentityAsync(job, token);
                             if (!ListingIdentity.IsConfirmedExisting(beforeRepost, job))
-                                throw new InvalidOperationException(
-                                    "재등록 차단: 현재 페이지가 선택한 등록글인지 확인하지 못했습니다. " +
-                                    (string.IsNullOrWhiteSpace(beforeRepost.Error) ? "상세 페이지에서 제목/등록번호가 확인되지 않음" : beforeRepost.Error) +
-                                    $" / 번호 일치={string.Equals(beforeRepost.Number, job.ListingNumber, StringComparison.Ordinal)}, " +
-                                    $"제목 확인={beforeRepost.TitlePresent}, 상세 화면={beforeRepost.DetailPage}. " +
-                                    "사이트에서 해당 글의 상세/관리 링크를 열어 '재등록 대상 URL'을 확인하세요. 제출하지 않았습니다.");
+                            {
+                                var fallback = await LocateOwnedListFallbackAsync(job, token);
+                                if (fallback.Status != "ready")
+                                    throw new InvalidOperationException(
+                                        "재등록 차단: 상세 화면과 본인 관리목록 모두에서 대상 글을 검증하지 못했습니다. " +
+                                        $"번호 일치={string.Equals(beforeRepost.Number, job.ListingNumber, StringComparison.Ordinal)}, " +
+                                        $"제목 확인={beforeRepost.TitlePresent}, 상세 화면={beforeRepost.DetailPage}. " +
+                                        "목록 검사: " + fallback.Message + ". 제출하지 않았습니다.");
+                                repostFromOwnedList = true;
+                                AppendLog("본인 관리목록에서 재등록 대상 행 재확인: " + job.ListingNumber + " / " + job.Title);
+                            }
                         }
                     }
                     if (!submitted)
@@ -2013,7 +2027,8 @@ internal sealed partial class AutomationForm : Form
                             throw new InvalidOperationException("제출 전에 성공 확인 조건이 이미 충족되어 있습니다. 등록 완료 화면 전용 CSS 또는 URL을 설정하세요.");
                         _config.SubmissionAttemptsUtc.Add(now);
                         _config.LastServerAttemptUtc[job.Server] = now;
-                        int pace = Math.Max(_config.MinimumGlobalSeconds, (int)Math.Ceiling(3600.0 / _config.MaxSubmissionsPerHour));
+                        int pace = Math.Max(Math.Max(21, _config.MinimumGlobalSeconds),
+                            (int)Math.Ceiling(3600.0 / Math.Clamp(_config.MaxSubmissionsPerHour, 1, 1000)));
                         _nextGlobalAllowedUtc = now.AddSeconds(pace);
                         // IMPORTANT: checkpoint to disk BEFORE touching the submit button.
                         // Process termination during a live submission must never silently
@@ -2087,8 +2102,7 @@ internal sealed partial class AutomationForm : Form
                 }
                 if (job.AutoRepost || job.Operation == "재등록")
                 {
-                    string repostTarget = !string.IsNullOrWhiteSpace(job.EntryUrl)
-                        ? job.EntryUrl : OwnedListUrlFor(job);
+                    string repostTarget = EntryFor(job, _config.WorkflowFor("재등록"));
                     if (string.IsNullOrWhiteSpace(repostTarget) || !IsAllowedUrl(repostTarget))
                     {
                         job.NextDueUtc = DateTime.MaxValue;
@@ -2150,6 +2164,22 @@ internal sealed partial class AutomationForm : Form
             // Keep the current submission flow intact; import after it releases WebView2.
             DispatchQueuedMyListingsImport();
         }
+    }
+
+    // A previously saved detail URL can be stale or display a shared management
+    // page without the title. Re-enter the account's own list, then verify one
+    // exact row and one row-scoped repost button. No broad/global button fallback.
+    private async Task<OwnedListRepostResult> LocateOwnedListFallbackAsync(ListingJob job, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        string ownListUrl = OwnedListUrlFor(job);
+        if (!MyListingsImport.IsOwnedListUrl(ownListUrl) || !IsAllowedUrl(ownListUrl))
+            return new OwnedListRepostResult { Status = "error", Message = "본인 등록목록 주소 또는 거래 방향을 검증할 수 없습니다" };
+        AppendLog("상세 URL에서 글 확인 실패 → 본인 등록목록에서 등록번호·제목을 재검사합니다: " + job.ListingNumber);
+        if (!MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri) ||
+            MyListingsImport.IsSellListUrl(_web.Source?.AbsoluteUri) != MyListingsImport.IsSellListUrl(ownListUrl))
+            await NavigateAsync(ownListUrl, token);
+        return await LocateOwnedListRepostAsync(job, token);
     }
 
     private async Task<OwnedListRepostResult> LocateOwnedListRepostAsync(ListingJob job, CancellationToken token)
@@ -2294,7 +2324,7 @@ internal sealed partial class AutomationForm : Form
     {
         token.ThrowIfCancellationRequested();
         // Prefer a link obtained from the same page as a verified listing ID.
-        if (!string.IsNullOrWhiteSpace(identity.DetailUrl) && IsAllowedUrl(identity.DetailUrl))
+        if (MyListingsImport.IsSafeDetailUrl(identity.DetailUrl, job.ListingNumber) && IsAllowedUrl(identity.DetailUrl))
             return identity.DetailUrl;
         if (string.IsNullOrWhiteSpace(flow.RepostLinkSelector) || !IsAllowedCurrentPage()) return "";
         try
@@ -2313,8 +2343,7 @@ internal sealed partial class AutomationForm : Form
             """.Replace("__ARG__", JsonSerializer.Serialize(new { selector = flow.RepostLinkSelector, title = job.Title }));
             string raw = await _web.CoreWebView2.ExecuteScriptAsync(script);
             string? link = JsonSerializer.Deserialize<string>(raw);
-            if (!string.IsNullOrWhiteSpace(link) && IsAllowedUrl(link) &&
-                ListingIdentity.HasNumber(job.ListingNumber) && link.Contains(job.ListingNumber, StringComparison.Ordinal))
+            if (MyListingsImport.IsSafeDetailUrl(link, job.ListingNumber) && IsAllowedUrl(link))
                 return link;
         }
         catch (Exception ex) { AppendLog("재등록 대상 링크 탐색 실패: " + ex.Message); }

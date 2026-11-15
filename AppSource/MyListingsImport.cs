@@ -464,7 +464,9 @@ internal static class MyListingsImport
         if (!Regex.IsMatch(number ?? "", @"^\d{8,20}$")) return false;
         var uri = new Uri(url!);
         if (Regex.IsMatch(uri.AbsolutePath, @"/(login|auth|payment|charge|deposit|checkout)/", RegexOptions.IgnoreCase)) return false;
-        return (uri.AbsolutePath + uri.Query).Contains(number!, StringComparison.Ordinal);
+        // Never accept 12345678 as a substring of a different 123456789 ID.
+        return Regex.IsMatch(uri.AbsolutePath + uri.Query,
+            @"(?<!\d)" + Regex.Escape(number!) + @"(?!\d)", RegexOptions.CultureInvariant);
     }
 
     public static ExistingListingRecord DecodeDetail(string? json)
@@ -490,7 +492,7 @@ internal static class MyListingsImport
     (u.hostname==='itemmania.com'||u.hostname.endsWith('.itemmania.com'));}catch{return false;}};
   const empty={listingNumber:'',game:'',server:'',quantity:'',price:''};
   if(!safeUrl()||!/^[0-9]{8,20}$/.test(expected))return empty;
-  const idInUrl=(location.pathname+location.search).includes(expected);
+  const idInUrl=new RegExp('(?:^|\\D)'+expected+'(?!\\d)').test(location.pathname+location.search);
   const idInDom=[...document.querySelectorAll('[data-tid],[data-listing-id],[data-goods-id]')]
     .some(el=>['data-tid','data-listing-id','data-goods-id']
       .some(a=>el.getAttribute(a)===expected));

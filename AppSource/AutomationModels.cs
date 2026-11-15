@@ -149,6 +149,12 @@ internal sealed class AutomationConfiguration
                 if (loaded is null) continue;
                 loaded.Workflows ??= new(); loaded.Jobs ??= new();
                 loaded.SubmissionAttemptsUtc ??= new(); loaded.LastServerAttemptUtc ??= new();
+                // Legacy/manual edits may contain impossible or unsafe limits.
+                // Keep the persisted configuration within the enforced bounds.
+                loaded.MaxSubmissionsPerHour = Math.Clamp(loaded.MaxSubmissionsPerHour, 1, 1000);
+                loaded.MaxListingsPerServer = Math.Clamp(loaded.MaxListingsPerServer, 1, 500);
+                loaded.MinimumServerSeconds = Math.Clamp(loaded.MinimumServerSeconds, 21, 3600);
+                loaded.MinimumGlobalSeconds = Math.Max(21, loaded.MinimumGlobalSeconds);
                 loaded.SubmissionAttemptsUtc = loaded.SubmissionAttemptsUtc
                     .Where(dt => dt > DateTime.UtcNow.AddHours(-1) && dt <= DateTime.UtcNow).ToList();
                 foreach (var kind in new[] { "판매등록", "구매등록", "재등록" })
