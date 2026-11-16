@@ -233,7 +233,7 @@ internal sealed partial class AutomationForm : Form
         {
             if (!e.IsSuccess || _web.CoreWebView2 is null) return;
             _web.CoreWebView2.WebMessageReceived += OnWebMessage;
-            _web.CoreWebView2.JavaScriptDialogOpening += OnItemManiaScriptDialog;
+            _web.CoreWebView2.ScriptDialogOpening += OnItemManiaScriptDialog;
             _ = new ItemManiaAutoLogin(_web, message => AppendLog(message));
             ItemManiaPopupHandler.InstallSilent(_web, message => AppendLog(message));
         };

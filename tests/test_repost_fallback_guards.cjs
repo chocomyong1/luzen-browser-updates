@@ -21,7 +21,7 @@ assert.match(automation, /if \(step\.Action == "제출" && repostFromOwnedList\)
 assert.match(automation, /job\.RequiresReview = true;[\s\S]*?submitted = true;/);
 // Hidden browser must handle the site's native confirm; unknown prompts never
 // get blanket approval. Server-rendered time can prove a real AJAX repost.
-assert.match(automation, /JavaScriptDialogOpening \+= OnItemManiaScriptDialog/);
+assert.match(automation, /ScriptDialogOpening \+= OnItemManiaScriptDialog/);
 assert.match(automation, /_armedOwnListRepost = job\.ListingNumber/);
 assert.match(automation, /e\.Kind == CoreWebView2ScriptDialogKind\.Confirm && !isUnsafe/);
 assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(e\.Uri\)/);
