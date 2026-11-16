@@ -94,7 +94,7 @@ internal sealed partial class AutomationForm
                 string.IsNullOrWhiteSpace(r.Server) || string.IsNullOrWhiteSpace(r.Quantity) ||
                 string.IsNullOrWhiteSpace(r.Price));
             if (incomplete > 0)
-                AppendLog($"주의: {incomplete}건은 게임·서버·수량·가격 중 일부를 사이트에서 확인하지 못했습니다. 값을 임의로 채우지 않고 재등록을 보류합니다.");
+                AppendLog($"참고: {incomplete}건은 게임·서버·전체수량·가격 중 일부를 사이트에서 표시하지 않습니다. 빈칸을 추측해 채우지 않으며, 내 글의 등록번호·가격이 확인된 경우에도 자동 실행은 꺼 둡니다.");
             if (records.Count == 0)
             {
                 var reason = scan.LoginRequired
@@ -116,17 +116,18 @@ internal sealed partial class AutomationForm
                     $"판매·구매 등록글 {records.Count}건 확인\n" +
                     $"이미 목록에 있음: {plan.Duplicates}건 / 정보 부족: {plan.Invalid}건\n\n" +
                     "추가하거나 보완할 물품이 없습니다.\n" +
-                    "게임·서버·수량·가격이 여전히 비어 있다면 사이트 목록/상세 화면에 확인 가능한 값이 없는 경우입니다.",
+                    "사이트에서 확인되지 않은 값은 빈칸으로 유지됩니다. 기존 글의 일정이나 제출 보류 상태는 변경하지 않았습니다.",
                     "내 등록글 자동 조회");
                 return;
             }
             string confirm = $"판매·구매 등록글 {records.Count}건 확인 ({scan.PagesVisited}페이지 검사)\n\n" +
                 $"새로 가져오기: {plan.NewJobs.Count}건 / 기존 항목 빈칸 보완: {plan.Updates.Count}건\n" +
                 $"이미 목록에 있음: {plan.Duplicates}건\n" +
-                $"정보 부족: {plan.Invalid}건 / 4개 주요정보 중 일부 누락: {incomplete}건\n" +
+                $"정보 부족: {plan.Invalid}건 / 일부 정보 미표시: {incomplete}건\n" +
                 $"개별 상세 URL 없는 글: {plan.WithoutUrl}건 (관리 목록에서 대상 행 확인 후 재등록 시도)\n\n" +
-                "가져온 글을 '기존 글 재등록' 대상으로 저장하지만 자동실행은 꺼 둡니다.\n" +
-                "각 글의 등록번호·관리 링크를 확인한 뒤 재등록을 허용해야 합니다.\n" +
+                "가져온 글은 '기존 글 재등록' 대상으로 저장하며 자동실행은 꺼 둡니다.\n" +
+                "등록번호·상세 URL·가격이 확인된 글은 불필요한 '확인 필요' 표시를 제거합니다.\n" +
+                "사이트에서 확인되지 않은 글과 제출 결과가 불분명한 글의 보류는 유지합니다.\n" +
                 "불러오기만으로 사이트에 등록 또는 재등록하지 않습니다.\n\n물품 목록에 추가할까요?";
             if (MessageBox.Show(this, confirm, "기존 등록글 가져오기", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question) != DialogResult.Yes) return;
@@ -268,13 +269,16 @@ internal sealed partial class AutomationForm
 
     // Optional read-only enrichment from confirmed detail links. A list may
     // contain only title+registration number while the actual unit price,
-    // game, server, quantity are on the individual product detail page.
+    // game, server, quantity, character or description are on the detail page.
     private async Task EnrichImportedListingDetailsAsync(MyListingsScan scan, CancellationToken token)
     {
         if (_web.CoreWebView2 is null) return;
         var needing = scan.Records.Where(r =>
             (string.IsNullOrWhiteSpace(r.Game) || string.IsNullOrWhiteSpace(r.Server) ||
-             string.IsNullOrWhiteSpace(r.Quantity) || string.IsNullOrWhiteSpace(r.Price)) &&
+             string.IsNullOrWhiteSpace(r.Quantity) || string.IsNullOrWhiteSpace(r.Price) ||
+             string.IsNullOrWhiteSpace(r.ItemCategory) || string.IsNullOrWhiteSpace(r.TradingMethod) ||
+             string.IsNullOrWhiteSpace(r.Character) || string.IsNullOrWhiteSpace(r.Description) ||
+             string.IsNullOrWhiteSpace(r.MinQuantity) || string.IsNullOrWhiteSpace(r.MaxQuantity)) &&
             MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber)).ToList();
         const int maxDetailPages = 80;
         int visits = 0, updated = 0;
@@ -293,13 +297,23 @@ internal sealed partial class AutomationForm
                 // Do not mistake another item's page for this listing.
                 if (!string.Equals(detail.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
                     continue;
-                int before = new[] { record.Game, record.Server, record.Quantity, record.Price }
+                int before = new[] { record.Game, record.Server, record.Quantity, record.Price,
+                    record.ItemCategory, record.TradingMethod, record.MinQuantity, record.MaxQuantity,
+                    record.Character, record.Description }
                     .Count(string.IsNullOrWhiteSpace);
                 if (string.IsNullOrWhiteSpace(record.Game)) record.Game = detail.Game;
                 if (string.IsNullOrWhiteSpace(record.Server)) record.Server = detail.Server;
                 if (string.IsNullOrWhiteSpace(record.Quantity)) record.Quantity = detail.Quantity;
                 if (string.IsNullOrWhiteSpace(record.Price)) record.Price = detail.Price;
-                int after = new[] { record.Game, record.Server, record.Quantity, record.Price }
+                if (string.IsNullOrWhiteSpace(record.ItemCategory)) record.ItemCategory = detail.ItemCategory;
+                if (string.IsNullOrWhiteSpace(record.TradingMethod)) record.TradingMethod = detail.TradingMethod;
+                if (string.IsNullOrWhiteSpace(record.MinQuantity)) record.MinQuantity = detail.MinQuantity;
+                if (string.IsNullOrWhiteSpace(record.MaxQuantity)) record.MaxQuantity = detail.MaxQuantity;
+                if (string.IsNullOrWhiteSpace(record.Character)) record.Character = detail.Character;
+                if (string.IsNullOrWhiteSpace(record.Description)) record.Description = detail.Description;
+                int after = new[] { record.Game, record.Server, record.Quantity, record.Price,
+                    record.ItemCategory, record.TradingMethod, record.MinQuantity, record.MaxQuantity,
+                    record.Character, record.Description }
                     .Count(string.IsNullOrWhiteSpace);
                 if (after < before) updated++;
             }

@@ -31,6 +31,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Embedded JS test failed' }
           node tests/test_repost_fallback_guards.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Repost fallback guard test failed' }
+          node tests/test_my_listings_import_mock.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'My registered listings import test failed' }
       - name: Restore assets from the existing verified v22.1 release
         shell: pwsh
         run: |
@@ -55,14 +57,14 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.4'
+          $version = '22.2.5'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.4
-          path: LuzenBrowser_22.2.4_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.5
+          path: LuzenBrowser_22.2.5_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7

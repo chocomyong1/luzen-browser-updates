@@ -20,6 +20,12 @@ internal sealed class ExistingListingRecord
     public string Title { get; set; } = "";
     public string Quantity { get; set; } = "";
     public string Price { get; set; } = "";
+    public string ItemCategory { get; set; } = "";
+    public string TradingMethod { get; set; } = "";
+    public string MinQuantity { get; set; } = "";
+    public string MaxQuantity { get; set; } = "";
+    public string Character { get; set; } = "";
+    public string Description { get; set; } = "";
     public string Status { get; set; } = "";
 }
 
@@ -53,7 +59,16 @@ internal sealed class ExistingListingUpdate
     public string Price { get; set; } = "";
     public string EntryUrl { get; set; } = "";
     public string SourceListUrl { get; set; } = "";
-    public bool HasChanges => new[] { Game, Server, Quantity, Price, EntryUrl, SourceListUrl }.Any(v => !string.IsNullOrEmpty(v));
+    public string ItemCategory { get; set; } = "";
+    public string TradingMethod { get; set; } = "";
+    public string MinQuantity { get; set; } = "";
+    public string MaxQuantity { get; set; } = "";
+    public string Character { get; set; } = "";
+    public string Description { get; set; } = "";
+    public bool ClearImportOnlyReview { get; set; }
+    public bool HasChanges => ClearImportOnlyReview ||
+        new[] { Game, Server, Quantity, Price, EntryUrl, SourceListUrl, ItemCategory, TradingMethod,
+                MinQuantity, MaxQuantity, Character, Description }.Any(v => !string.IsNullOrEmpty(v));
     public void Apply()
     {
         if (string.IsNullOrWhiteSpace(Target.Game)) Target.Game = Game;
@@ -62,10 +77,24 @@ internal sealed class ExistingListingUpdate
         if (string.IsNullOrWhiteSpace(Target.Price)) Target.Price = Price;
         if (string.IsNullOrWhiteSpace(Target.EntryUrl)) Target.EntryUrl = EntryUrl;
         if (string.IsNullOrWhiteSpace(Target.SourceListUrl)) Target.SourceListUrl = SourceListUrl;
-        Target.RequiresReview = true;
-        Target.Enabled = false;
-        Target.NextDueUtc = DateTime.MaxValue;
-        Target.LastStatus = "기존 글 정보 보완됨: 검토 후 재등록";
+        if (string.IsNullOrWhiteSpace(Target.ItemCategory)) Target.ItemCategory = ItemCategory;
+        if (string.IsNullOrWhiteSpace(Target.TradingMethod)) Target.TradingMethod = TradingMethod;
+        if (string.IsNullOrWhiteSpace(Target.Character)) Target.Character = Character;
+        if (string.IsNullOrWhiteSpace(Target.Description)) Target.Description = Description;
+        // Previous imports inherited 1/9999 from the new-listing template.
+        // Repair that pair only when both confirmed site values are available.
+        if (!string.IsNullOrWhiteSpace(MinQuantity) && !string.IsNullOrWhiteSpace(MaxQuantity) &&
+            (string.IsNullOrWhiteSpace(Target.MinQuantity) || Target.MinQuantity == "1") &&
+            (string.IsNullOrWhiteSpace(Target.MaxQuantity) || Target.MaxQuantity == "9999"))
+        {
+            Target.MinQuantity = MinQuantity;
+            Target.MaxQuantity = MaxQuantity;
+        }
+        if (ClearImportOnlyReview) Target.RequiresReview = false;
+        // Metadata refresh MUST NOT disable an already configured job, change
+        // its schedule, or erase an unresolved submission outcome.
+        if (MyListingsImport.IsImportOnlyStatus(Target.LastStatus))
+            Target.LastStatus = "내 등록글 정보 갱신됨 (자동 실행 설정 유지)";
     }
 }
 
@@ -112,6 +141,15 @@ internal static class MyListingsImport
         var value = (text ?? "").Replace('\0', ' ').Trim();
         return value.Length > limit ? value[..limit] : value;
     }
+
+    internal static bool IsImportOnlyStatus(string? status) =>
+        (status ?? "").StartsWith("가져옴:", StringComparison.Ordinal) ||
+        (status ?? "").StartsWith("기존 글 정보 보완됨:", StringComparison.Ordinal);
+
+    private static bool CanTrustOwnedImport(ExistingListingRecord row, string number, string url) =>
+        Regex.IsMatch(number, @"^\d{8,20}$") && IsOwnedListUrl(row.SourceListUrl) &&
+        IsSafeDetailUrl(url, number) &&
+        Regex.IsMatch(Clean(row.Price, 30), @"^[1-9][0-9,]*$");
 
     public static ExistingListingMergeSummary Prepare(IEnumerable<ExistingListingRecord> records, IEnumerable<ListingJob> existing,
         string subId, string siteId)
@@ -160,6 +198,13 @@ internal static class MyListingsImport
                 {
                     var proposedGame = Clean(row.Game, 80);
                     var proposedServer = GameServerCatalog.CanonicalServer(proposedGame, Clean(row.Server, 80)) ?? Clean(row.Server, 80);
+                    var minFromSite = Clean(row.MinQuantity, 30);
+                    var maxFromSite = Clean(row.MaxQuantity, 30);
+                    bool repairDefaultRange = !string.IsNullOrWhiteSpace(minFromSite) &&
+                        !string.IsNullOrWhiteSpace(maxFromSite) &&
+                        (string.IsNullOrWhiteSpace(target.MinQuantity) || target.MinQuantity == "1") &&
+                        (string.IsNullOrWhiteSpace(target.MaxQuantity) || target.MaxQuantity == "9999") &&
+                        (target.MinQuantity != minFromSite || target.MaxQuantity != maxFromSite);
                     var update = new ExistingListingUpdate
                     {
                         Target = target,
@@ -167,6 +212,14 @@ internal static class MyListingsImport
                         Server = string.IsNullOrWhiteSpace(target.Server) ? proposedServer : "",
                         Quantity = string.IsNullOrWhiteSpace(target.Quantity) ? Clean(row.Quantity, 30) : "",
                         Price = string.IsNullOrWhiteSpace(target.Price) ? Clean(row.Price, 30) : "",
+                        ItemCategory = string.IsNullOrWhiteSpace(target.ItemCategory) ? Clean(row.ItemCategory, 40) : "",
+                        TradingMethod = string.IsNullOrWhiteSpace(target.TradingMethod) ? Clean(row.TradingMethod, 40) : "",
+                        Character = string.IsNullOrWhiteSpace(target.Character) ? Clean(row.Character, 80) : "",
+                        Description = string.IsNullOrWhiteSpace(target.Description) ? Clean(row.Description, 2000) : "",
+                        MinQuantity = repairDefaultRange ? minFromSite : "",
+                        MaxQuantity = repairDefaultRange ? maxFromSite : "",
+                        ClearImportOnlyReview = target.RequiresReview && IsImportOnlyStatus(target.LastStatus) &&
+                            CanTrustOwnedImport(row, number, url),
                         EntryUrl = string.IsNullOrWhiteSpace(target.EntryUrl) ? url : "",
                         SourceListUrl = string.IsNullOrWhiteSpace(target.SourceListUrl) &&
                             IsOwnedListUrl(row.SourceListUrl) ? CanonicalUrl(row.SourceListUrl) : ""
@@ -192,14 +245,17 @@ internal static class MyListingsImport
                 ImportedFromSite = true, ImportedUtc = DateTime.UtcNow,
                 SiteId = siteId, SubId = subId,
                 Game = game, Server = server, Title = title,
-                // Never infer a site's category/trading mode from a list-row screenshot.
-                // Reposting uses the original listing URL, not a new listing form.
-                ItemCategory = "", TradingMethod = "",
+                // Only explicitly confirmed values, never new-listing defaults.
+                ItemCategory = Clean(row.ItemCategory, 40), TradingMethod = Clean(row.TradingMethod, 40),
+                MinQuantity = Clean(row.MinQuantity, 30), MaxQuantity = Clean(row.MaxQuantity, 30),
+                Character = Clean(row.Character, 80), Description = Clean(row.Description, 2000),
                 Quantity = Clean(row.Quantity, 30), Price = Clean(row.Price, 30), EntryUrl = url,
                 SourceListUrl = IsOwnedListUrl(row.SourceListUrl) ? CanonicalUrl(row.SourceListUrl) : "",
                 Enabled = false, AutoRepost = true, InitialCompleted = true,
-                RequiresReview = true, NextDueUtc = DateTime.MaxValue,
-                LastStatus = string.IsNullOrEmpty(url) ? "가져옴: 관리 목록에서 재등록 확인 필요" : "가져옴: 재등록 전 확인 필요"
+                RequiresReview = !CanTrustOwnedImport(row, number, url), NextDueUtc = DateTime.MaxValue,
+                LastStatus = CanTrustOwnedImport(row, number, url)
+                    ? "가져옴: 내 등록글 확인됨 · 자동 실행 OFF"
+                    : "가져옴: 등록번호·가격 또는 상세 URL 확인 필요"
             };
             result.NewJobs.Add(job);
         }
@@ -247,13 +303,17 @@ internal static class MyListingsImport
   // Only read explicit field labels/attributes; do NOT guess a price or qty.
   const fieldLabels={game:['게임','게임명'],server:['서버','서버명'],
     quantity:['수량','판매수량','구매수량','분할수량','보유수량'],
-    price:['가격','금액','구매금액','판매금액','분할금액','단가']};
+    price:['가격','금액','구매금액','판매금액','분할금액','단가'],
+    itemCategory:['물품구분','상품구분'],tradingMethod:['거래유형','거래방식'],
+    character:['캐릭터명','캐릭터'],description:['상세설명','물품설명']};
   const dataNames={game:['data-game','data-game-name'],
     server:['data-server','data-server-name'],
     quantity:['data-quantity','data-qty','data-count'],
-    price:['data-price','data-amount','data-money']};
+    price:['data-price','data-amount','data-money'],
+    itemCategory:['data-item-category'],tradingMethod:['data-trading-method'],
+    character:['data-character'],description:['data-description']};
   const safeValue=(value,type)=>{
-    const v=clip(value,100); if(!v) return '';
+    const v=clip(value,type==='description'?2000:100); if(!v) return '';
     if(type==='price') {
       const m=v.match(/^\s*(?:₩\s*)?([0-9][0-9,]*)\s*(?:원|KRW)?\s*$/i);
       return m ? m[1] : '';
@@ -262,7 +322,7 @@ internal static class MyListingsImport
       const m=v.match(/^\s*([0-9][0-9,]*)\s*(?:개|건|만|억|조)?\s*$/);
       return m ? m[1] : '';
     }
-    return v.length<=80 ? v : '';
+    return v.length<=(type==='description'?2000:80) ? v : '';
   };
   const fieldFromRow=(row,type)=>{
     const matches=[];
@@ -286,7 +346,9 @@ internal static class MyListingsImport
       }
     }
     const classHints={game:/\bgame(?:-?name)?\b/i,server:/\bserver(?:-?name)?\b/i,
-      quantity:/\b(?:quantity|qty|count)\b/i,price:/\b(?:price|amount|money|cost)\b/i};
+      quantity:/\b(?:quantity|qty|count)\b/i,price:/\b(?:price|amount|money|cost)\b/i,
+      itemCategory:/\bitem-?category\b/i,tradingMethod:/\btrading-?method\b/i,
+      character:/\bcharacter\b/i,description:/\bdescription\b/i};
     for(const el of row.querySelectorAll('[class],[id]')) {
       if(!classHints[type].test(String(el.className||'')+' '+String(el.id||''))) continue;
       if(el.children.length>2)continue;
@@ -309,6 +371,33 @@ internal static class MyListingsImport
     if(!t.includes('로스트아크'))return {game:'',server:''};
     const found=lostArkServers.filter(s=>t.includes(s));
     return {game:'로스트아크',server:found.length===1?found[0]:''};
+  };
+  // The authenticated ItemMania management table has an explicit quantity
+  // range like [1개~9,995개], category cell and price cell. Never substitute
+  // 1/9999 just because those are defaults in the new-listing editor.
+  const rangeFromCell=cell=>{
+    const value=norm(cell?.querySelector('.sub_trade_title')?.textContent||'');
+    const m=value.match(/\[\s*([\d,]+)\s*개\s*[~〜-]\s*([\d,]+)\s*개\s*\]/);
+    if(!m)return {minQuantity:'',maxQuantity:''};
+    const min=Number(m[1].replace(/,/g,'')),max=Number(m[2].replace(/,/g,''));
+    return Number.isSafeInteger(min)&&Number.isSafeInteger(max)&&min>0&&max>=min
+      ? {minQuantity:String(min),maxQuantity:String(max)}
+      : {minQuantity:'',maxQuantity:''};
+  };
+  const categoryLink=row=>{
+    const links=[...row.querySelectorAll('a[href]')];
+    const found=[];
+    for(const a of links) {
+      try {
+        const u=new URL(a.getAttribute('href'),pageUrl);
+        if(!official(u.href)||!/\/list_search\.html$/i.test(u.pathname))continue;
+        const game=clip(u.searchParams.get('search_game_text'),80);
+        const server=clip(u.searchParams.get('search_server_text'),80);
+        if(game&&server)found.push({game,server});
+      }catch{}
+    }
+    const values=[...new Map(found.map(v=>[v.game+'|'+v.server,v])).values()];
+    return values.length===1?values[0]:{game:'',server:''};
   };
   const docs=[document], seenDocs=new Set([document]);
   for (let i=0;i<docs.length && i<8;i++) {
@@ -370,7 +459,7 @@ internal static class MyListingsImport
     return unique.length===1 ? unique[0] : '';
   };
   const listings=[], signatures=new Set();
-  const append=(row, title, header={}, values=[]) => {
+  const append=(row, title, header={}, values=[], known={}) => {
     const id=getId(row);
     const url=candidateUrl(row,id);
     title=clip(title,350);
@@ -383,29 +472,37 @@ internal static class MyListingsImport
       return idx>=0 && idx<values.length ? clip(values[idx],100) : '';
     };
     const combined=categoryPair(clip(row.innerText||row.textContent,900));
+    const linked=categoryLink(row);
     const sharedColumn=header.game>=0 && header.game===header.server;
     const pick=(type)=> {
       const column=safeValue(get(type),type);
       if ((type==='game'||type==='server') && sharedColumn)
         return type==='game'?combined.game:combined.server;
-      return column || fieldFromRow(row,type) || fieldFromText(row,type) ||
-        ((type==='game'||type==='server') ? combined[type] : '');
+      return known[type] || column || fieldFromRow(row,type) || fieldFromText(row,type) ||
+        ((type==='game'||type==='server') ? linked[type]||combined[type] : '');
     };
     listings.push({listingNumber:id,listingUrl:url,sourceListUrl:pageUrl,tradeSide:side,
       game:pick('game'),server:pick('server'),title,quantity:pick('quantity'),
-      price:pick('price'),status:get('status')});
+      price:pick('price'),itemCategory:pick('itemCategory'),
+      tradingMethod:pick('tradingMethod'),minQuantity:known.minQuantity||'',
+      maxQuantity:known.maxQuantity||'',character:pick('character'),
+      description:pick('description'),status:get('status')});
   };
   for(const d of docs) {
     const tables=[...d.querySelectorAll('table')].slice(0,45);
     for(const t of tables) {
       const trs=[...t.querySelectorAll('tr')]; if(trs.length===0)continue;
-      let heading=trs.find(r => r.querySelector('th')) || trs[0];
-      const head=[...heading.children].filter(c=>/^(TH|TD)$/i.test(c.tagName)).map(c=>clean(c.textContent));
+      const heading=trs.find(r => r.querySelector('th')) || null;
+      // The live 5-column ItemMania tables have NO <th> row. Treating the
+      // first item as a heading silently dropped one registered item per page.
+      const head=heading?[...heading.children].filter(c=>/^(TH|TD)$/i.test(c.tagName)).map(c=>clean(c.textContent)):[];
       const col=keys=>head.findIndex(x=>keys.some(k=>x.includes(k)));
       const indices={
         title:col(['물품제목','상품제목','물품명','상품명','제목','물품정보','상품정보']),
         game:col(['게임명','게임']),server:col(['서버명','서버']),
         quantity:col(['분할수량','수량']),price:col(['분할금액','판매금액','구매금액','가격','금액']),
+        itemCategory:col(['물품구분','상품구분']),tradingMethod:col(['거래유형','거래방식']),
+        character:col(['캐릭터명','캐릭터']),description:col(['상세설명','물품설명']),
         status:col(['등록상태','진행상태','상태'])
       };
       const candidates=trs.filter(r=>r!==heading && r.querySelector('td'));
@@ -413,6 +510,23 @@ internal static class MyListingsImport
         const cells=[...row.children].filter(c=>/^(TH|TD)$/i.test(c.tagName));
         if(!cells.length)continue;
         const values=cells.map(x=>x.innerText||x.textContent);
+        const siteRow=/(?:^|\s)(?:buy_list|sell_list)(?:\s|$)/i.test(t.className||'') &&
+          cells.length===5 && cells[2].querySelector('.trade_title') &&
+          cells[3].querySelector('.td_money, .f_gray2, span');
+        if(siteRow) {
+          const priceText=norm(cells[3].textContent);
+          const money=[...priceText.matchAll(/([\d,]+)\s*원/g)].map(m=>m[1]);
+          const explicitRange=rangeFromCell(cells[2]);
+          const category=norm(cells[1].textContent);
+          const known={
+            price:money.length===1?money[0]:'',
+            itemCategory:['아이템','게임머니','계정','기타'].includes(category)?category:'',
+            tradingMethod:explicitRange.minQuantity&&explicitRange.maxQuantity?'분할':'',
+            ...explicitRange
+          };
+          append(row,cells[2].querySelector('.trade_title').textContent,indices,values,known);
+          continue;
+        }
         const titleCell=cells[indices.title]||null;
         // Legacy item tables often omit a '제목' header, but still link the
         // listing title in an anchor. Prefer that over arbitrary row text.
@@ -490,7 +604,9 @@ internal static class MyListingsImport
   const clean=s=>norm(s).replace(/[\s:*：()]/g,'');
   const safeUrl=()=>{try{const u=new URL(location.href);return u.protocol==='https:' &&
     (u.hostname==='itemmania.com'||u.hostname.endsWith('.itemmania.com'));}catch{return false;}};
-  const empty={listingNumber:'',game:'',server:'',quantity:'',price:''};
+  const empty={listingNumber:'',game:'',server:'',quantity:'',price:'',
+    itemCategory:'',tradingMethod:'',minQuantity:'',maxQuantity:'',
+    character:'',description:''};
   if(!safeUrl()||!/^[0-9]{8,20}$/.test(expected))return empty;
   const idInUrl=new RegExp('(?:^|\\D)'+expected+'(?!\\d)').test(location.pathname+location.search);
   const idInDom=[...document.querySelectorAll('[data-tid],[data-listing-id],[data-goods-id]')]
@@ -499,7 +615,10 @@ internal static class MyListingsImport
   if(!idInUrl&&!idInDom)return empty;
   const names={game:['게임','게임명'],server:['서버','서버명'],
     quantity:['수량','판매수량','구매수량','분할수량','보유수량'],
-    price:['가격','금액','판매금액','구매금액','분할금액','단가']};
+    price:['가격','금액','판매금액','구매금액','분할금액','단가'],
+    itemCategory:['물품구분','상품구분'],tradingMethod:['거래유형','거래방식'],
+    minQuantity:['최소수량','최소거래수량'],maxQuantity:['최대수량','최대거래수량'],
+    character:['캐릭터명','캐릭터'],description:['상세설명','물품설명']};
   const num=(v,type)=>{
     const m=norm(v).match(type==='price'
       ? /(?:₩\s*)?([0-9][0-9,]*)\s*(?:원|KRW)?/i
@@ -515,28 +634,40 @@ internal static class MyListingsImport
       const value=el.getAttribute('data-label')
         ? norm(el.textContent) : norm(el.nextElementSibling?.textContent);
       if(!value)continue;
-      const parsed=key==='price'||key==='quantity'?num(value,key):value;
-      if(parsed && parsed.length<100)matches.push(parsed);
+      const numeric=['price','quantity','minQuantity','maxQuantity'].includes(key);
+      const parsed=numeric?num(value,key==='price'?'price':'quantity'):value;
+      if(parsed && parsed.length<(key==='description'?2000:100))matches.push(parsed);
     }
     const attrs={game:['data-game','data-game-name'],server:['data-server','data-server-name'],
-      quantity:['data-quantity','data-qty'],price:['data-price','data-amount']}[key];
+      quantity:['data-quantity','data-qty'],price:['data-price','data-amount'],
+      itemCategory:['data-item-category'],tradingMethod:['data-trading-method'],
+      minQuantity:['data-min-quantity'],maxQuantity:['data-max-quantity'],
+      character:['data-character'],description:['data-description']}[key];
     for(const el of document.querySelectorAll(attrs.map(a=>'['+a+']').join(',')))
       for(const attr of attrs){const val=el.getAttribute(attr);if(val) {
-        const parsed=key==='price'||key==='quantity'?num(val,key):norm(val);
-        if(parsed&&parsed.length<100)matches.push(parsed);
+        const numeric=['price','quantity','minQuantity','maxQuantity'].includes(key);
+        const parsed=numeric?num(val,key==='price'?'price':'quantity'):norm(val);
+        if(parsed&&parsed.length<(key==='description'?2000:100))matches.push(parsed);
       }}
     // Existing-edit pages may carry values in prefilled controls instead
     // of visible text. Read exact field-name aliases, not broad guesses.
     const formAliases={game:/^(gameName|game_name)$/i,server:/^(serverName|server_name)$/i,
       quantity:/^(quantity|qty|goods_qty|goods_quantity)$/i,
-      price:/^(price|goods_price|sale_price|buy_price)$/i};
-    for(const el of document.querySelectorAll('input,select')) {
+      price:/^(price|goods_price|sale_price|buy_price)$/i,
+      itemCategory:/^(itemCategory|item_category|goods_type)$/i,
+      tradingMethod:/^(tradingMethod|trading_method|trade_type)$/i,
+      minQuantity:/^(minQuantity|min_quantity|goods_min)$/i,
+      maxQuantity:/^(maxQuantity|max_quantity|goods_max)$/i,
+      character:/^(character|character_name|char_name)$/i,
+      description:/^(description|goods_description|goods_content)$/i};
+    for(const el of document.querySelectorAll('input,select,textarea')) {
       const name=el.getAttribute('name')||el.id||'';
       if(!formAliases[key].test(name))continue;
       const raw=el.tagName==='SELECT'
         ? (el.selectedOptions?.[0]?.textContent||'') : (el.value||'');
-      const parsed=key==='price'||key==='quantity'?num(raw,key):norm(raw);
-      if(parsed&&parsed.length<100)matches.push(parsed);
+      const numeric=['price','quantity','minQuantity','maxQuantity'].includes(key);
+      const parsed=numeric?num(raw,key==='price'?'price':'quantity'):norm(raw);
+      if(parsed&&parsed.length<(key==='description'?2000:100))matches.push(parsed);
     }
     const unique=[...new Set(matches)];
     if(unique.length===1)result[key]=unique[0];
