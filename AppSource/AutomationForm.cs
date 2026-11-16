@@ -1427,17 +1427,27 @@ internal sealed partial class AutomationForm : Form
         _selected.CharacterClass = _characterClass.Text.Trim();
         _selected.CharacterLevel = _characterLevel.Text.Trim();
         _selected.ListingMacro = _macro.SelectedItem?.ToString() ?? "직접설정";
-        _selected.Game = _game.SelectedItem?.ToString() ?? "";
-        _selected.Server = _server.SelectedItem?.ToString() ?? "";
-        _selected.Title = _title.Text.Trim(); _selected.Quantity = _quantity.Text.Trim(); _selected.Unit = _unit.Text.Trim();
-        _selected.Price = _price.Text.Trim(); _selected.Character = _character.Text.Trim();
-        _selected.Description = _description.Text; _selected.EntryUrl = _entry.Text.Trim();
+        // A site import can populate the model while the editor's combo boxes
+        // still have no selected item. Saving/switching tabs must not erase the
+        // imported identity or overwrite a valid listing with empty strings.
+        _selected.Game = KeepExistingWhenEmpty(_game.SelectedItem?.ToString(), _selected.Game);
+        _selected.Server = KeepExistingWhenEmpty(_server.SelectedItem?.ToString(), _selected.Server);
+        _selected.Title = KeepExistingWhenEmpty(_title.Text, _selected.Title);
+        _selected.Quantity = KeepExistingWhenEmpty(_quantity.Text, _selected.Quantity);
+        _selected.Unit = KeepExistingWhenEmpty(_unit.Text, _selected.Unit);
+        _selected.Price = KeepExistingWhenEmpty(_price.Text, _selected.Price);
+        _selected.Character = KeepExistingWhenEmpty(_character.Text, _selected.Character);
+        _selected.Description = KeepExistingWhenEmpty(_description.Text, _selected.Description);
+        _selected.EntryUrl = KeepExistingWhenEmpty(_entry.Text, _selected.EntryUrl);
         _selected.IntervalMinutes = (int)_interval.Value;
         _selected.AutoRepost = _autoRepost.Checked;
         _selected.Enabled = _jobEnabled.Checked && !_selected.RequiresReview;
         _config.Jobs = _jobs.ToList(); _config.Save(); _jobsGrid.Refresh();
         if (notify) AppendLog("물품 설정 저장: " + _selected.Title);
     }
+
+    private static string KeepExistingWhenEmpty(string? editedValue, string? savedValue) =>
+        string.IsNullOrWhiteSpace(editedValue) ? savedValue ?? "" : editedValue.Trim();
 
     private void LoadWorkflow()
     {
