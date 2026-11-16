@@ -85,6 +85,12 @@ internal sealed partial class AutomationForm : Form
     private CancellationTokenSource? _myListingsImportCancellation;
     private TaskCompletionSource<bool>? _myListingsImportCompletion;
     private CancellationTokenSource? _currentRun;
+    // Armed only after the target's exact own-list row has been verified.
+    // JavaScript confirm dialogs stay invisible; only a repost-specific prompt
+    // from the official own-list page may be accepted automatically.
+    private string _armedOwnListRepost = "";
+    private bool _repostSuccessAlertSeen;
+    private string _repostDialogBlocked = "";
     private DateTime _nextGlobalAllowedUtc = DateTime.MinValue;
     private string _pickerMode = "";
     private readonly TabControl _editorTabs = new() { Dock = DockStyle.Fill };
@@ -227,6 +233,7 @@ internal sealed partial class AutomationForm : Form
         {
             if (!e.IsSuccess || _web.CoreWebView2 is null) return;
             _web.CoreWebView2.WebMessageReceived += OnWebMessage;
+            _web.CoreWebView2.JavaScriptDialogOpening += OnItemManiaScriptDialog;
             _ = new ItemManiaAutoLogin(_web, message => AppendLog(message));
             ItemManiaPopupHandler.InstallSilent(_web, message => AppendLog(message));
         };
@@ -1940,6 +1947,11 @@ internal sealed partial class AutomationForm : Form
         bool successSelectorBefore = false;
         string preSubmitListingNumber = "";
         bool repostFromOwnedList = false;
+        string preRepostStamp = "";
+        string preRepostListUrl = "";
+        _armedOwnListRepost = "";
+        _repostDialogBlocked = "";
+        _repostSuccessAlertSeen = false;
         job.LastStatus = "실행 중"; _jobsGrid.Refresh();
         _state.Text = dryRun ? "시험 실행 중" : "등록 실행 중"; _state.ForeColor = Color.DarkBlue;
         var flow = _config.WorkflowFor(EffectiveOperation(job));
@@ -1994,6 +2006,8 @@ internal sealed partial class AutomationForm : Form
                             if (ownRow.Status != "ready")
                                 throw new InvalidOperationException("내 등록목록 재등록 차단: " + ownRow.Message +
                                     ". 등록번호와 제목이 일치하는 물품 행의 버튼을 찾지 못했습니다. 제출하지 않았습니다.");
+                            preRepostStamp = ownRow.Stamp;
+                            preRepostListUrl = _web.Source?.AbsoluteUri ?? "";
                             AppendLog("본인 등록글 행 확인: " + job.ListingNumber + " / " + job.Title);
                         }
                         else
@@ -2009,6 +2023,8 @@ internal sealed partial class AutomationForm : Form
                                         $"제목 확인={beforeRepost.TitlePresent}, 상세 화면={beforeRepost.DetailPage}. " +
                                         "목록 검사: " + fallback.Message + ". 제출하지 않았습니다.");
                                 repostFromOwnedList = true;
+                                preRepostStamp = fallback.Stamp;
+                                preRepostListUrl = _web.Source?.AbsoluteUri ?? "";
                                 AppendLog("본인 관리목록에서 재등록 대상 행 재확인: " + job.ListingNumber + " / " + job.Title);
                             }
                         }
@@ -2044,15 +2060,20 @@ internal sealed partial class AutomationForm : Form
                 AppendLog($"  {i + 1}/{flow.Steps.Count} {step.Action} " + (step.Action == "입력" ? "(내용 입력)" : step.Selector));
                 if (step.Action == "제출" && repostFromOwnedList)
                 {
+                    _armedOwnListRepost = job.ListingNumber;
                     var result = await InspectOwnedListRepostAsync(job, true, token);
                     if (result.Status != "clicked")
                         throw new InvalidOperationException("해당 등록번호의 행 재등록 클릭 실패: " + result.Message);
                     AppendLog("본인 물품 행의 재등록 버튼 클릭: " + job.ListingNumber);
                     await Task.Delay(650, token);
+                    if (!string.IsNullOrEmpty(_repostDialogBlocked))
+                        throw new InvalidOperationException(_repostDialogBlocked);
                 }
                 else await ExecuteStepAsync(step, job, flow, token);
                 if (step.Action == "제출" && !dryRun)
                     await ConfirmExactRegistrationDialogAsync(token);
+                if (step.Action == "제출" && !string.IsNullOrEmpty(_repostDialogBlocked))
+                    throw new InvalidOperationException(_repostDialogBlocked);
             }
             if (dryRun)
             {
@@ -2062,7 +2083,8 @@ internal sealed partial class AutomationForm : Form
             else
             {
                 if (!submitted) throw new InvalidOperationException("제출 버튼 단계가 실행되지 않았습니다.");
-                bool verified = await VerifySuccessAsync(flow, job, preSubmitListingNumber, preSubmitUrl, successSelectorBefore, token);
+                bool verified = await VerifySuccessAsync(flow, job, preSubmitListingNumber, preSubmitUrl,
+                    successSelectorBefore, preRepostStamp, preRepostListUrl, token);
                 if (!verified) throw new InvalidOperationException("제출 이후 성공 확인 조건을 충족하지 못했습니다. 중복 등록을 피하려면 사이트에서 먼저 물품 상태를 확인하세요.");
                 // An apparent success message alone is not enough to establish
                 // which item was posted. Read a unique, site-owned listing ID.
@@ -2155,6 +2177,9 @@ internal sealed partial class AutomationForm : Form
         }
         finally
         {
+            _armedOwnListRepost = "";
+            _repostDialogBlocked = "";
+            _repostSuccessAlertSeen = false;
             _busy = false;
             _jobsGrid.Refresh();
             _config.Save();
@@ -2276,6 +2301,52 @@ internal sealed partial class AutomationForm : Form
             return result;
         }
         catch (Exception ex) { return new ListingIdentityEvidence { Error = "등록번호 읽기 오류: " + ex.GetType().Name }; }
+    }
+
+    // Hidden WebView2 does not display JavaScript confirm/alert dialogs. If a
+    // site reInsert() handler uses window.confirm(), disabling default dialogs
+    // without this event handler silently cancels the repost. Never approve a
+    // generic confirmation, payments, deletion, account checks or other pages.
+    private void OnItemManiaScriptDialog(object? sender, CoreWebView2ScriptDialogOpeningEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_armedOwnListRepost)) return;
+        if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps || !ItemManiaAccountStore.IsOfficialSite(uri) ||
+            !MyListingsImport.IsOwnedListUrl(e.Uri))
+        {
+            _repostDialogBlocked = "재등록 대상 목록 외부에서 확인창이 발생했습니다";
+            AppendLog("안전을 위해 다른 화면의 확인창을 승인하지 않았습니다.");
+            return;
+        }
+        var message = (e.Message ?? "").Trim();
+        var text = message.Length > 120 ? message[..120] + "…" : message;
+        var unsafeWords = new[] { "결제", "유료", "포인트", "마일리지", "프리미엄", "수수료", "삭제", "숨김",
+            "비밀번호", "인증", "차단 해제", "보안", "입금", "충전" };
+        var isUnsafe = unsafeWords.Any(x => message.Contains(x, StringComparison.OrdinalIgnoreCase));
+        if (e.Kind == CoreWebView2ScriptDialogKind.Alert)
+        {
+            // Informational alerts need to be closed before site JS can resume.
+            // Only a positive, repost-specific server message is a success signal.
+            var negative = new[] { "실패", "오류", "불가", "제한", "초과", "취소", "않", "못", "이미" };
+            _repostSuccessAlertSeen = !isUnsafe &&
+                (message.Contains("재등록") || message.Contains("다시 등록")) &&
+                new[] { "완료", "성공", "되었습니다", "처리되었습니다" }.Any(message.Contains) &&
+                !negative.Any(message.Contains);
+            if (!_repostSuccessAlertSeen)
+                _repostDialogBlocked = "사이트의 재등록 안내를 확인해야 합니다: " + text;
+            AppendLog((_repostSuccessAlertSeen ? "재등록 성공 안내: " : "사이트 안내(자동등록 보류): ") + text);
+            e.Accept();
+            return;
+        }
+        if (e.Kind == CoreWebView2ScriptDialogKind.Confirm && !isUnsafe &&
+            (message.Contains("재등록") || message.Contains("다시 등록")))
+        {
+            e.Accept();
+            AppendLog("본인 물품 재등록 확인창 처리: " + _armedOwnListRepost);
+            return;
+        }
+        _repostDialogBlocked = "자동 승인할 수 없는 확인창: " + text;
+        AppendLog("안전을 위해 확인창을 승인하지 않았습니다: " + text);
     }
 
     // Only the precise no-fee product-registration confirmation is eligible.
@@ -2613,13 +2684,22 @@ internal sealed partial class AutomationForm : Form
     }
 
     private async Task<bool> VerifySuccessAsync(AutomationWorkflow flow, ListingJob job, string beforeListingNumber,
-        string beforeUrl, bool selectorBefore, CancellationToken token)
+        string beforeUrl, bool selectorBefore, string beforeRepostStamp, string beforeOwnListUrl, CancellationToken token)
     {
         var until = DateTime.UtcNow.AddSeconds(20);
+        var earliestListRecheck = DateTime.UtcNow.AddSeconds(4);
+        bool recheckedOwnList = false;
         do
         {
             token.ThrowIfCancellationRequested();
+            if (!string.IsNullOrWhiteSpace(_repostDialogBlocked))
+                throw new InvalidOperationException(_repostDialogBlocked);
             if (!IsAllowedCurrentPage()) return false;
+            if (flow.Operation == "재등록" && _repostSuccessAlertSeen)
+            {
+                AppendLog("사이트에서 재등록 성공 안내를 확인했습니다.");
+                return true;
+            }
             string currentUrl = _web.Source?.AbsoluteUri ?? "";
             bool changedToSuccessUrl = !string.IsNullOrWhiteSpace(flow.SuccessUrlContains) &&
                 !string.Equals(beforeUrl, currentUrl, StringComparison.OrdinalIgnoreCase) &&
@@ -2634,6 +2714,42 @@ internal sealed partial class AutomationForm : Form
                 if (ListingIdentity.IsConfirmedNew(evidence, job) &&
                     !string.Equals(evidence.Number, beforeListingNumber, StringComparison.Ordinal))
                     return true;
+            }
+            // The authenticated My Room page may repost by AJAX with no URL
+            // change or success toast. Reload the same account page ONCE and
+            // accept only a changed, site-rendered time on this exact ID+title.
+            // An unchanged or absent stamp is inconclusive and must stay held.
+            if (flow.Operation == "재등록" && !recheckedOwnList &&
+                DateTime.UtcNow >= earliestListRecheck &&
+                !string.IsNullOrWhiteSpace(beforeRepostStamp) &&
+                MyListingsImport.IsOwnedListUrl(beforeOwnListUrl))
+            {
+                recheckedOwnList = true;
+                try
+                {
+                    await NavigateAsync(beforeOwnListUrl, token);
+                    var row = await InspectOwnedListRepostAsync(job, null, token);
+                    if (row.Status == "not-found")
+                    {
+                        // After successful repost the item may move to page 1.
+                        string firstPage = MyListingsImport.IsSellListUrl(beforeOwnListUrl) ?
+                            MyListingsImport.SellListingsUrl : MyListingsImport.BuyListingsUrl;
+                        if (!string.Equals(firstPage, beforeOwnListUrl, StringComparison.OrdinalIgnoreCase))
+                        {
+                            await NavigateAsync(firstPage, token);
+                            row = await InspectOwnedListRepostAsync(job, null, token);
+                        }
+                    }
+                    if (row.Status == "found" && !string.IsNullOrWhiteSpace(row.Stamp) &&
+                        !string.Equals(row.Stamp, beforeRepostStamp, StringComparison.Ordinal))
+                    {
+                        AppendLog("아이템매니아에서 해당 물품 재등록 시각 변경 확인: " + beforeRepostStamp + " → " + row.Stamp);
+                        return true;
+                    }
+                    AppendLog("재등록 시각 확인 대기: 대상 글의 등록시각이 아직 바뀌지 않았습니다.");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { AppendLog("등록시각 재확인 실패: " + ex.GetType().Name); }
             }
             await Task.Delay(500, token);
         } while (DateTime.UtcNow < until);

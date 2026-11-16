@@ -35,7 +35,7 @@ function makeRow(number, name, actionName = '재등록', iconClass = '') {
 
 // Faithful shape of the authenticated site's Nov 2026 list markup, sanitized
 // to synthetic IDs. The icons are CSS spans, not SVG or text buttons.
-function makeRealMarkupRow(number, name, reinsertNumber = number) {
+function makeRealMarkupRow(number, name, reinsertNumber = number, stamp = '11-16 10:53') {
   const clicks = [];
   const icon = (kind, handler, css, desc) => ({
     tagName: 'A', className: css, isConnected: true, disabled: false,
@@ -48,10 +48,11 @@ function makeRealMarkupRow(number, name, reinsertNumber = number) {
     icon('hide', `tradeProcess('hideSelect', '${number}')`, 'list_icon hide', '숨기기'),
     icon('delete', `tradeProcess('deleteSelect', '${number}')`, 'list_icon delete', '삭제')
   ];
+  const postedAt = { tagName: 'P', textContent: stamp, getAttribute: () => null };
   const row = {
     tagName: 'TR', innerText: `${number} ${name}`, textContent: `${number} ${name}`,
     closest: () => null, getAttribute: () => null,
-    querySelectorAll: selector => selector === '*' ? actions :
+    querySelectorAll: selector => selector === 'td.flex_box p.f_gray' ? [postedAt] : selector === '*' ? actions :
       selector.startsWith('button,') ? actions : []
   };
   return { row, actions, clicks };
@@ -132,10 +133,17 @@ function evaluate(rows, { number = id, name = title, click = false,
 {
   const rows = [makeRealMarkupRow(id, title), makeRealMarkupRow(other, '다른 물품')];
   assert.equal(evaluate(rows).status, 'ready');
+  assert.equal(evaluate(rows).stamp, '11-16 10:53');
+  assert.equal(evaluate(rows, { click: null }).stamp, '11-16 10:53');
   assert.equal(evaluate(rows, { click: true }).status, 'clicked');
   assert.deepEqual(rows[0].clicks, ['repost']);
   assert.deepEqual(rows[1].clicks, []);
   console.log('PASS real ItemMania CSS-span reregist onclick, never hide/delete');
+}
+{
+  const rows = [makeRealMarkupRow(id, title, id, 'arbitrary text')];
+  assert.equal(evaluate(rows).stamp, '');
+  console.log('PASS non-site timestamp cannot establish repost success');
 }
 {
   const rows = [makeRealMarkupRow(id, title, other)];

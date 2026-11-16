@@ -10,6 +10,8 @@ internal sealed class OwnedListRepostResult
 {
     public string Status { get; set; } = "";
     public string Message { get; set; } = "";
+    // Site-rendered registration time for this ONE listing row, not browser clock.
+    public string Stamp { get; set; } = "";
 }
 
 internal static class OwnedListRepost
@@ -31,7 +33,7 @@ internal static class OwnedListRepost
       const arg=__ARG__;
       const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
       const valid=s=>/^\d{8,20}$/.test(String(s||''));
-      const result=(status,message='')=>({status,message});
+      const result=(status,message='',stamp='')=>({status,message,stamp});
       const official=()=>location.protocol==='https:' &&
         (location.hostname==='itemmania.com'||location.hostname.endsWith('.itemmania.com'));
       const ownList=()=>/^\/myroom\/(sell\/sell_regist|buy\/buy_regist)\.html$/i.test(location.pathname);
@@ -126,18 +128,21 @@ internal static class OwnedListRepost
           if (handler.trim()) return exactReinsert(e);
           return exactReinsert(e) || names(e).some(v=>repostWords.test(v)) || iconName(e);
         });
-        matching.push({row,actions});
+        const stampNodes=[...row.querySelectorAll('td.flex_box p.f_gray')];
+        const stampText=stampNodes.length===1?String(stampNodes[0].textContent||'').trim():'';
+        const stamp=/^\d{2}-\d{2}\s+\d{2}:\d{2}$/.test(stampText)?stampText.replace(/\s+/g,' '):'';
+        matching.push({row,actions,stamp});
       }
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?
         '동일 등록번호와 제목의 행이 여러 개라 중단했습니다':
         '이 페이지에서 등록번호와 제목이 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)');
-      if(arg.click===null)return result('found','현재 내 등록글 목록에서 해당 등록번호·제목을 다시 확인함');
+      if(arg.click===null)return result('found','현재 내 등록글 목록에서 해당 등록번호·제목을 다시 확인함',matching[0].stamp);
       if(matching[0].actions.length!==1)return result('error',matching[0].actions.length?
         '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 등록번호와 연결된 reInsert 재등록 버튼을 확인하지 못했습니다');
-      if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인');
+      if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인',matching[0].stamp);
       const button=matching[0].actions[0];
       button.click();
-      return result('clicked','해당 물품 행의 재등록 버튼 클릭됨 (최종 등록 성공은 별도 확인 필요)');
+      return result('clicked','해당 물품 행의 재등록 버튼 클릭됨 (최종 등록 성공은 별도 확인 필요)',matching[0].stamp);
     })()
     """;
 }
