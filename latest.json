@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.2",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.2/LuzenBrowser_22.2.2_BinaryUpdate.zip",
-  "sha256": "10f2e910c5b7145187b790e41b187288e35550817d9a0f43578c4f20f01b05e9",
+  "version": "22.2.3",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.3/LuzenBrowser_22.2.3_BinaryUpdate.zip",
+  "sha256": "08959f877c1f65df360e3331ef7bbab3fbffb5ee24b503fb782ac47c96c35953",
   "format": "binary",
-  "releaseNotes": "v22.2.2: 마이룸 카드형 등록목록의 글자 없는 재등록(원형 화살표/시계) 아이콘 인식 추가. 등록번호와 제목이 일치하는 유일한 물품 행의 아이콘만 클릭하며, 삭제/숨김 아이콘은 클릭하지 않습니다. 빌드와 오프라인 안전 테스트 통과. 실제 사이트에서는 1건 시험 후 사용하세요."
+  "releaseNotes": "v22.2.3: 아이템매니아 실제 등록관리 HTML을 확인해 CSS 아이콘의 reInsert('등록번호','게임번호') 재등록 버튼 정확 인식. 대상 등록번호·제목이 일치하는 행만 클릭하며 숨김·삭제 및 번호 불일치 버튼은 차단. Windows 빌드와 오프라인 테스트 통과. 실제 등록 성공 여부는 1건 시험으로 확인하세요."
 }
