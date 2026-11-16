@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.4",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.4/LuzenBrowser_22.2.4_BinaryUpdate.zip",
-  "sha256": "5bb10e253ff7666b8fffc5f4f8a9fa2536ca3757906667ea8e466daa3783a49c",
+  "version": "22.2.5",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.5/LuzenBrowser_22.2.5_BinaryUpdate.zip",
+  "sha256": "429b496908ca8b48e4d8d7002451668be9e1736e47943db0031edfbfdc42f9bf",
   "format": "binary",
-  "releaseNotes": "v22.2.4: 아이템매니아 재등록 버튼 클릭 후 숨겨진 사이트 재등록 확인창을 조건부 처리하고, 서버에서 표시한 동일 등록번호·제목의 등록시각 변경을 재조회해 성공 여부를 확인합니다. 삭제·결제 등 다른 확인창은 승인하지 않으며 결과 불확실 시 자동 재시도를 보류합니다. Windows 빌드 및 오프라인 안전 테스트 통과. 실제 사이트 1건 시험은 필요합니다."
+  "releaseNotes": "v22.2.5: 내 등록글을 불러온 뒤 편집 화면의 미선택 항목이 기존 제목·게임·서버·가격·수량 및 URL을 공란으로 덮어쓰지 않도록 수정. 기존 재등록 ID 확인, 제출 간격 및 불확실한 제출 보류 기능 유지. Windows 빌드와 오프라인 테스트 완료. 실제 사이트 등록 확인은 별도 필요."
 }
