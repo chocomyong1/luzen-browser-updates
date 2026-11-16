@@ -33,6 +33,30 @@ function makeRow(number, name, actionName = '재등록', iconClass = '') {
   return { row, button, clicks };
 }
 
+// Faithful shape of the authenticated site's Nov 2026 list markup, sanitized
+// to synthetic IDs. The icons are CSS spans, not SVG or text buttons.
+function makeRealMarkupRow(number, name, reinsertNumber = number) {
+  const clicks = [];
+  const icon = (kind, handler, css, desc) => ({
+    tagName: 'A', className: css, isConnected: true, disabled: false,
+    value: '', innerText: '', textContent: '', getClientRects: () => [1],
+    getAttribute: key => ({ onclick: handler, href: 'javascript:;', 'data-desc': desc })[key] || null,
+    querySelectorAll: () => [], click: () => clicks.push(kind)
+  });
+  const actions = [
+    icon('repost', `reInsert('${reinsertNumber}','2696');`, 'list_icon reregist', '재등록'),
+    icon('hide', `tradeProcess('hideSelect', '${number}')`, 'list_icon hide', '숨기기'),
+    icon('delete', `tradeProcess('deleteSelect', '${number}')`, 'list_icon delete', '삭제')
+  ];
+  const row = {
+    tagName: 'TR', innerText: `${number} ${name}`, textContent: `${number} ${name}`,
+    closest: () => null, getAttribute: () => null,
+    querySelectorAll: selector => selector === '*' ? actions :
+      selector.startsWith('button,') ? actions : []
+  };
+  return { row, actions, clicks };
+}
+
 function evaluate(rows, { number = id, name = title, click = false,
   pathname = '/myroom/buy/buy_regist.html', hostname = 'www.itemmania.com' } = {}) {
   const document = {
@@ -104,4 +128,18 @@ function evaluate(rows, { number = id, name = title, click = false,
   rows[0].button.title = '재등록';
   assert.equal(evaluate(rows, { click: true }).status, 'clicked');
   console.log('PASS tooltip title used despite whitespace-only icon text');
+}
+{
+  const rows = [makeRealMarkupRow(id, title), makeRealMarkupRow(other, '다른 물품')];
+  assert.equal(evaluate(rows).status, 'ready');
+  assert.equal(evaluate(rows, { click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  assert.deepEqual(rows[1].clicks, []);
+  console.log('PASS real ItemMania CSS-span reregist onclick, never hide/delete');
+}
+{
+  const rows = [makeRealMarkupRow(id, title, other)];
+  assert.equal(evaluate(rows, { click: true }).status, 'error');
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS mismatched reInsert listing ID blocked');
 }

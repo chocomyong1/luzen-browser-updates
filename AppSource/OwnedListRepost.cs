@@ -43,20 +43,28 @@ internal static class OwnedListRepost
       for(let i=0;i<docs.length&&i<8;i++)for(const frame of docs[i].querySelectorAll('iframe,frame')){
         try{const d=frame.contentDocument;if(d&&!seen.has(d)){seen.add(d);docs.push(d)}}catch{}
       }
-      // The current My Room card UI places action icons at the right edge.
-      // Treat a history/refresh icon as repost ONLY when it is inside the
-      // already verified unique listing row; never choose an arbitrary icon
-      // from the page or infer 'first button' from visual position alone.
+      // Current authenticated My Room markup uses:
+      // <a onclick="reInsert('listing-id','game-id')" class="list_icon reregist"
+      //    data-desc="재등록"><span class="list_icon_img"></span></a>
+      // Its icon is CSS-based (not SVG). Bind the exact onclick ID to THIS row.
       const className=e=>typeof e?.className==='string'?e.className:(e?.className?.baseVal||'');
       const names=e=>{
         const nested=typeof e.querySelectorAll==='function'
           ?[...e.querySelectorAll('[title],[aria-label],svg title')].slice(0,8):[];
         return [e.value,e.innerText,e.textContent,e.getAttribute?.('aria-label'),
-          e.getAttribute?.('title'),e.getAttribute?.('data-tooltip'),e.getAttribute?.('data-original-title'),
+          e.getAttribute?.('title'),e.getAttribute?.('data-desc'),
+          e.getAttribute?.('data-tooltip'),e.getAttribute?.('data-original-title'),
           ...nested.flatMap(x=>[x.getAttribute?.('title'),x.getAttribute?.('aria-label'),x.textContent])]
           .map(norm).filter(Boolean);
       };
       const repostWords=/^(재등록|재등록하기|다시등록|다시등록하기)$/;
+      const exactReinsert=e=>{
+        const handler=String(e.getAttribute?.('onclick')||'');
+        const match=handler.match(/^\s*reInsert\s*\(\s*(['"])(\d{8,20})\1\s*,/);
+        return !!match && match[2]===arg.number &&
+          /(?:^|\s)reregist(?:\s|$)/.test(className(e)) &&
+          norm(e.getAttribute?.('data-desc'))==='재등록';
+      };
       const iconName=e=>{
         const icons=typeof e.querySelectorAll==='function'
           ?[...e.querySelectorAll('svg,i,img')].slice(0,5):[];
@@ -111,7 +119,13 @@ internal static class OwnedListRepost
         const controls=[...new Set(row.querySelectorAll(
           'button,input[type="button"],input[type="submit"],a[href],a[onclick],[role="button"],[onclick],[class*="cursor-pointer"]'))]
           .filter(visible);
-        const actions=controls.filter(e=>names(e).some(v=>repostWords.test(v)) || iconName(e));
+        const actions=controls.filter(e=>{
+          const handler=String(e.getAttribute?.('onclick')||'');
+          // The current site's inline handler is authoritative: never allow
+          // a hide/delete/other onclick to be rescued by icon/text guesses.
+          if (handler.trim()) return exactReinsert(e);
+          return exactReinsert(e) || names(e).some(v=>repostWords.test(v)) || iconName(e);
+        });
         matching.push({row,actions});
       }
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?
@@ -119,7 +133,7 @@ internal static class OwnedListRepost
         '이 페이지에서 등록번호와 제목이 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)');
       if(arg.click===null)return result('found','현재 내 등록글 목록에서 해당 등록번호·제목을 다시 확인함');
       if(matching[0].actions.length!==1)return result('error',matching[0].actions.length?
-        '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 재등록 문자/원형 화살표 아이콘을 확인하지 못했습니다');
+        '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 등록번호와 연결된 reInsert 재등록 버튼을 확인하지 못했습니다');
       if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인');
       const button=matching[0].actions[0];
       button.click();
