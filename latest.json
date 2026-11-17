@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.35",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.35/LuzenBrowser_22.2.35_BinaryUpdate.zip",
-  "sha256": "86fbd59771c5ffeef48b60c9225d5b34e6f0ea44685cce2052e01d17dc7cfb6a",
+  "version": "22.2.36",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.36/LuzenBrowser_22.2.36_BinaryUpdate.zip",
+  "sha256": "007909e4d5e68c4ae3c9564e9cfa22cb176cc414c25d6803c6e040be156541e1",
   "format": "binary",
-  "releaseNotes": "v22.2.35: 업데이트나 재실행 후 B VPN 버튼을 누르면 저장된 프록시 주소로 외부 IP를 자동 재확인합니다. 정상적으로 다른 IP가 확인되면 설정창 없이 곧바로 B 작업 화면으로 전환합니다. 연결 문제가 있을 때만 설정 안내를 표시하며, A의 인터넷 연결과 작업은 그대로 유지합니다."
+  "releaseNotes": "v22.2.36: C VPN 시스템을 추가했습니다. A·B·C에서 각각 다른 매니아 계정, 작업 목록, 브라우저 세션과 로그를 사용합니다. C는 별도 SOCKS5/HTTP 프록시가 필요하고 A·B·C 외부 IP가 모두 달라야 시작됩니다. 저장된 프록시는 업데이트 후에도 자동 확인합니다. 기존 A/B 설정과 작업은 유지됩니다."
 }
