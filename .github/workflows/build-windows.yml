@@ -61,15 +61,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.14'
+          $version = '22.2.15'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.14
-          path: LuzenBrowser_22.2.14_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.15
+          path: LuzenBrowser_22.2.15_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -77,7 +77,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.14'
+          $version = '22.2.15'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -89,7 +89,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.14: 사용자 요구를 정정하여 물품등록·편집 화면에서 필요 없는 서브 ID·즉시구매·실시간 시세·매크로 항목을 모두 제거하고 캐릭터명만 유지. 외부 시세 자동 조회 및 관련 추가 코드를 제거. 기존 등록글의 저장 데이터는 호환성을 위해 유지하여 물품 목록·재등록 동작에 영향을 주지 않도록 함.'
+            releaseNotes = 'v22.2.15: 본인 등록글 조회에서 보기 주소 외에도 해당 행에 실제로 표시된 수정 주소를 별도로 확인. 캐릭터명·상세설명이 보기 화면에 없을 때 수정 화면의 입력값을 읽기 전용으로 확인하고 누락 값만 보완. 등록번호가 정확히 일치한 공식 사이트 주소에만 접근하며 수정·등록 버튼은 클릭하지 않음. 조회 로그에 수정 화면 방문 수를 추가하여 미수집 원인을 구분할 수 있게 개선.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

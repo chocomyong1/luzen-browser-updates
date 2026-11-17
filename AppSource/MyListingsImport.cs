@@ -13,6 +13,9 @@ internal sealed class ExistingListingRecord
 {
     public string ListingNumber { get; set; } = "";
     public string ListingUrl { get; set; } = "";
+    // Exact edit link found on the signed-in OWN listing row. Read only;
+    // never used for registration, clicking, or submitting a change.
+    public string EditUrl { get; set; } = "";
     public string SourceListUrl { get; set; } = "";
     public string TradeSide { get; set; } = ""; // 판매 / 구매 / 알 수 없음
     public string Game { get; set; } = "";
@@ -467,7 +470,7 @@ internal static class MyListingsImport
     }
     return listingId(row.innerText||row.textContent);
   };
-  const candidateUrl=(row,id) => {
+  const candidateUrls=(row,id) => {
     // Some own-list pages use onclick/data-url rather than href for details.
     const direct=[];
     for(const el of row.querySelectorAll('a,button,[data-url],[data-href]')) {
@@ -490,15 +493,19 @@ internal static class MyListingsImport
     // one explicitly identified view URL; never invent a URL from the ID.
     const unique=pool=>[...new Set(pool.map(a=>a.href.href.split('#')[0]))];
     const viewLabel=matching.filter(a=>/상세|보기/i.test(a.text)&&!/수정|편집/i.test(a.text));
-    if(viewLabel.length)return unique(viewLabel).length===1?unique(viewLabel)[0]:'';
+    const editLinks=matching.filter(a=>/수정|편집/i.test(a.text)||/edit|modify/i.test(a.href.pathname));
+    const uniqueEdit=unique(editLinks);
+    const editUrl=uniqueEdit.length===1?uniqueEdit[0]:'';
+    if(viewLabel.length)return {url:unique(viewLabel).length===1?unique(viewLabel)[0]:'',editUrl};
     const viewPath=matching.filter(a=>/detail|view/i.test(a.href.pathname)&&!/edit|modify/i.test(a.href.pathname));
-    if(viewPath.length)return unique(viewPath).length===1?unique(viewPath)[0]:'';
-    return unique(matching).length===1?unique(matching)[0]:'';
+    if(viewPath.length)return {url:unique(viewPath).length===1?unique(viewPath)[0]:'',editUrl};
+    const fallback=matching.filter(a=>!editLinks.includes(a));
+    return {url:unique(fallback).length===1?unique(fallback)[0]:'',editUrl};
   };
   const listings=[], signatures=new Set();
   const append=(row, title, header={}, values=[], known={}) => {
     const id=getId(row);
-    const url=candidateUrl(row,id);
+    const {url,editUrl}=candidateUrls(row,id);
     title=clip(title,350);
     if(!title || title.length < 2 || (!id && !url)) return;
     const key=id||url;
@@ -518,7 +525,7 @@ internal static class MyListingsImport
       return known[type] || column || fieldFromRow(row,type) || fieldFromText(row,type) ||
         ((type==='game'||type==='server') ? linked[type]||combined[type] : '');
     };
-    listings.push({listingNumber:id,listingUrl:url,sourceListUrl:pageUrl,tradeSide:side,
+    listings.push({listingNumber:id,listingUrl:url,editUrl,sourceListUrl:pageUrl,tradeSide:side,
       game:pick('game'),server:pick('server'),title,quantity:pick('quantity'),unit:pick('unit'),
       price:pick('price'),itemCategory:pick('itemCategory'),
       tradingMethod:pick('tradingMethod'),minQuantity:known.minQuantity||'',

@@ -74,5 +74,7 @@ assert.equal(items[0].server,'카마인');
 assert.equal(items[0].title,'10레벨 겁화 보석 구매합니다');
 assert.ok(items[0].listingUrl.includes('id=2026070701992028'));
 assert.ok(items[0].listingUrl.includes('buy_regist_view.html'), 'An exact View link wins over a different Edit link for same ID');
+assert.ok(items[0].editUrl.includes('buy_regist_edit.html'), 'Keep the exact own-row Edit URL for read-only detail enrichment');
+assert.ok(items[0].editUrl.includes('id=2026070701992028'), 'Edit link must point to the same verified listing');
 assert.equal(items[0].quantity, '', 'The per-unit label must NOT be mistaken for total stock');
 console.log('PASS ItemMania imported rows: headerless first row, two ranges, price, category, links');

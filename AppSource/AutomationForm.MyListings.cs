@@ -323,13 +323,15 @@ internal sealed partial class AutomationForm
              string.IsNullOrWhiteSpace(r.ItemCategory) || string.IsNullOrWhiteSpace(r.TradingMethod) ||
              string.IsNullOrWhiteSpace(r.Character) || string.IsNullOrWhiteSpace(r.Description) ||
              string.IsNullOrWhiteSpace(r.MinQuantity) || string.IsNullOrWhiteSpace(r.MaxQuantity)) &&
-            MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber)).ToList();
+            (MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber) ||
+             MyListingsImport.IsSafeDetailUrl(r.EditUrl, r.ListingNumber))).ToList();
         const int maxDetailPages = 80;
         if (needing.Count == 0)
         {
             int missing = scan.Records.Count(r =>
                 (string.IsNullOrWhiteSpace(r.Character) || string.IsNullOrWhiteSpace(r.Description)) &&
-                !MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber));
+                !MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber) &&
+                !MyListingsImport.IsSafeDetailUrl(r.EditUrl, r.ListingNumber));
             if (missing > 0) AppendLog($"캐릭터·상세설명 미수집 {missing}건: 관리 목록에 해당 등록번호가 포함된 안전한 상세 링크가 없어 내용을 열 수 없습니다.");
             return;
         }
@@ -337,30 +339,67 @@ internal sealed partial class AutomationForm
         // hundreds of listings. Continue from the last checked offset.
         int start = Math.Max(0, _config.DetailEnrichmentCursor) % needing.Count;
         int batchSize = Math.Min(needing.Count, maxDetailPages);
-        int visits = 0, updated = 0, characters = 0, descriptions = 0, matched = 0;
+        int visits = 0, editVisits = 0, updated = 0, characters = 0, descriptions = 0, matched = 0;
         for (int offset = 0; offset < batchSize; offset++)
         {
             var record = needing[(start + offset) % needing.Count];
             token.ThrowIfCancellationRequested();
-            visits++;
             try
             {
-                _state.Text = $"내 등록글 상세 확인 중 · {visits}/{Math.Min(needing.Count, maxDetailPages)}";
-                await NavigateOwnedListAsync(record.ListingUrl, token);
-                await Task.Delay(450, token);
-                var raw = await _web.CoreWebView2.ExecuteScriptAsync(
-                    MyListingsImport.BuildDetailScript(record.ListingNumber));
-                var detail = MyListingsImport.DecodeDetail(raw);
-                if (!string.Equals(detail.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
+                _state.Text = $"내 등록글 상세 확인 중 · {offset + 1}/{batchSize}";
+                var detail = new ExistingListingRecord();
+                bool identityMatched = false;
+                // A visible detail page often omits the character/description
+                // inputs. If this exact OWN row has an explicit edit link,
+                // inspect that form READ-ONLY first, then the view page as fallback.
+                var urls = new[] { record.EditUrl, record.ListingUrl }
+                    .Where(url => MyListingsImport.IsSafeDetailUrl(url, record.ListingNumber))
+                    .Distinct(StringComparer.OrdinalIgnoreCase);
+                foreach (var url in urls)
                 {
-                    await Task.Delay(750, token);
-                    raw = await _web.CoreWebView2.ExecuteScriptAsync(
-                        MyListingsImport.BuildDetailScript(record.ListingNumber));
-                    detail = MyListingsImport.DecodeDetail(raw);
+                    token.ThrowIfCancellationRequested();
+                    visits++;
+                    if (url == record.EditUrl) editVisits++;
+                    try
+                    {
+                        await NavigateOwnedListAsync(url, token);
+                        await Task.Delay(450, token);
+                        var raw = await _web.CoreWebView2.ExecuteScriptAsync(
+                            MyListingsImport.BuildDetailScript(record.ListingNumber));
+                        var part = MyListingsImport.DecodeDetail(raw);
+                        if (!string.Equals(part.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
+                        {
+                            await Task.Delay(750, token);
+                            raw = await _web.CoreWebView2.ExecuteScriptAsync(
+                                MyListingsImport.BuildDetailScript(record.ListingNumber));
+                            part = MyListingsImport.DecodeDetail(raw);
+                        }
+                        if (!string.Equals(part.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
+                            continue;
+                        identityMatched = true;
+                        if (string.IsNullOrWhiteSpace(detail.Game)) detail.Game = part.Game;
+                        if (string.IsNullOrWhiteSpace(detail.Server)) detail.Server = part.Server;
+                        if (string.IsNullOrWhiteSpace(detail.Quantity)) detail.Quantity = part.Quantity;
+                        if (string.IsNullOrWhiteSpace(detail.Unit)) detail.Unit = part.Unit;
+                        if (string.IsNullOrWhiteSpace(detail.Price)) detail.Price = part.Price;
+                        if (string.IsNullOrWhiteSpace(detail.ItemCategory)) detail.ItemCategory = part.ItemCategory;
+                        if (string.IsNullOrWhiteSpace(detail.TradingMethod)) detail.TradingMethod = part.TradingMethod;
+                        if (string.IsNullOrWhiteSpace(detail.MinQuantity)) detail.MinQuantity = part.MinQuantity;
+                        if (string.IsNullOrWhiteSpace(detail.MaxQuantity)) detail.MaxQuantity = part.MaxQuantity;
+                        if (string.IsNullOrWhiteSpace(detail.Character)) detail.Character = part.Character;
+                        if (string.IsNullOrWhiteSpace(detail.Description)) detail.Description = part.Description;
+                        if (!string.IsNullOrWhiteSpace(detail.Character) &&
+                            !string.IsNullOrWhiteSpace(detail.Description)) break;
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                    catch (Exception ex)
+                    {
+                        AppendLog("상세/수정 링크 조회 실패: 등록번호 " + record.ListingNumber +
+                            " / " + ex.GetType().Name);
+                    }
                 }
                 // Do not mistake another item's page for this listing.
-                if (!string.Equals(detail.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
-                    continue;
+                if (!identityMatched) continue;
                 matched++;
                 int before = new[] { record.Game, record.Server, record.Quantity, record.Unit, record.Price,
                     record.ItemCategory, record.TradingMethod, record.MinQuantity, record.MaxQuantity,
@@ -400,7 +439,7 @@ internal sealed partial class AutomationForm
         _config.Save();
         if (visits > 0)
         {
-            AppendLog($"등록글 상세 화면 방문 {visits}건 · 등록번호 일치 {matched}건 · " +
+            AppendLog($"등록글 상세/수정 화면 방문 {visits}건 (수정 {editVisits}건) · 등록번호 일치 {matched}건 · " +
                 $"정보 보완 {updated}건 · 캐릭터 확인 {characters}건 · 상세설명 확인 {descriptions}건");
             if (matched == 0)
                 AppendLog("상세 링크를 방문했지만 등록번호가 일치하는 실제 물품 화면이 열리지 않았습니다. 로그인 전환·리다이렉트 또는 화면 변경 여부를 확인해야 합니다.");
