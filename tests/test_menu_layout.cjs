@@ -37,7 +37,7 @@ assert(main.includes('"구매글 추가"') && main.includes('AddNewListing("구�
   '구매글 신규 등록 메뉴가 사라짐');
 assert(main.includes('"재등록 추가"') && main.includes('AddNewListing("재등록")'),
   '재등록 신규 등록 메뉴가 사라짐');
-for (const pathName of ['OpenSystemBNetworkSettings()', 'OpenUpdateSettingsDialog()',
+for (const pathName of ['OpenSystemNetworkSettings("B")', 'OpenSystemNetworkSettings("C")', 'OpenUpdateSettingsDialog()',
   '_module.ShowWorkflowSettings()', '_module.OpenAccountSettings()']) {
   assert(main.includes(pathName), `${pathName} 메뉴 이동 경로가 사라짐`);
 }

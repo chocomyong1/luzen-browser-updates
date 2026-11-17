@@ -12,14 +12,20 @@ internal sealed partial class MainForm : Form
 {
     private readonly AutomationForm _moduleA;
     private readonly AutomationForm _moduleB;
-    private AutomationForm _module => _activeSystem == "B" ? _moduleB : _moduleA;
+    private readonly AutomationForm _moduleC;
+    private AutomationForm _module => _activeSystem switch
+    {
+        "B" => _moduleB, "C" => _moduleC, _ => _moduleA
+    };
     private string _activeSystem = "A";
     private Button? _systemAButton;
     private Button? _systemBButton;
-    private bool _checkingBConnection;
+    private Button? _systemCButton;
+    private bool _checkingProxyConnection;
     private int _systemSelectionSequence;
     private readonly Label _accountInfo = new() { Dock = DockStyle.Right, Width = 340, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
     private bool _systemBShown;
+    private bool _systemCShown;
     private AppUpdateSettings _updateSettings = AppUpdateService.LoadSettings();
     private AppUpdateManifest? _pendingUpdate;
     private string? _downloadedUpdate;
@@ -65,12 +71,22 @@ internal sealed partial class MainForm : Form
             MaximumSize = Size.Empty,
             Dock = DockStyle.Fill
         };
+        _moduleC = new AutomationForm(username, "C")
+        {
+            TopLevel = false,
+            FormBorderStyle = FormBorderStyle.None,
+            MinimumSize = Size.Empty,
+            MaximumSize = Size.Empty,
+            Dock = DockStyle.Fill
+        };
         _moduleB.ShareSiteQuotaWith(_moduleA);
+        _moduleC.ShareSiteQuotaWith(_moduleA);
 
         var top = BuildToolbar();
         var body = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         body.Controls.Add(_moduleA);
         body.Controls.Add(_moduleB);
+        body.Controls.Add(_moduleC);
         var footer = new Panel { Dock = DockStyle.Bottom, Height = 27, BackColor = UiTheme.SurfaceAlt };
         footer.Controls.Add(_status);
         footer.Controls.Add(_accountInfo);
@@ -104,11 +120,11 @@ internal sealed partial class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); };
+        FormClosing += (_, _) => { _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
     private bool CanInstallUpdateAcrossSystems =>
-        _moduleA.CanInstallSoftwareUpdate && _moduleB.CanInstallSoftwareUpdate;
+        _moduleA.CanInstallSoftwareUpdate && _moduleB.CanInstallSoftwareUpdate && _moduleC.CanInstallSoftwareUpdate;
 
     private void RefreshSystemLabel()
     {
@@ -116,57 +132,66 @@ internal sealed partial class MainForm : Form
             UiTheme.StyleButton(_systemAButton, _activeSystem == "A" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
         if (_systemBButton is not null)
             UiTheme.StyleButton(_systemBButton, _activeSystem == "B" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
+        if (_systemCButton is not null)
+            UiTheme.StyleButton(_systemCButton, _activeSystem == "C" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
         _accountInfo.Text = $"아이템매니아  |  시스템 {_activeSystem}  |  설정·목록 분리   ";
     }
 
     private async Task SelectSystemAsync(string system)
     {
-        if (system == "B" && _checkingBConnection) return;
+        if (system is not ("A" or "B" or "C")) return;
+        if (system != "A" && _checkingProxyConnection) return;
         int selection = ++_systemSelectionSequence;
-        if (system == "B" && !DualSystemNetwork.IsBRouteVerified)
+        if (system != "A" && !DualSystemNetwork.IsRouteVerified(system))
         {
-            // A successful verification is intentionally process-local; after
-            // an app update/restart, recheck the saved proxy without forcing
-            // the user through the configuration dialog again.
-            if (string.IsNullOrWhiteSpace(DualSystemNetwork.Load().ProxyUrl))
+            // The verified route is process-local; retry silently after updates.
+            if (string.IsNullOrWhiteSpace(DualSystemNetwork.Load(system).ProxyUrl))
             {
-                OpenSystemBNetworkSettings();
+                OpenSystemNetworkSettings(system);
             }
             else
             {
-                _checkingBConnection = true;
-                if (_systemBButton is not null) _systemBButton.Enabled = false;
-                _status.Text = "  시스템 B 연결 자동 확인 중 · 기존 A 인터넷은 유지됩니다.";
+                _checkingProxyConnection = true;
+                Button? selectedButton = system == "B" ? _systemBButton : _systemCButton;
+                if (selectedButton is not null) selectedButton.Enabled = false;
+                _status.Text = $"  시스템 {system} 연결 자동 확인 중 · 기존 A 인터넷은 유지됩니다.";
                 try
                 {
-                    await DualSystemNetwork.VerifyBRouteAsync();
+                    if (system == "B") await DualSystemNetwork.VerifyBRouteAsync();
+                    else await DualSystemNetwork.VerifyCRouteAsync();
                 }
                 catch (Exception ex)
                 {
                     if (selection != _systemSelectionSequence || IsDisposed || Disposing) return;
-                    _status.Text = "  B 연결 확인 실패 · A 시스템은 계속 사용할 수 있습니다.";
+                    _status.Text = $"  {system} 연결 확인 실패 · 다른 시스템은 계속 사용할 수 있습니다.";
                     if (MessageBox.Show(this,
-                        "저장된 B 프록시 연결을 확인하지 못했습니다.\n" +
-                        "Cloudflare WARP가 로컬 프록시 모드로 연결돼 있는지 확인하세요.\n\n" +
-                        ex.Message + "\n\nB 연결 설정창을 열까요?",
-                        "B 연결 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
-                        OpenSystemBNetworkSettings();
+                        $"저장된 {system} 프록시 연결을 확인하지 못했습니다.\n" +
+                        (system == "B" ? "Cloudflare WARP 로컬 프록시 연결을 확인하세요.\n" : "C 전용 프록시 서비스가 실행 중인지 확인하세요.\n") +
+                        ex.Message + $"\n\n{system} 연결 설정창을 열까요?",
+                        $"{system} 연결 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                        OpenSystemNetworkSettings(system);
                 }
                 finally
                 {
-                    _checkingBConnection = false;
-                    if (_systemBButton is not null && !_systemBButton.IsDisposed)
-                        _systemBButton.Enabled = true;
+                    _checkingProxyConnection = false;
+                    if (selectedButton is not null && !selectedButton.IsDisposed)
+                        selectedButton.Enabled = true;
                 }
             }
             if (selection != _systemSelectionSequence || IsDisposed || Disposing) return;
-            if (!DualSystemNetwork.IsBRouteVerified) return;
+            if (!DualSystemNetwork.IsRouteVerified(system)) return;
         }
         if (system == "B" && !_systemBShown)
         {
             _moduleB.Show();
             _moduleB.ShowAutomationView();
             _systemBShown = true;
+        }
+        if (system == "C" && !_systemCShown)
+        {
+            _moduleC.Show();
+            _moduleC.ShowAutomationView();
+            _systemCShown = true;
         }
         _activeSystem = system;
         _module.BringToFront();
@@ -197,6 +222,7 @@ internal sealed partial class MainForm : Form
         });
         _systemAButton = AddToolButton(bar, "A 기본", () => _ = SelectSystemAsync("A"), 74);
         _systemBButton = AddToolButton(bar, "B VPN", () => _ = SelectSystemAsync("B"), 74);
+        _systemCButton = AddToolButton(bar, "C VPN", () => _ = SelectSystemAsync("C"), 74);
         AddToolbarDivider(bar);
         AddToolButton(bar, "목록 조회", () => _module.RefreshListings(), 88);
         var addMenu = new ContextMenuStrip();
@@ -213,7 +239,8 @@ internal sealed partial class MainForm : Form
         var moreMenu = new ContextMenuStrip();
         moreMenu.Items.Add("고급 설정 · 사이트 연동", null, (_, _) => _module.ShowWorkflowSettings());
         moreMenu.Items.Add("텔레그램 알림 설정", null, (_, _) => _module.OpenTelegramSettings());
-        moreMenu.Items.Add("B VPN 연결 설정", null, (_, _) => OpenSystemBNetworkSettings());
+        moreMenu.Items.Add("B VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("B"));
+        moreMenu.Items.Add("C VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("C"));
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("업데이트 확인 · 설치", null,
             (_, _) => _ = CheckForUpdateAsync(automatic: false, installImmediately: true));

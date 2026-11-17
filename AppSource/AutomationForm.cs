@@ -1940,10 +1940,10 @@ internal sealed partial class AutomationForm : Form
 
     private void StartScheduler()
     {
-        if (_system == "B" && !DualSystemNetwork.IsBRouteVerified)
+        if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
         {
-            MessageBox.Show(this, "시스템 B 연결 설정에서 외부 IP가 기본 연결과 다른지 먼저 확인하세요. 확인 전에는 B가 현재 IP로 등록하지 않습니다.",
-                "B 연결 확인 필요");
+            MessageBox.Show(this, $"시스템 {_system} 연결 설정에서 독립적인 외부 IP를 먼저 확인하세요. 확인 전에는 {_system}가 현재 IP로 등록하지 않습니다.",
+                $"{_system} 연결 확인 필요");
             return;
         }
         SaveAll();
@@ -2033,9 +2033,9 @@ internal sealed partial class AutomationForm : Form
 
     private async Task ExecuteJobAsync(ListingJob job, bool dryRun)
     {
-        if (_system == "B" && !DualSystemNetwork.IsBRouteVerified)
+        if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
         {
-            AppendLog("B 연결 확인 필요: 별도 IP 확인 전에는 등록/재등록을 실행하지 않습니다.");
+            AppendLog($"{_system} 연결 확인 필요: 별도 IP 확인 전에는 등록/재등록을 실행하지 않습니다.");
             return;
         }
         if (_busy) { AppendLog("이미 다른 물품 작업이 진행 중입니다."); return; }

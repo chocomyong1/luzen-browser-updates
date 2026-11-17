@@ -65,7 +65,7 @@ internal sealed class ItemManiaAccountForm : Form
     {
         _system = system;
         _existing = ItemManiaAccountStore.Load(system);
-        Text = "아이템매니아 로그인 설정";
+        Text = $"시스템 {system} · 아이템매니아 로그인 설정";
         Width = 485; Height = 350;
         MinimumSize = MaximumSize = Size;
         StartPosition = FormStartPosition.CenterParent;
@@ -75,7 +75,7 @@ internal sealed class ItemManiaAccountForm : Form
         Controls.Add(new Label
         {
             Left = 25, Top = 17, Width = 425, Height = 46,
-            Text = "아이템매니아 공식 사이트에서 사용할 계정입니다.\nWindows 암호화(DPAPI)로 저장하며 외부 서버에 별도 전송하지 않습니다."
+            Text = $"시스템 {system}에서만 사용할 아이템매니아 계정입니다.\nWindows 암호화(DPAPI)로 저장하며 다른 시스템과 공유하지 않습니다."
         });
         Controls.Add(new Label { Text = "아이디", Left = 25, Top = 86, Width = 90, Height = 28 });
         _id.Left = 132; _id.Top = 82; _id.Text = _existing.UserId;
@@ -138,7 +138,11 @@ internal static class ItemManiaWebViewProfile
         Environments.GetOrAdd(system, key => new Lazy<Task<CoreWebView2Environment>>(() =>
             CoreWebView2Environment.CreateAsync(null,
                 Path.Combine(Settings.AutomationDirectory(key), "ItemManiaWebView2"),
-                key == "B" ? DualSystemNetwork.BrowserOptionsForB() : null))).Value;
+                key is "B" or "C"
+                    ? DualSystemNetwork.BrowserOptionsFor(key)
+                    // Do not inherit a second VPN client's Windows-wide proxy
+                    // settings for A's independent direct browser connection.
+                    : new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = "--no-proxy-server" }))).Value;
 }
 
 // Detects a recognizable login form on the *official HTTPS ItemMania domain only*.
