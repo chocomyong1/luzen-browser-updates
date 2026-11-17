@@ -88,6 +88,12 @@ internal sealed partial class AutomationForm : Form
     private bool _selectingFlow;
     private bool _schedulerRunning;
     private bool _busy;
+    // Bulk edits may be made while the scheduler is running. Edits to the
+    // currently executing item are deferred until that submission has fully
+    // completed; otherwise a mid-flight title/price change can invalidate
+    // the exact-site-row identity verification.
+    private ListingJob? _currentlyExecutingJob;
+    private readonly List<Action> _deferredExecutingJobEdits = new();
     private bool _pendingMyListingsImport;
     private bool _myListingsImportRunning;
     private CancellationTokenSource? _myListingsImportCancellation;
@@ -2029,6 +2035,7 @@ internal sealed partial class AutomationForm : Form
         if (!dryRun && !CanRunNow(job, out var pacingReason))
         { AppendLog("실행 대기: " + pacingReason); return; }
         _busy = true;
+        _currentlyExecutingJob = job;
         _currentRun?.Dispose(); _currentRun = new CancellationTokenSource();
         var token = _currentRun.Token;
         bool submitted = false;
@@ -2324,9 +2331,15 @@ internal sealed partial class AutomationForm : Form
             _repostSuccessAlertSeen = false;
             _siteReportedIdRemaining = null;
             _submissionVerificationPending = false;
+            int appliedDeferredEdits = _deferredExecutingJobEdits.Count;
+            foreach (var deferredEdit in _deferredExecutingJobEdits) deferredEdit();
+            _deferredExecutingJobEdits.Clear();
+            _currentlyExecutingJob = null;
             _busy = false;
             _jobsGrid.Refresh();
             _config.Save();
+            if (appliedDeferredEdits > 0)
+                AppendLog($"진행 중이던 물품의 일괄수정 {appliedDeferredEdits}개 항목을 작업 종료 후 적용했습니다.");
             _state.Text = _schedulerRunning ? "자동 실행 중" : "중지/대기";
             _state.ForeColor = _schedulerRunning ? Color.ForestGreen : Color.Maroon;
             // A paused scheduler must not block a requested read-only import.

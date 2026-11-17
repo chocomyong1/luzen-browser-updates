@@ -12,15 +12,17 @@ internal sealed partial class AutomationForm
     // Every application affects ONLY checked rows in the currently filtered list.
     private void ShowModernBatchEditor()
     {
-        if (_busy || _schedulerRunning || _myListingsImportRunning)
+        if (_myListingsImportRunning || (_busy && _currentlyExecutingJob is null))
         {
-            MessageBox.Show(this, "등록 작업이나 목록 조회가 실행 중입니다. 먼저 일시정지 후 진행 중인 작업이 끝나면 일괄수정하세요.",
+            MessageBox.Show(this, "등록글을 불러오는 중에는 물품 목록이 바뀔 수 있습니다. 조회가 끝난 뒤 일괄수정하세요.",
                 "일괄수정 대기", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         _jobsGrid.EndEdit();
         _autoGrid.EndEdit();
-        SaveSelectedJob(false);
+        // Never save a stale detail editor into the item currently being
+        // submitted. The batch editor handles that item after completion.
+        if (!_busy) SaveSelectedJob(false);
         var items = _filteredJobs.Where(j => j.SelectedForBulk).ToList();
         if (items.Count == 0)
         {
@@ -135,7 +137,12 @@ internal sealed partial class AutomationForm
                 "일괄수정 적용", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
             var previous = active.Select(item => (Item: item, OldValue: read(item))).ToList();
-            foreach (var (item, _) in previous) write(item, value);
+            var immediate = previous.Where(x => !ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
+            var deferred = previous.Where(x => ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
+            int deferredStart = _deferredExecutingJobEdits.Count;
+            foreach (var (item, _) in immediate) write(item, value);
+            foreach (var (item, _) in deferred)
+                _deferredExecutingJobEdits.Add(() => write(item, value));
             try
             {
                 _config.Jobs = _jobs.ToList();
@@ -143,7 +150,9 @@ internal sealed partial class AutomationForm
             }
             catch (Exception ex)
             {
-                foreach (var (item, oldValue) in previous) write(item, oldValue);
+                foreach (var (item, oldValue) in immediate) write(item, oldValue);
+                _deferredExecutingJobEdits.RemoveRange(deferredStart,
+                    _deferredExecutingJobEdits.Count - deferredStart);
                 _config.Jobs = _jobs.ToList();
                 MessageBox.Show(window, "설정 저장에 실패했습니다. 이 항목의 변경은 되돌렸습니다.\n" + ex.Message,
                     "저장 실패", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -153,8 +162,11 @@ internal sealed partial class AutomationForm
             // newly updated item when the focus is moved to another row.
             _selected = null;
             RefreshFilteredLists();
-            result.Text = $"✓ {field}: 선택한 {active.Count}건에 적용 완료";
-            AppendLog($"일괄수정 {field}: {active.Count}건 저장");
+            result.Text = deferred.Count > 0
+                ? $"✓ {field}: {immediate.Count}건 저장 · 진행 중인 {deferred.Count}건은 작업 종료 후 적용"
+                : $"✓ {field}: 선택한 {active.Count}건에 적용 완료";
+            AppendLog($"일괄수정 {field}: {immediate.Count}건 즉시 저장" +
+                (deferred.Count > 0 ? $" · {deferred.Count}건 작업 종료 후 적용 예약" : ""));
         }
         void Error(string message) => MessageBox.Show(window, message, "입력 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
