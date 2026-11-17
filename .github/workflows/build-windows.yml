@@ -61,15 +61,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.13'
+          $version = '22.2.14'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.13
-          path: LuzenBrowser_22.2.13_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.14
+          path: LuzenBrowser_22.2.14_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -77,7 +77,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.13'
+          $version = '22.2.14'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -89,7 +89,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.13: 원본 물품등록 화면과 비교하여 서브 ID를 기존 값 선택·직접 입력이 가능한 목록으로 변경. 즉시구매 항목 명칭 정리. 로스트아크 서버별 10만 골드 기준 외부 참고 실시간 시세(매니아·베이)를 2분 간격으로 조회하고 출처 링크·갱신 버튼 추가. 저장 가능한 매크로 선택 항목을 편집 화면에 복구. 직업·레벨 등 캐릭터 정보는 감추고 캐릭터명만 표시. 가격 조회 실패 때 임의 숫자를 표시하지 않으며 외부 시세는 자동 등록 가격을 변경하지 않음.'
+            releaseNotes = 'v22.2.14: 사용자 요구를 정정하여 물품등록·편집 화면에서 필요 없는 서브 ID·즉시구매·실시간 시세·매크로 항목을 모두 제거하고 캐릭터명만 유지. 외부 시세 자동 조회 및 관련 추가 코드를 제거. 기존 등록글의 저장 데이터는 호환성을 위해 유지하여 물품 목록·재등록 동작에 영향을 주지 않도록 함.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

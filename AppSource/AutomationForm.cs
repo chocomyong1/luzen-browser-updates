@@ -33,9 +33,8 @@ internal sealed partial class AutomationForm : Form
     private readonly ComboBox _fPaid = FilterDropdown(99);
     private readonly TextBox _fName = new() { Width = 210, PlaceholderText = "제목 검색" };
     private readonly Label _filterSummary = new() { AutoSize = true, ForeColor = UiTheme.Muted };
-    // The original editor lets the user choose a known sub ID or type a new one.
-    private readonly ComboBox _subId = new() { DropDownStyle = ComboBoxStyle.DropDown };
-    private readonly TextBox _siteId = new();
+    // Retained internally for compatibility with saved jobs; no sub-ID editor.
+    private readonly TextBox _subId = new(), _siteId = new();
     private readonly CheckBox _paidRegistration = new() { Text = "유료 등록", AutoSize = true };
 
     private static ComboBox FilterDropdown(int width) => new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = width, FlatStyle = FlatStyle.Standard };
@@ -148,7 +147,6 @@ internal sealed partial class AutomationForm : Form
         _tradingUnit.SelectedItem = "없음";
         _macro.Items.AddRange(new object[] { "직접설정" });
         _macro.SelectedItem = "직접설정";
-        RefreshEditorSubIds();
         _itemCategory.SelectedIndexChanged += (_, _) => UpdateContextFields();
         _tradingMethod.SelectedIndexChanged += (_, _) => UpdateContextFields();
         _sellRadio.CheckedChanged += (_, _) => UpdateTradeMode();
@@ -157,7 +155,6 @@ internal sealed partial class AutomationForm : Form
         _flowMode.Items.AddRange(new object[] { "판매등록", "구매등록", "재등록" });
         _game.Items.AddRange(GameServerCatalog.Games.Cast<object>().ToArray());
         _game.SelectedIndexChanged += (_, _) => UpdateServerOptions();
-        _server.SelectedIndexChanged += (_, _) => UpdateMarketPriceDisplay();
         _game.SelectedItem = GameServerCatalog.LostArk;
 
         var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = UiTheme.Canvas };
@@ -209,7 +206,6 @@ internal sealed partial class AutomationForm : Form
         BuildAutoRegistrationTab();
         BuildJobTab();
         BuildWorkflowTab();
-        InitializeMarketPrices();
         ConfigureJobsGrid();
         ConfigureAutoGrid();
         InitializeBatchContextMenus();
@@ -269,7 +265,7 @@ internal sealed partial class AutomationForm : Form
         _timer.Tick += async (_, _) => await SchedulerTickAsync();
         FormClosing += (_, _) =>
         {
-            _timer.Stop(); _marketPriceTimer.Stop(); _currentRun?.Cancel();
+            _timer.Stop(); _currentRun?.Cancel();
             _schedulerRunning = false;
             try { SaveAll(); } catch { }
         };
@@ -476,7 +472,6 @@ internal sealed partial class AutomationForm : Form
         try
         {
             SetOptions(_fSub, _jobs.Select(j => j.SubId));
-            RefreshEditorSubIds();
             SetOptions(_fSite, new[] { "매니아" });
             SetOptions(_fSiteId, _jobs.Select(j => j.SiteId));
             SetOptions(_fOperation, new[] { "판매", "구매", "재등록" });
@@ -486,23 +481,6 @@ internal sealed partial class AutomationForm : Form
             RefreshServerFilterChoicesCore();
         }
         finally { _filterChanging = false; }
-    }
-
-    private void RefreshEditorSubIds()
-    {
-        var current = _subId.Text;
-        var existing = _jobs.Select(j => j.SubId).Append(_defaultSubId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(id => id, StringComparer.CurrentCulture).ToList();
-        _subId.BeginUpdate();
-        try
-        {
-            _subId.Items.Clear();
-            _subId.Items.AddRange(existing.Cast<object>().ToArray());
-            _subId.Text = current;
-        }
-        finally { _subId.EndUpdate(); }
     }
 
     private void RefreshServerFilterChoices()
@@ -894,7 +872,6 @@ internal sealed partial class AutomationForm : Form
         }
         var radios = Horizontal(_sellRadio, _buyRadio, _renewRadio);
         Field("구분", radios, 34);
-        Field("서브 ID", _subId, 33);
         Field("사이트 아이디", _siteId, 33);
         Field("유료 등록", _paidRegistration, 33);
         Field("사이트", new Label { Text = "아이템매니아 (매니아)", TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill }, 32);
@@ -903,8 +880,6 @@ internal sealed partial class AutomationForm : Form
         Field("물품구분", _itemCategory, 33);
         Field("거래유형", _tradingMethod, 33);
         // No fictitious common 'item info' or arbitrary money-unit dropdown.
-        // Instant buying is optional and only applies to buy listings.
-        Field("즉시구매", _instantTransaction, 33);
         _quantity.Width = 110; _unit.Width = 92;
         _unit.PlaceholderText = "수량 단위";
         Field("수량 / 단위", Horizontal(_quantity, _unit), 33);
@@ -913,9 +888,6 @@ internal sealed partial class AutomationForm : Form
         Field("최소/최대수량", Horizontal(
             new Label { Text = "최소", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _minQuantity,
             new Label { Text = "최대", AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, _maxQuantity), 36);
-        // Read-only outside reference quotes; these never overwrite listing prices.
-        Field("실시간 시세", BuildMarketPricePanel(), 122);
-        Field("매크로", _macro, 33);
         // Local automation-only controls and game-dependent character attributes are
         // intentionally NOT presented as if the site universally requires them.
         Field("캐릭터명", _character, 33);
@@ -1417,8 +1389,7 @@ internal sealed partial class AutomationForm : Form
 
     private void ClearEditor()
     {
-        foreach (var box in new[] { _title, _quantity, _price, _character, _description, _entry, _siteId }) box.Clear();
-        _subId.Text = "";
+        foreach (var box in new[] { _title, _quantity, _price, _character, _description, _entry, _subId, _siteId }) box.Clear();
         _paidRegistration.Checked = false;
         _importedListingInfo.Text = "신규 등록 물품";
         _game.SelectedItem = GameServerCatalog.LostArk;
