@@ -194,12 +194,41 @@ internal sealed partial class AutomationForm : Form
         outer.Controls.Add(contentSplit, 0, 1);
         var logPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         logPanel.Controls.Add(_log);
-        logPanel.Controls.Add(new Label
+        var logHeader = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top, Height = 34, ColumnCount = 2, RowCount = 1,
+            BackColor = UiTheme.SurfaceAlt
+        };
+        logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
+        logHeader.Controls.Add(new Label
         {
             Text = "실행 기록   ·   위 경계선을 드래그하여 높이 조절",
-            Dock = DockStyle.Top, Height = 27, Padding = new Padding(12, 5, 0, 0),
-            BackColor = UiTheme.SurfaceAlt, ForeColor = UiTheme.Muted
-        });
+            Dock = DockStyle.Fill, Padding = new Padding(12, 8, 0, 0),
+            ForeColor = UiTheme.Muted
+        }, 0, 0);
+        var copyErrors = new Button
+        {
+            Text = "오류 로그 복사", Dock = DockStyle.Fill,
+            Margin = new Padding(4, 3, 8, 3)
+        };
+        UiTheme.StyleButton(copyErrors);
+        copyErrors.Click += (_, _) =>
+        {
+            try
+            {
+                Clipboard.SetText(ErrorLogCopy.Build(_log.Lines,
+                    AppUpdateService.CurrentVersion, DateTime.Now));
+                copyErrors.Text = "복사 완료 ✓";
+            }
+            catch (Exception ex)
+            {
+                copyErrors.Text = "복사 실패";
+                AppendLog("오류 로그 복사 실패: " + ex.GetType().Name);
+            }
+        };
+        logHeader.Controls.Add(copyErrors, 1, 0);
+        logPanel.Controls.Add(logHeader);
         contentSplit.Panel2.Controls.Add(logPanel);
 
         BuildAutoRegistrationTab();

@@ -78,6 +78,23 @@ internal static class Program
         Check(HourlyServerQuota.Current(counters, late, reset).SiteRemaining is null, "baseline resets in new Korean hour");
         Check(HourlyServerQuota.Reconcile(HourlyServerQuota.Current(counters, late, reset), 60, 21) is null,
             "first official count in a new hour also initializes silently");
+        string diagnostic = ErrorLogCopy.Build(new[]
+        {
+            "[20:16:29] 작업 시작: [재등록] 실리안 / 제목",
+            "[20:16:30] 관리 목록 10페이지 검사",
+            "[20:16:40] 작업 오류: 등록번호의 행을 찾지 못했습니다",
+            "[20:16:41] 봇 토큰: sampleSecret",
+            "[20:16:41] 식별자: 1234567890:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN",
+            "[20:16:42] 비밀번호: pretendSecret",
+            "[20:16:43] 작업 시작: [재등록] 다른 서버"
+        }, "22.2.26", new DateTime(2026, 11, 17, 20, 17, 0));
+        Check(diagnostic.Contains("관리 목록 10페이지") && diagnostic.Contains("작업 오류"),
+            "copy failure with preceding context");
+        Check(diagnostic.Contains("[봇 토큰 숨김]") && !diagnostic.Contains("abcdefghijklmnopqrstuvwxyz"),
+            "redact Telegram token");
+        Check(!diagnostic.Contains("pretendSecret"), "redact password");
+        Check(!diagnostic.Contains("sampleSecret"), "redact named secret");
+        Check(diagnostic.Contains("22.2.26"), "include version");
         Console.WriteLine("PASS independent hourly quotas, silent first baseline, later drift alerts, lower cap, pacing, dedup");
     }
 }

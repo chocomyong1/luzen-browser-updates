@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../AppSource/HourlyServerQuota.cs" Link="HourlyServerQuota.cs" />
+    <Compile Include="../../AppSource/ErrorLogCopy.cs" Link="ErrorLogCopy.cs" />
   </ItemGroup>
 </Project>
