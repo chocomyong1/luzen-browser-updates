@@ -81,15 +81,10 @@ internal sealed partial class AutomationForm
             ? $"ID·서버별 첫 사이트 잔여 횟수 동기화(텔레그램 알림 없음): {job.SiteId} / {job.Server} / 사이트 {siteRemaining}회, 이번 시간 프로그램 시도 {state.Attempts}회"
             : $"ID·서버별 잔여 횟수: {job.SiteId} / {job.Server} / 사이트 {siteRemaining}회, 이번 시간 프로그램 시도 {state.Attempts}회");
         if (difference is not { } change) return;
-        string message = $"[Luzen 자동등록 횟수 불일치]\n" +
-            $"아이디: {job.SiteId}\n서버: {job.Server}\n" +
-            $"프로그램 예상: {change.Expected}회\n" +
-            $"사이트 실제: {change.Reported}회\n" +
-            $"자동 보정 후 사용 가능: {change.Effective}회\n" +
-            $"기준 시간: {HourlyServerQuota.HourKey(DateTime.UtcNow)}시 (한국)\n" +
-            "전체 자동등록은 중지하지 않고 다른 서버도 계속 진행합니다.";
-        AppendLog($"등록 횟수 차이 자동 보정: {job.Server} / 예상 {change.Expected} → 실제 {change.Reported} / 텔레그램 알림 예약");
-        _ = SendQuotaAlertAsync(message);
+        // The user's original registration program may also be posting under
+        // this ID/server. That makes a different remaining count expected;
+        // continue to use the authoritative site count without Telegram spam.
+        AppendLog($"등록 횟수 차이 자동 보정(텔레그램 알림 OFF): {job.Server} / 예상 {change.Expected} → 사이트 실제 {change.Reported} / 사용 가능 {change.Effective}회");
     }
 
     private async Task SendQuotaAlertAsync(string message)
