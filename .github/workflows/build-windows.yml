@@ -57,15 +57,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.5'
+          $version = '22.2.6'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.5
-          path: LuzenBrowser_22.2.5_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.6
+          path: LuzenBrowser_22.2.6_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.5'
+          $version = '22.2.6'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -85,7 +85,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.5: 내 등록글을 불러온 뒤 편집 화면의 미선택 항목이 기존 제목·게임·서버·가격·수량 및 URL을 공란으로 덮어쓰지 않도록 수정. 기존 재등록 ID 확인, 제출 간격 및 불확실한 제출 보류 기능 유지. Windows 빌드와 오프라인 테스트 완료. 실제 사이트 등록 확인은 별도 필요.'
+            releaseNotes = 'v22.2.6: 자동등록 상단 버튼을 Windows 글꼴 크기에 맞게 넓히고, 창 너비에 따라 여러 줄로 자동 배치하여 글자가 잘리지 않도록 개선. 재등록·신규등록 로직은 v22.2.5와 동일. Windows 빌드와 오프라인 테스트 완료. 실제 사이트 등록 확인은 별도 필요.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

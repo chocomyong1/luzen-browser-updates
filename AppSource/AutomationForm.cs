@@ -605,16 +605,21 @@ internal sealed partial class AutomationForm : Form
         _editorTabs.TabPages.Add(_autoTab);
         var buttons = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 45, WrapContents = false, AutoScroll = true,
+            Dock = DockStyle.Top, Height = 45, WrapContents = true, AutoScroll = false,
             BackColor = UiTheme.Surface, Padding = new Padding(10, 7, 0, 0)
         };
         void MakeButton(string name, int width, Action click)
         {
             var b = new Button
             {
-                Text = name, Width = width, Height = 30, Margin = new Padding(4, 0, 4, 0),
+                Text = name,
+                Height = 32, Margin = new Padding(4, 0, 4, 3),
+                TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
+            UiTheme.StyleButton(b, name == "자동등록 시작" ? UiTheme.ButtonTone.Success :
+                name == "선택 물품 일괄수정" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
+            b.Width = Math.Max(width, TextRenderer.MeasureText(name, b.Font).Width + b.Padding.Horizontal + 22);
             b.Click += (_, _) => click();
             buttons.Controls.Add(b);
         }
@@ -630,6 +635,25 @@ internal sealed partial class AutomationForm : Form
         MakeButton("선택 물품 일괄수정", 150, BulkEditSelected);
         MakeButton("조회 조건", 91, ShowItemRegistrationView);
         MakeButton("설정 저장", 93, SaveAll);
+        // Windows text scaling can make fixed-width buttons truncate Korean
+        // captions. Reflow into as many rows as fit and grow the toolbar so
+        // wrapped rows remain visible instead of being clipped or scrolled.
+        void UpdateToolbarHeight()
+        {
+            if (buttons.ClientSize.Width < 100) return;
+            int available = buttons.ClientSize.Width - buttons.Padding.Horizontal - 4;
+            int used = 0, rows = 1;
+            foreach (Control button in buttons.Controls)
+            {
+                int space = button.Width + button.Margin.Horizontal;
+                if (used > 0 && used + space > available) { rows++; used = 0; }
+                used += space;
+            }
+            int height = buttons.Padding.Vertical + rows * 35 + 3;
+            if (buttons.Height != height) buttons.Height = height;
+        }
+        buttons.SizeChanged += (_, _) => UpdateToolbarHeight();
+        buttons.HandleCreated += (_, _) => UpdateToolbarHeight();
         var help = new Label
         {
             Text = "표 맨 위 [☐ 전체] 클릭 → 조회된 물품 일괄선택/해제  |  체크 물품 자동 ON/OFF  |  실제 사이트 제출은 별도 허용이 필요합니다.",
