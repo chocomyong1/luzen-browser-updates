@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.29",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.29/LuzenBrowser_22.2.29_BinaryUpdate.zip",
-  "sha256": "fc2d4417713271b54b9c1e13be404c885de6893cfff245aa7c4e02996c7a959d",
+  "version": "22.2.30",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.30/LuzenBrowser_22.2.30_BinaryUpdate.zip",
+  "sha256": "6bef22bcfab44dac17ec90bb9835d48f4ae367726324ef9cb75345d222e50b7d",
   "format": "binary",
-  "releaseNotes": "v22.2.29: 실행 기록을 재등록 1건당 성공/실패/대기 한 줄로 간결하게 표시합니다. 제목줄의 오류 N건을 누르면 오류만 볼 수 있고 다시 누르면 전체 기록이 보입니다. 내부 상세 기록과 파일 저장은 그대로 유지하며, 오류 로그 복사는 화면에서 숨긴 진단 단계까지 복사합니다."
+  "releaseNotes": "v22.2.30: 백그라운드 자동 로그인과 재등록 첫 페이지 이동이 겹치는 오류를 수정했습니다. 로그인 완료를 기다리고 페이지 이동마다 정확한 탐색 ID를 확인합니다. 관리 목록 이동이 일시적으로 중단되면 안전하게 조회만 최대 3회 재시도하며 실제 재등록 제출은 반복하지 않습니다."
 }
