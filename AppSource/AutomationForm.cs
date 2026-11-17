@@ -1040,8 +1040,10 @@ internal sealed partial class AutomationForm : Form
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "최대", DataPropertyName = "MaxQuantity", Width = 70, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "재등록(분)", DataPropertyName = "IntervalMinutes", Width = 86, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "상품/제목", DataPropertyName = "Title", MinimumWidth = 140, ReadOnly = true, AutoSizeMode = DataGridViewAutoSizeColumnMode.None, Width = 385 });
-        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "캐릭터", DataPropertyName = "Character", Width = 98, ReadOnly = true });
-        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "상세설명", DataPropertyName = "Description", Width = 250, ReadOnly = true });
+        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "캐릭터", DataPropertyName = "CharacterDisplay", Width = 98, ReadOnly = true,
+            ToolTipText = "미수집: 사이트의 목록·상세 화면에서 확인되지 않은 값입니다. 자동으로 임의 입력하지 않습니다." });
+        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "상세설명", DataPropertyName = "DescriptionDisplay", Width = 250, ReadOnly = true,
+            ToolTipText = "미수집: 사이트의 목록·상세 화면에서 확인되지 않은 값입니다. 자동으로 임의 입력하지 않습니다." });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "다음 예정", DataPropertyName = "NextDueLocal", Width = 115, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "상태", DataPropertyName = "LastStatus", Width = 90, ReadOnly = true });
         _jobsGrid.CurrentCellDirtyStateChanged += (_, _) => { if (_jobsGrid.IsCurrentCellDirty) _jobsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
@@ -2084,6 +2086,8 @@ internal sealed partial class AutomationForm : Form
                         // Process termination during a live submission must never silently
                         // retry the listing on the next launch.
                         job.RequiresReview = true;
+                        job.PendingRepostBeforeStamp = flow.Operation == "재등록" ? preRepostStamp : "";
+                        job.PendingRepostAttemptUtc = flow.Operation == "재등록" ? now : null;
                         job.LastStatus = "제출 중: 결과 확인 필요";
                         job.NextDueUtc = DateTime.MaxValue;
                         _config.Jobs = _jobs.ToList();
@@ -2141,6 +2145,8 @@ internal sealed partial class AutomationForm : Form
                         identity.Error + " / 중복 등록을 막기 위해 사이트 확인 전까지 자동 실행을 보류합니다.");
                 if (flow.Operation != "재등록") job.ListingNumber = identity.Number;
                 job.InitialCompleted = true; job.RequiresReview = false;
+                job.PendingRepostBeforeStamp = "";
+                job.PendingRepostAttemptUtc = null;
                 if (flow.Operation is "판매등록" or "구매등록")
                 {
                     job.OriginalTradeSide = flow.Operation == "판매등록" ? "판매" : "구매";
@@ -2344,15 +2350,25 @@ internal sealed partial class AutomationForm : Form
     private void OnItemManiaScriptDialog(object? sender, CoreWebView2ScriptDialogOpeningEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_armedOwnListRepost)) return;
-        if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttps || !ItemManiaAccountStore.IsOfficialSite(uri) ||
-            !MyListingsImport.IsOwnedListUrl(e.Uri))
+        var currentPage = _web.Source?.AbsoluteUri ?? "";
+        bool officialDialog = Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) &&
+            uri.Scheme == Uri.UriSchemeHttps && ItemManiaAccountStore.IsOfficialSite(uri);
+        bool ownListContext = MyListingsImport.IsOwnedListUrl(currentPage);
+        var message = (e.Message ?? "").Trim();
+        // The first confirm originates from the owned-list page. A subsequent
+        // success alert may be dispatched by another official ItemMania page
+        // after the repost handler navigates. That alert is safe to DISMISS,
+        // but an unrelated second CONFIRM must never be approved automatically.
+        bool officialRepostAlert = officialDialog && e.Kind == CoreWebView2ScriptDialogKind.Alert &&
+            (message.Contains("재등록") || message.Contains("다시 등록"));
+        if (!officialDialog || (!ownListContext && !officialRepostAlert))
         {
             _repostDialogBlocked = "재등록 대상 목록 외부에서 확인창이 발생했습니다";
-            AppendLog("안전을 위해 다른 화면의 확인창을 승인하지 않았습니다.");
+            AppendLog("재등록 확인창 출처 차단: 종류=" + e.Kind +
+                " / 페이지=" + (_web.Source?.AbsolutePath ?? "없음") +
+                " / 발생경로=" + (uri?.AbsolutePath ?? "알 수 없음"));
             return;
         }
-        var message = (e.Message ?? "").Trim();
         var text = message.Length > 120 ? message[..120] + "…" : message;
         var unsafeWords = new[] { "결제", "유료", "포인트", "마일리지", "프리미엄", "수수료", "삭제", "숨김",
             "비밀번호", "인증", "차단 해제", "보안", "입금", "충전" };

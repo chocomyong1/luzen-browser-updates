@@ -11,6 +11,7 @@ const automation = read('AutomationForm.cs');
 const imports = read('MyListingsImport.cs');
 const bulk = read('AutomationForm.BulkImportApproval.cs');
 const models = read('AutomationModels.cs');
+const myListingsUi = read('AutomationForm.MyListings.cs');
 
 // Require fallback for BOTH manual dry-run and real submission, and no click
 // until the same row is located again at the point of submission.
@@ -24,7 +25,19 @@ assert.match(automation, /job\.RequiresReview = true;[\s\S]*?submitted = true;/)
 assert.match(automation, /ScriptDialogOpening \+= OnItemManiaScriptDialog/);
 assert.match(automation, /_armedOwnListRepost = job\.ListingNumber/);
 assert.match(automation, /e\.Kind == CoreWebView2ScriptDialogKind\.Confirm && !isUnsafe/);
-assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(e\.Uri\)/);
+// A native confirm from the owned list is allowed only in its armed exact-ID
+// context; a later positive alert from another OFFICIAL site path can close.
+assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(currentPage\)/);
+assert.match(automation, /officialDialog && e\.Kind == CoreWebView2ScriptDialogKind\.Alert/);
+assert.match(automation, /!officialDialog \|\| \(!ownListContext && !officialRepostAlert\)/);
+assert.match(automation, /job\.PendingRepostBeforeStamp = flow\.Operation == "재등록" \? preRepostStamp/);
+assert.match(automation, /job\.PendingRepostBeforeStamp = "";[\s\S]*?job\.PendingRepostAttemptUtc = null;/);
+assert.match(myListingsUi, /ReconcilePendingRepostsAsync\(cancellation\.Token\)/);
+assert.match(myListingsUi, /row\.Status != "ready" \|\| string\.IsNullOrWhiteSpace\(row\.Stamp\)/);
+assert.match(myListingsUi, /string\.Equals\(row\.Stamp, job\.PendingRepostBeforeStamp, StringComparison\.Ordinal\)/);
+assert.match(myListingsUi, /job\.RequiresReview = false;[\s\S]*?job\.LastStatus = "재등록 시각 변경 확인/);
+assert.match(models, /CharacterDisplay => string\.IsNullOrWhiteSpace\(Character\)/);
+assert.match(myListingsUi, /_config\.DetailEnrichmentCursor = \(start \+ batchSize\) % needing\.Count/);
 assert.match(automation, /NavigateAsync\(beforeOwnListUrl, token\)/);
 assert.match(automation, /row\.Status == "found" && !string\.IsNullOrWhiteSpace\(row\.Stamp\)/);
 assert.match(automation, /Math\.Clamp\(_config\.MaxSubmissionsPerHour, 1, 1000\)/);

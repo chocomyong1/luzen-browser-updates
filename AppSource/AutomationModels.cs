@@ -50,9 +50,17 @@ internal sealed class ListingJob
     public int IntervalMinutes { get; set; } = 30;
     public bool InitialCompleted { get; set; }
     public bool RequiresReview { get; set; }
+    // Persist the pre-submit site timestamp so an interrupted repost can be
+    // reconciled read-only by exact listing ID on the next My Room scan.
+    public string PendingRepostBeforeStamp { get; set; } = "";
+    public DateTime? PendingRepostAttemptUtc { get; set; }
     public DateTime NextDueUtc { get; set; } = DateTime.MinValue;
     public DateTime? LastSucceededUtc { get; set; }
     public string LastStatus { get; set; } = "대기";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string CharacterDisplay => string.IsNullOrWhiteSpace(Character) && ImportedFromSite ? "미수집" : Character;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DescriptionDisplay => string.IsNullOrWhiteSpace(Description) && ImportedFromSite ? "미수집" : Description;
     public string ViewTitle => $"[{Operation}] {Title}";
     public string NextDueLocal => RequiresReview ? "확인 필요" : InitialCompleted && !AutoRepost && Operation != "재등록" ? "완료" : NextDueUtc == DateTime.MaxValue ? "완료/보류" : NextDueUtc == DateTime.MinValue ? "즉시" : NextDueUtc.ToLocalTime().ToString("MM-dd HH:mm:ss");
 }
@@ -85,6 +93,7 @@ internal sealed class AutomationConfiguration
     public int MaxListingsPerServer { get; set; } = 30;
     public int MinimumServerSeconds { get; set; } = 21;
     public int MinimumGlobalSeconds { get; set; } = 21;
+    public int DetailEnrichmentCursor { get; set; }
     public List<DateTime> SubmissionAttemptsUtc { get; set; } = new();
     public Dictionary<string, DateTime> LastServerAttemptUtc { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<ListingJob> Jobs { get; set; } = new();

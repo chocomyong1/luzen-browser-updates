@@ -88,6 +88,7 @@ internal sealed partial class AutomationForm
             AppendLog("내 등록글 자동 불러오기 시작: 아이템매니아의 판매·구매 관리 페이지를 직접 조회합니다.");
             var scan = await ReadMyListingsPagesAsync(cancellation.Token);
             await EnrichImportedListingDetailsAsync(scan, cancellation.Token);
+            int reconciled = await ReconcilePendingRepostsAsync(cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             var records = scan.Records;
             int incomplete = records.Count(r => string.IsNullOrWhiteSpace(r.Game) ||
@@ -115,7 +116,7 @@ internal sealed partial class AutomationForm
                 MessageBox.Show(this,
                     $"판매·구매 등록글 {records.Count}건 확인\n" +
                     $"이미 목록에 있음: {plan.Duplicates}건 / 정보 부족: {plan.Invalid}건\n\n" +
-                    "추가하거나 보완할 물품이 없습니다.\n" +
+                    $"추가하거나 보완할 물품이 없습니다. 제출 결과 자동 확인: {reconciled}건\n" +
                     "사이트에서 확인되지 않은 값은 빈칸으로 유지됩니다. 기존 글의 일정이나 제출 보류 상태는 변경하지 않았습니다.",
                     "내 등록글 자동 조회");
                 return;
@@ -143,7 +144,7 @@ internal sealed partial class AutomationForm
             RefreshFilterChoices();
             RefreshFilteredLists(plan.NewJobs.FirstOrDefault()?.Id ?? plan.Updates.First().Target.Id);
             ShowItemRegistrationView();
-            AppendLog($"내 등록글 자동 조회 완료: {plan.NewJobs.Count}건 추가 · {plan.Updates.Count}건 정보 보완 · {plan.Duplicates}건 중복 제외 · 자동 실행 OFF");
+            AppendLog($"내 등록글 자동 조회 완료: {plan.NewJobs.Count}건 추가 · {plan.Updates.Count}건 정보 보완 · {plan.Duplicates}건 중복 제외 · 재등록 결과 확인 {reconciled}건");
             if (!scan.CompletedAllPages)
                 AppendLog("주의: 일부 페이지를 읽지 못했거나 페이지 제한에 도달했습니다. 모든 등록글을 확인했다고 판단하지 마세요.");
         }
@@ -171,6 +172,48 @@ internal sealed partial class AutomationForm
             cancellation.Dispose();
             completion.TrySetResult(true);
         }
+    }
+
+    // A post can succeed on the server even when the hidden WebView misses its
+    // final alert. Never repost it again to find out. Revisit the exact owned
+    // row and clear the hold only if its server-rendered timestamp changed
+    // since the checkpoint saved BEFORE pressing the repost button.
+    private async Task<int> ReconcilePendingRepostsAsync(CancellationToken token)
+    {
+        int reconciled = 0;
+        var pending = _jobs.Where(j => j.RequiresReview && j.PendingRepostAttemptUtc.HasValue &&
+            !string.IsNullOrWhiteSpace(j.PendingRepostBeforeStamp) &&
+            ListingIdentity.HasNumber(j.ListingNumber) &&
+            j.PendingRepostAttemptUtc.Value > DateTime.UtcNow.AddHours(-2))
+            .Take(15).ToList();
+        foreach (var job in pending)
+        {
+            token.ThrowIfCancellationRequested();
+            var url = OwnedListUrlFor(job);
+            if (!MyListingsImport.IsOwnedListUrl(url)) continue;
+            try
+            {
+                await NavigateOwnedListAsync(url, token);
+                var row = await LocateOwnedListRepostAsync(job, token);
+                if (row.Status != "ready" || string.IsNullOrWhiteSpace(row.Stamp) ||
+                    string.Equals(row.Stamp, job.PendingRepostBeforeStamp, StringComparison.Ordinal))
+                    continue;
+                job.RequiresReview = false;
+                job.InitialCompleted = true;
+                job.LastSucceededUtc = DateTime.UtcNow;
+                job.NextDueUtc = job.Enabled ? DateTime.UtcNow.AddMinutes(Math.Max(1, job.IntervalMinutes)) : DateTime.MaxValue;
+                job.LastStatus = "재등록 시각 변경 확인 · 보류 자동 해제";
+                job.PendingRepostBeforeStamp = "";
+                job.PendingRepostAttemptUtc = null;
+                reconciled++;
+                _config.Save();
+                AppendLog("보류 자동 해제: 정확한 등록번호 " + job.ListingNumber + "의 사이트 재등록 시각 변경 확인");
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception ex) { AppendLog("보류 재검증 실패: " + job.ListingNumber + " / " + ex.GetType().Name); }
+        }
+        if (reconciled > 0) { _jobsGrid.Refresh(); _autoGrid.Refresh(); RefreshAutoSummary(); }
+        return reconciled;
     }
 
     private sealed class MyListingsScan
@@ -281,9 +324,15 @@ internal sealed partial class AutomationForm
              string.IsNullOrWhiteSpace(r.MinQuantity) || string.IsNullOrWhiteSpace(r.MaxQuantity)) &&
             MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber)).ToList();
         const int maxDetailPages = 80;
+        if (needing.Count == 0) return;
+        // Do not fetch the same first 80 rows forever when the account has
+        // hundreds of listings. Continue from the last checked offset.
+        int start = Math.Max(0, _config.DetailEnrichmentCursor) % needing.Count;
+        int batchSize = Math.Min(needing.Count, maxDetailPages);
         int visits = 0, updated = 0;
-        foreach (var record in needing.Take(maxDetailPages))
+        for (int offset = 0; offset < batchSize; offset++)
         {
+            var record = needing[(start + offset) % needing.Count];
             token.ThrowIfCancellationRequested();
             visits++;
             try
@@ -324,6 +373,8 @@ internal sealed partial class AutomationForm
                     " / " + ex.GetType().Name);
             }
         }
+        _config.DetailEnrichmentCursor = (start + batchSize) % needing.Count;
+        _config.Save();
         if (visits > 0) AppendLog($"등록글 상세 화면 {visits}건 읽음 · {updated}건 정보 보완");
         if (needing.Count > maxDetailPages)
             AppendLog($"상세정보 조회는 한번에 최대 {maxDetailPages}건까지 수행합니다. " +
