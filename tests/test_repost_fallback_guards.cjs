@@ -32,6 +32,13 @@ assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(currentPage\)/);
 assert.match(automation, /officialDialog && e\.Kind == CoreWebView2ScriptDialogKind\.Alert/);
 assert.match(automation, /!officialDialog \|\| \(!ownListContext && !officialRepostAlert\)/);
 assert.match(automation, /job\.PendingRepostBeforeStamp = flow\.Operation == "재등록" \? preRepostStamp/);
+// Reposting a verified existing ID does not create a new ID. After the exact
+// owned row was clicked and the site independently confirmed success, keep
+// the original ID even if the result page no longer displays that ID.
+assert.match(automation, /if \(result\.Status != "clicked"\)[\s\S]*?exactOwnedRepostSubmitted = true/);
+assert.match(automation, /bool verified = await VerifySuccessAsync\([\s\S]*?if \(!verified\) throw/);
+assert.match(automation, /bool exactOwnedRepostConfirmed = flow\.Operation == "재등록" &&[\s\S]*?repostFromOwnedList && exactOwnedRepostSubmitted &&[\s\S]*?ListingIdentity\.HasNumber\(job\.ListingNumber\) &&[\s\S]*?MyListingsImport\.IsOwnedListUrl\(preRepostListUrl\)/);
+assert.match(automation, /identityOk = flow\.Operation == "재등록" \?[\s\S]*?ListingIdentity\.IsConfirmedExisting\(identity, job\) :[\s\S]*?ListingIdentity\.IsConfirmedNew\(identity, job\)/);
 assert.match(automation, /job\.PendingRepostBeforeStamp = "";[\s\S]*?job\.PendingRepostAttemptUtc = null;/);
 assert.match(myListingsUi, /ReconcilePendingRepostsAsync\(cancellation\.Token\)/);
 assert.match(myListingsUi, /row\.Status != "ready" \|\| string\.IsNullOrWhiteSpace\(row\.Stamp\)/);

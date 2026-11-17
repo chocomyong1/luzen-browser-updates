@@ -1990,6 +1990,7 @@ internal sealed partial class AutomationForm : Form
         bool successSelectorBefore = false;
         string preSubmitListingNumber = "";
         bool repostFromOwnedList = false;
+        bool exactOwnedRepostSubmitted = false;
         string preRepostStamp = "";
         string preRepostListUrl = "";
         _armedOwnListRepost = "";
@@ -2113,6 +2114,7 @@ internal sealed partial class AutomationForm : Form
                     var result = await InspectOwnedListRepostAsync(job, true, token);
                     if (result.Status != "clicked")
                         throw new InvalidOperationException("해당 등록번호의 행 재등록 클릭 실패: " + result.Message);
+                    exactOwnedRepostSubmitted = true;
                     AppendLog("본인 물품 재등록 명령 전달 (" + result.Method + "): " + job.ListingNumber);
                     await Task.Delay(650, token);
                     if (!string.IsNullOrEmpty(_repostDialogBlocked))
@@ -2135,21 +2137,29 @@ internal sealed partial class AutomationForm : Form
                 bool verified = await VerifySuccessAsync(flow, job, preSubmitListingNumber, preSubmitUrl,
                     successSelectorBefore, preRepostStamp, preRepostListUrl, token);
                 if (!verified) throw new InvalidOperationException("제출 이후 성공 확인 조건을 충족하지 못했습니다. 중복 등록을 피하려면 사이트에서 먼저 물품 상태를 확인하세요.");
-                // An apparent success message alone is not enough to establish
-                // which item was posted. Read a unique, site-owned listing ID.
-                var identity = await InspectCurrentIdentityAsync(job, token);
-                bool identityOk = flow.Operation == "재등록" ?
-                    ListingIdentity.IsConfirmedExisting(identity, job) :
-                    ListingIdentity.IsConfirmedNew(identity, job);
-                // A My Room LIST intentionally contains many registration IDs.
-                // It is not a detail page, so confirm the exact row again only
-                // AFTER a new success signal was verified above.
-                if (!identityOk && repostFromOwnedList &&
-                    MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri))
+                // Repost is not a NEW listing. Its original number was verified
+                // on the exact owned-list row BEFORE invoking that row's native
+                // repost action. After a separate verified SITE success signal,
+                // a generic completion page need not expose the old ID again.
+                // Requiring a NEW page-bound ID here caused a false failure
+                // even after ItemMania had reported a successful repost.
+                bool exactOwnedRepostConfirmed = flow.Operation == "재등록" &&
+                    repostFromOwnedList && exactOwnedRepostSubmitted &&
+                    ListingIdentity.HasNumber(job.ListingNumber) &&
+                    MyListingsImport.IsOwnedListUrl(preRepostListUrl);
+                var identity = new ListingIdentityEvidence();
+                bool identityOk = exactOwnedRepostConfirmed;
+                if (exactOwnedRepostConfirmed)
+                    AppendLog("재등록 성공 확인: 본인 등록목록의 정확한 등록번호·제목 행에서 제출했고, 사이트 성공 응답을 확인했습니다: " + job.ListingNumber);
+                else
                 {
-                    var ownRowAfter = await InspectOwnedListRepostAsync(job, null, token);
-                    identityOk = ownRowAfter.Status == "found";
-                    if (identityOk) AppendLog("재등록 성공 신호 및 대상 등록번호 행 재확인: " + job.ListingNumber);
+                    // NEW registrations must still establish a newly created
+                    // listing identity. Legacy repost paths need current-page
+                    // identity evidence because their target may be ambiguous.
+                    identity = await InspectCurrentIdentityAsync(job, token);
+                    identityOk = flow.Operation == "재등록" ?
+                        ListingIdentity.IsConfirmedExisting(identity, job) :
+                        ListingIdentity.IsConfirmedNew(identity, job);
                 }
                 if (!identityOk)
                     throw new InvalidOperationException("등록 완료 표시를 찾았지만 해당 글의 등록번호를 확정하지 못했습니다. " +
