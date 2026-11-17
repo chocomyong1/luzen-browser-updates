@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.36",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.36/LuzenBrowser_22.2.36_BinaryUpdate.zip",
-  "sha256": "007909e4d5e68c4ae3c9564e9cfa22cb176cc414c25d6803c6e040be156541e1",
+  "version": "22.2.37",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.37/LuzenBrowser_22.2.37_BinaryUpdate.zip",
+  "sha256": "076759af00d173bfa8139b592165055c1dd5a7eca004ff3674f9edfd50341f70",
   "format": "binary",
-  "releaseNotes": "v22.2.36: C VPN 시스템을 추가했습니다. A·B·C에서 각각 다른 매니아 계정, 작업 목록, 브라우저 세션과 로그를 사용합니다. C는 별도 SOCKS5/HTTP 프록시가 필요하고 A·B·C 외부 IP가 모두 달라야 시작됩니다. 저장된 프록시는 업데이트 후에도 자동 확인합니다. 기존 A/B 설정과 작업은 유지됩니다."
+  "releaseNotes": "v22.2.37: A/B/C 재등록 관리목록 이동·로그인 경합 복구, 사이트 서버별 재등록 제한 안내의 정상 대기 처리, 등록 속도 진단 및 중복 탐색 최소화, 실행 보류 사유 표시, 안전한 1건 미제출 조회시험을 개선했습니다. 사용자 설정·목록은 유지됩니다."
 }
