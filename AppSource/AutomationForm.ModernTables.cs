@@ -128,6 +128,11 @@ internal sealed partial class AutomationForm
                 e.FormattingApplied = true;
             }
             if (grid.Rows[e.RowIndex].DataBoundItem is not ListingJob job) return;
+            if (field == "LastStatus")
+            {
+                e.Value = job.StatusDisplay;
+                e.FormattingApplied = true;
+            }
             if (field is "NextDueLocal" or "LastStatus")
             {
                 if (job.RequiresReview)
@@ -140,6 +145,13 @@ internal sealed partial class AutomationForm
                     e.CellStyle.ForeColor = UiTheme.Success;
                 }
             }
+        };
+        grid.CellToolTipTextNeeded += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+                grid.Columns[e.ColumnIndex].DataPropertyName != "LastStatus") return;
+            if (grid.Rows[e.RowIndex].DataBoundItem is ListingJob job)
+                e.ToolTipText = job.LastStatus;
         };
     }
 

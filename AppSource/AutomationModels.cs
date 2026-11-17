@@ -61,6 +61,26 @@ internal sealed class ListingJob
     public string CharacterDisplay => string.IsNullOrWhiteSpace(Character) && ImportedFromSite ? "미수집" : Character;
     [System.Text.Json.Serialization.JsonIgnore]
     public string DescriptionDisplay => string.IsNullOrWhiteSpace(Description) && ImportedFromSite ? "미수집" : Description;
+    // The grid's status is the current state, not the most recent diagnostic
+    // message. Keep LastStatus unmodified for logs, recovery, and support.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string StatusDisplay
+    {
+        get
+        {
+            if (RequiresReview) return "확인 필요";
+            if (LastStatus == "실행 중") return "실행 중";
+            if (LastStatus.StartsWith("제출 중", StringComparison.Ordinal)) return "제출 확인 중";
+            if (LastStatus.Contains("오류", StringComparison.Ordinal) ||
+                LastStatus.Contains("실패", StringComparison.Ordinal)) return "오류";
+            if (LastStatus.StartsWith("시험 완료", StringComparison.Ordinal)) return "시험 완료";
+            if (!Enabled) return LastStatus == "중지됨" ? "중지됨" : "자동 꺼짐";
+            if (InitialCompleted && !AutoRepost && Operation != "재등록") return "완료";
+            if (NextDueUtc == DateTime.MaxValue) return "예약 필요";
+            if (NextDueUtc == DateTime.MinValue) return "실행 대기";
+            return "예약됨";
+        }
+    }
     public string ViewTitle => $"[{Operation}] {Title}";
     public string NextDueLocal => RequiresReview ? "확인 필요" :
         InitialCompleted && !AutoRepost && Operation != "재등록" ? "완료" :
