@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.18",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.18/LuzenBrowser_22.2.18_BinaryUpdate.zip",
-  "sha256": "21874a6d122daf9f3ce0c9a7e62d3931d0995d9c01444ffa102183e6d7febf8d",
+  "version": "22.2.19",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.19/LuzenBrowser_22.2.19_BinaryUpdate.zip",
+  "sha256": "e6e2fc546af7b4bbb38d9b9efa77f575025a271c927ff6bb1c9857dea9b6c860",
   "format": "binary",
-  "releaseNotes": "v22.2.18: 물품 목록의 수량과 단위를 하나로 합쳐 1개·3개처럼 표시하고 수량 미확인은 미수집으로 표시. 불필요한 단위·서브 ID·다음 예정·상태 열을 물품 목록에서 제거. 자동 실행 정보와 내부 진단 기록은 유지."
+  "releaseNotes": "v22.2.19: ID·서버별 매시 독립 등록 횟수 및 21초 최소 간격·자동 균등 배분. 다른 서버는 이전 작업 종료 후 바로 진행. 사이트 성공 안내의 ID 잔여 횟수를 반영해 자동 보정하고 차이가 나면 기존 텔레그램 봇으로 알림(연결 1회 필요). IP 제한은 계산에 사용하지 않음."
 }
