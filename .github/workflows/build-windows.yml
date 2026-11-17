@@ -85,15 +85,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.36'
+          $version = '22.2.37'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.36
-          path: LuzenBrowser_22.2.36_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.37
+          path: LuzenBrowser_22.2.37_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -101,7 +101,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.36'
+          $version = '22.2.37'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -113,7 +113,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.36: C VPN 시스템을 추가했습니다. A·B·C에서 각각 다른 매니아 계정, 작업 목록, 브라우저 세션과 로그를 사용합니다. C는 별도 SOCKS5/HTTP 프록시가 필요하고 A·B·C 외부 IP가 모두 달라야 시작됩니다. 저장된 프록시는 업데이트 후에도 자동 확인합니다. 기존 A/B 설정과 작업은 유지됩니다.'
+            releaseNotes = 'v22.2.37: A/B/C 재등록 관리목록 이동·로그인 경합 복구, 사이트 서버별 재등록 제한 안내의 정상 대기 처리, 등록 속도 진단 및 중복 탐색 최소화, 실행 보류 사유 표시, 안전한 1건 미제출 조회시험을 개선했습니다. 사용자 설정·목록은 유지됩니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

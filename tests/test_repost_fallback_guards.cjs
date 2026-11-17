@@ -46,7 +46,7 @@ const cooldownRecovery = automation.split('catch (Exception ex) when (submitted 
   ?.split('catch (Exception ex)')[0] || '';
 assert.match(cooldownRecovery, /job\.RequiresReview = false/);
 assert.match(cooldownRecovery, /job\.PendingRepostAttemptUtc = null/);
-assert.match(cooldownRecovery, /Math\.Max\(30, _config\.MinimumServerSeconds\)/);
+assert.match(cooldownRecovery, /Math\.Max\(60, _config\.MinimumServerSeconds\)/);
 assert.doesNotMatch(cooldownRecovery, /PauseScheduler\(/);
 const uncertainSubmissionRecovery = automation.split('catch (Exception ex) when (submitted && _repostServerCooldownRejected)')[1]
   ?.split('catch (Exception ex)')[1] || '';
@@ -55,7 +55,7 @@ assert.match(uncertainSubmissionRecovery, /PauseScheduler\(/);
 // context; a later positive alert from another OFFICIAL site path can close.
 assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(currentPage\)/);
 assert.match(automation, /officialDialog && e\.Kind == CoreWebView2ScriptDialogKind\.Alert/);
-assert.match(automation, /!officialDialog \|\| \(!ownListContext && !officialRepostAlert\)/);
+assert.match(automation, /!officialDialog \|\| \(!ownListContext && !officialRepostAlert && !officialCooldownAlert\)/);
 assert.match(automation, /job\.PendingRepostBeforeStamp = flow\.Operation == "재등록" \? preRepostStamp/);
 // Reposting a verified existing ID does not create a new ID. After the exact
 // owned row was clicked and the site independently confirmed success, keep

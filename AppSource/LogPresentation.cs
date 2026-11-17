@@ -15,7 +15,8 @@ internal static class LogPresentation
         "CSV 가져오기:", "CSV 내보내기:", "내 등록글 조회:", "조회 결과:",
         "내 등록글 조회 취소", "등록글 자동 조회 완료", "등록글 자동 조회 취소",
         "선택 물품", "서버별 복제 완료:", "표 상단", "물품 목록 열 너비",
-        "선택한 기존 등록글", "일괄수정", "물품 설정 저장:", "사이트 진단 파일 저장"
+        "선택한 기존 등록글", "일괄수정", "물품 설정 저장:", "사이트 진단 파일 저장",
+        "주의: 결과 확인 대기", "보류 사유:", "[미제출 조회시험", "처리 시간 요약:"
     };
 
     public static LogPresentationResult Format(string? message)
@@ -25,7 +26,7 @@ internal static class LogPresentation
             TrySummary(value, "등록 완료 요약:", "✓ 등록 성공", false, out result) ||
             TrySummary(value, "재등록 실패 요약:", "✕ 재등록 실패", true, out result) ||
             TrySummary(value, "등록 실패 요약:", "✕ 등록 실패", true, out result) ||
-            TrySummary(value, "재등록 대기 요약:", "◷ 서버 제한 대기", true, out result) ||
+            TrySummary(value, "재등록 대기 요약:", "◷ 서버 제한 대기", false, out result) ||
             TrySummary(value, "시험 완료 요약:", "○ 시험 완료", false, out result) ||
             TrySummary(value, "작업 중지 요약:", "■ 작업 중지", false, out result))
             return result;

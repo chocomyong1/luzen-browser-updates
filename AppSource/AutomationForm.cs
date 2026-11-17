@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Text;
@@ -47,9 +48,10 @@ internal sealed partial class AutomationForm : Form
     private ItemManiaAutoLogin? _autoLogin;
     private readonly TextBox _browserUrl = new() { Dock = DockStyle.Fill };
     private readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, BackColor = UiTheme.Navy, ForeColor = Color.FromArgb(222, 232, 244), Font = new Font("Consolas", 9) };
-    private readonly Label _logErrors = new() { Text = "오류 0건", Dock = DockStyle.Fill,
+    private readonly Label _logErrors = new() { Text = "현재 오류 0건", Dock = DockStyle.Fill,
         TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand,
         ForeColor = UiTheme.Muted, BackColor = UiTheme.SurfaceAlt };
+    private readonly ToolTip _logErrorTip = new();
     private readonly List<string> _rawLogLines = new();
     private readonly List<(string Text, bool Error)> _displayLogLines = new();
     private int _errorLogCount;
@@ -226,6 +228,8 @@ internal sealed partial class AutomationForm : Form
             RefreshErrorCounter();
             RenderCompactLog();
         };
+        _logErrorTip.SetToolTip(_logErrors,
+            "오류 숫자는 이번 실행에서 발생한 오류만 셉니다. 확인 필요는 이전 실행에서 저장된 보류 상태일 수 있습니다.");
         logHeader.Controls.Add(_logErrors, 1, 0);
         var copyErrors = new Button
         {
@@ -306,6 +310,10 @@ internal sealed partial class AutomationForm : Form
             if (pending > 0)
             {
                 AppendLog($"주의: 결과 확인 대기 {pending}건. 사이트에서 실제 등록 여부 확인 후 보류 해제하세요.");
+                foreach (var review in _jobs.Where(j => j.RequiresReview).Take(10))
+                    AppendLog($"보류 사유: {review.Server} · {review.ListingNumber} · {review.LastStatus} (이전 실행 포함)");
+                if (pending > 10)
+                    AppendLog($"보류 사유: 나머지 {pending - 10}건은 물품 목록에서 확인하세요.");
                 _state.Text = $"확인 필요 {pending}건";
                 _state.ForeColor = Color.Firebrick;
             }
@@ -340,6 +348,7 @@ internal sealed partial class AutomationForm : Form
             actions.Controls.Add(b);
         }
         Btn("내 등록글 불러오기", async (_, _) => await ImportMyRegisteredListingsAsync(), 158, UiTheme.ButtonTone.Primary);
+        Btn("선택 1건 조회시험", async (_, _) => await ProbeSelectedRepostReadOnlyAsync(), 150);
         actions.Controls.Add(new Panel
         {
             Width = 1, Height = 23, BackColor = UiTheme.Border,
@@ -1894,6 +1903,60 @@ internal sealed partial class AutomationForm : Form
         message = ""; return true;
     }
 
+    // Read-only: checks one row's number, title and unique repost control.
+    // It never submits, never removes a review hold, and never starts scheduling.
+    private async Task ProbeSelectedRepostReadOnlyAsync()
+    {
+        if (_schedulerRunning || _busy || _myListingsImportRunning)
+        {
+            MessageBox.Show(this, "자동 작업을 중지한 후 조회시험을 실행하세요.", "조회시험 대기");
+            return;
+        }
+        var target = _selected;
+        if (target is null || EffectiveOperation(target) != "재등록" ||
+            !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(target)))
+        {
+            MessageBox.Show(this, "재등록 물품 1개를 먼저 선택해 주세요. 확인 가능한 내 등록목록 주소가 필요합니다.", "조회시험 대상 선택");
+            return;
+        }
+        if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
+        {
+            MessageBox.Show(this, "해당 시스템의 별도 IP 연결 확인이 필요합니다.", "연결 확인 필요");
+            return;
+        }
+        _busy = true;
+        _state.Text = "선택 1건 조회시험 중 (미제출)";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        AppendLog("[미제출 조회시험 시작] " + target.Server + " / " + target.ListingNumber);
+        try
+        {
+            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
+            if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(timeout.Token);
+            var result = await LocateOwnedListFallbackAsync(target, timeout.Token);
+            string summary = result.Status == "ready"
+                ? "등록번호·제목·재등록 버튼 1개를 확인했습니다. 실제 제출하지 않았습니다."
+                : "조회시험 실패: " + result.Message + ". 실제 제출하지 않았습니다.";
+            AppendLog("[미제출 조회시험] " + target.Server + " / " + target.ListingNumber +
+                " / 상태 " + result.Status + " / " + summary);
+            MessageBox.Show(this, summary, "미제출 조회시험 결과");
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog("[미제출 조회시험] 90초 제한으로 검사 종료. 제출 없음.");
+            MessageBox.Show(this, "90초 안에 검사를 완료하지 못했습니다. 실제 제출은 없었습니다.", "조회시험 시간 초과");
+        }
+        catch (Exception ex)
+        {
+            AppendLog("[미제출 조회시험] " + ex.GetType().Name + ": " + ex.Message + " / 제출 없음");
+            MessageBox.Show(this, "조회시험 오류: " + ex.Message + "\n실제 제출은 없었습니다.", "조회시험 오류");
+        }
+        finally
+        {
+            _busy = false;
+            _state.Text = "중지/대기";
+        }
+    }
+
     private async Task RunSelectedAsync(bool dryRun)
     {
         // A read-only My Room scan uses the same WebView2 as registration.
@@ -2044,6 +2107,8 @@ internal sealed partial class AutomationForm : Form
         { AppendLog("실행 대기: " + pacingReason); return; }
         _busy = true;
         _currentlyExecutingJob = job;
+        var executionClock = Stopwatch.StartNew();
+        long submitStartMilliseconds = -1;
         _currentRun?.Dispose(); _currentRun = new CancellationTokenSource();
         var token = _currentRun.Token;
         bool submitted = false;
@@ -2151,7 +2216,11 @@ internal sealed partial class AutomationForm : Form
                         var now = DateTime.UtcNow;
                         // A success marker already on screen cannot prove a NEW submission.
                         preSubmitUrl = _web.Source?.AbsoluteUri ?? "";
-                        preSubmitListingNumber = (await InspectCurrentIdentityAsync(job, token)).Number;
+                        // A repost from a verified own-list row already has an
+                        // exact ID. Rechecking the whole list here only delays
+                        // the next server and cannot add identity evidence.
+                        preSubmitListingNumber = repostFromOwnedList ? job.ListingNumber :
+                            (await InspectCurrentIdentityAsync(job, token)).Number;
                         successSelectorBefore = await SuccessSelectorVisibleAsync(flow.SuccessSelector);
                         bool urlAlreadyMatches = !string.IsNullOrWhiteSpace(flow.SuccessUrlContains) &&
                             preSubmitUrl.Contains(flow.SuccessUrlContains, StringComparison.OrdinalIgnoreCase);
@@ -2170,6 +2239,7 @@ internal sealed partial class AutomationForm : Form
                         _config.Jobs = _jobs.ToList();
                         _config.Save();
                         submitted = true;
+                        submitStartMilliseconds = executionClock.ElapsedMilliseconds;
                         _submissionVerificationPending = true;
                     }
                 }
@@ -2310,7 +2380,7 @@ internal sealed partial class AutomationForm : Form
             job.RequiresReview = false;
             job.PendingRepostBeforeStamp = "";
             job.PendingRepostAttemptUtc = null;
-            job.NextDueUtc = DateTime.UtcNow.AddSeconds(Math.Max(30, _config.MinimumServerSeconds));
+            job.NextDueUtc = DateTime.UtcNow.AddSeconds(Math.Max(60, _config.MinimumServerSeconds));
             job.LastStatus = "사이트 서버 재등록 간격 대기";
             AppendLog("사이트가 이 서버의 재등록을 명확히 거절했습니다. 다른 서버는 계속 진행하며 " +
                 $"해당 글은 {job.NextDueLocal} 이후 재시도합니다. " + ex.Message);
@@ -2333,6 +2403,10 @@ internal sealed partial class AutomationForm : Form
         }
         finally
         {
+            executionClock.Stop();
+            if (submitStartMilliseconds >= 0)
+                AppendLog($"처리 시간 요약: {job.Server} · {job.ListingNumber} · 총 {executionClock.ElapsedMilliseconds / 1000.0:F1}초 · " +
+                    $"제출 전 {submitStartMilliseconds / 1000.0:F1}초 · 제출 후 {(executionClock.ElapsedMilliseconds - submitStartMilliseconds) / 1000.0:F1}초");
             _armedOwnListRepost = "";
             _repostDialogBlocked = "";
             _repostServerCooldownRejected = false;
@@ -2368,13 +2442,22 @@ internal sealed partial class AutomationForm : Form
         AppendLog("상세 URL에서 글 확인 실패 → 본인 등록목록에서 등록번호·제목을 재검사합니다: " + job.ListingNumber);
         if (!MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri) ||
             MyListingsImport.IsSellListUrl(_web.Source?.AbsoluteUri) != MyListingsImport.IsSellListUrl(ownListUrl))
-            await NavigateAsync(ownListUrl, token);
+            await NavigateOwnedListAsync(ownListUrl, token);
         return await LocateOwnedListRepostAsync(job, token);
     }
 
     private async Task<OwnedListRepostResult> LocateOwnedListRepostAsync(ListingJob job, CancellationToken token)
     {
         string current = _web.Source?.AbsoluteUri ?? "";
+        string expectedList = OwnedListUrlFor(job);
+        if (MyListingsImport.IsOwnedListUrl(expectedList) &&
+            (!MyListingsImport.IsOwnedListUrl(current) ||
+             MyListingsImport.IsSellListUrl(current) != MyListingsImport.IsSellListUrl(expectedList)))
+        {
+            AppendLog("관리 목록 경로 복구: 현재 화면 대신 해당 거래 방향의 본인 목록을 다시 엽니다.");
+            await NavigateOwnedListAsync(expectedList, token);
+            current = _web.Source?.AbsoluteUri ?? "";
+        }
         if (!MyListingsImport.IsOwnedListUrl(current))
             return new OwnedListRepostResult { Status = "error", Message = "등록글 관리 목록을 열지 못했습니다" };
         bool selling = MyListingsImport.IsSellListUrl(current);
@@ -2407,6 +2490,16 @@ internal sealed partial class AutomationForm : Form
             if (!string.Equals(_web.Source?.AbsoluteUri, next, StringComparison.OrdinalIgnoreCase))
                 await NavigateOwnedListAsync(next, token);
             var (row, page) = await InspectOwnedListPageAsync(job, token);
+            // ItemMania sometimes completes navigation before its SPA content
+            // settles, or briefly redirects during account login. Recover via
+            // read-only navigation and reinspection, never a speculative click.
+            for (int retry = 1; retry <= 2 && IsTransientOwnedListPageError(row); retry++)
+            {
+                AppendLog($"관리 목록 일시 이동 오류: {retry}/2회 안전 재조회 ({job.Server})");
+                await Task.Delay(900 * retry, token);
+                await NavigateOwnedListAsync(next, token);
+                (row, page) = await InspectOwnedListPageAsync(job, token);
+            }
             if (row.Status == "ready")
             {
                 if (!string.Equals(job.SourceListUrl, next, StringComparison.OrdinalIgnoreCase))
@@ -2465,6 +2558,11 @@ internal sealed partial class AutomationForm : Form
             $"(읽힌 물품 {visibleListings}건, 미표시 {unrenderedPages}페이지). " +
             "원본 글이 다른 상태/페이지로 이동했거나 저장된 등록번호가 변경됐을 수 있습니다" };
     }
+
+    private static bool IsTransientOwnedListPageError(OwnedListRepostResult result) =>
+        result.Status == "error" &&
+        (result.Message.Contains("현재 화면이 내 판매·구매 등록글 목록이 아닙니다", StringComparison.Ordinal) ||
+         result.Message.Contains("내 등록글 목록 화면이 아닙니다", StringComparison.Ordinal));
 
     // The site renders its management rows asynchronously. A navigation-complete
     // event alone does not prove the listing table is ready to inspect.
@@ -2592,13 +2690,16 @@ internal sealed partial class AutomationForm : Form
             uri.Scheme == Uri.UriSchemeHttps && ItemManiaAccountStore.IsOfficialSite(uri);
         bool ownListContext = MyListingsImport.IsOwnedListUrl(currentPage);
         var message = (e.Message ?? "").Trim();
+        var compactMessage = string.Concat(message.Where(c => !char.IsWhiteSpace(c)));
+        bool officialCooldownAlert = officialDialog && e.Kind == CoreWebView2ScriptDialogKind.Alert &&
+            compactMessage.Contains("해당서버에아직등록하실수없습니다", StringComparison.Ordinal);
         // The first confirm originates from the owned-list page. A subsequent
         // success alert may be dispatched by another official ItemMania page
         // after the repost handler navigates. That alert is safe to DISMISS,
         // but an unrelated second CONFIRM must never be approved automatically.
         bool officialRepostAlert = officialDialog && e.Kind == CoreWebView2ScriptDialogKind.Alert &&
             (message.Contains("재등록") || message.Contains("다시 등록"));
-        if (!officialDialog || (!ownListContext && !officialRepostAlert))
+        if (!officialDialog || (!ownListContext && !officialRepostAlert && !officialCooldownAlert))
         {
             _repostDialogBlocked = "재등록 대상 목록 외부에서 확인창이 발생했습니다";
             AppendLog("재등록 확인창 출처 차단: 종류=" + e.Kind +
@@ -2614,8 +2715,7 @@ internal sealed partial class AutomationForm : Form
         {
             // The site's explicit server cooldown message proves no repost was
             // accepted. Other alerts remain ambiguous and still require review.
-            var compactMessage = string.Concat(message.Where(c => !char.IsWhiteSpace(c)));
-            if (ownListContext && compactMessage.Contains("해당서버에아직등록하실수없습니다", StringComparison.Ordinal))
+            if (officialCooldownAlert)
                 _repostServerCooldownRejected = true;
             // Informational alerts need to be closed before site JS can resume.
             // Only a positive, repost-specific server message is a success signal.
@@ -2650,6 +2750,10 @@ internal sealed partial class AutomationForm : Form
     {
         token.ThrowIfCancellationRequested();
         if (!IsAllowedCurrentPage() || _web.CoreWebView2 is null) return;
+        // A site JavaScript alert is the authoritative response to an owned-row
+        // repost. Do not stall another three seconds looking for an HTML modal.
+        if (!string.IsNullOrWhiteSpace(_armedOwnListRepost) &&
+            (_repostSuccessAlertSeen || _repostServerCooldownRejected || !string.IsNullOrWhiteSpace(_repostDialogBlocked))) return;
         const string script = """
         (() => {
           const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
@@ -2671,6 +2775,8 @@ internal sealed partial class AutomationForm : Form
         do
         {
             token.ThrowIfCancellationRequested();
+            if (!string.IsNullOrWhiteSpace(_armedOwnListRepost) &&
+                (_repostSuccessAlertSeen || _repostServerCooldownRejected || !string.IsNullOrWhiteSpace(_repostDialogBlocked))) return;
             if (!IsAllowedCurrentPage()) return;
             string json;
             try { json = await _web.CoreWebView2.ExecuteScriptAsync(script); }
@@ -2820,7 +2926,14 @@ internal sealed partial class AutomationForm : Form
             // Repost/import pages have their own NavigationId-correlated navigation.
             // A simultaneous background login redirect must not complete or abort
             // the first repost step by mistake.
-            if (MyListingsImport.IsOwnedListUrl(url)) await NavigateOwnedListAsync(url, token);
+            if (MyListingsImport.IsOwnedListUrl(url))
+            {
+                bool alreadyHere = flow.Operation == "재등록" &&
+                    string.Equals(_web.Source?.AbsoluteUri, url, StringComparison.OrdinalIgnoreCase) &&
+                    _web.CoreWebView2 is not null &&
+                    await _web.CoreWebView2.ExecuteScriptAsync("document.readyState") == "\"complete\"";
+                if (!alreadyHere) await NavigateOwnedListAsync(url, token);
+            }
             else await NavigateAsync(url, token);
             return;
         }
@@ -3119,7 +3232,7 @@ internal sealed partial class AutomationForm : Form
 
     private void RefreshErrorCounter()
     {
-        _logErrors.Text = _showOnlyErrors ? $"오류 {_errorLogCount}건 · 보기 중" : $"오류 {_errorLogCount}건";
+        _logErrors.Text = _showOnlyErrors ? $"현재 오류 {_errorLogCount}건 · 보기" : $"현재 오류 {_errorLogCount}건";
         _logErrors.ForeColor = _errorLogCount > 0 ? Color.FromArgb(164, 38, 38) : UiTheme.Muted;
         _logErrors.BackColor = _showOnlyErrors ? Color.FromArgb(254, 235, 234) : UiTheme.SurfaceAlt;
     }

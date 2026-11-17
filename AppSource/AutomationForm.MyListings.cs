@@ -467,6 +467,7 @@ internal sealed partial class AutomationForm
         token.ThrowIfCancellationRequested();
         if (!MyListingsImport.IsOfficialUrl(url) || _web.CoreWebView2 is null)
             throw new InvalidOperationException("공식 아이템매니아 주소가 아닙니다.");
+        bool expectOwnedList = MyListingsImport.IsOwnedListUrl(url);
         string lastError = "확인되지 않음";
         // A different navigation (for example a login redirect) may finish
         // while the importer is waiting. Match Starting/Completed NavigationId
@@ -502,12 +503,24 @@ internal sealed partial class AutomationForm
                 var response = await done.Task.WaitAsync(TimeSpan.FromSeconds(25), token);
                 if (response.IsSuccess)
                 {
-                    if (!MyListingsImport.IsOfficialUrl(_web.Source?.AbsoluteUri))
+                    // NavigationCompleted may precede the site-controlled
+                    // redirect and table rendering. Allow brief settling.
+                    await Task.Delay(400, token);
+                    string arrived = _web.Source?.AbsoluteUri ?? "";
+                    if (!MyListingsImport.IsOfficialUrl(arrived))
                         throw new InvalidOperationException("조회 도중 공식 사이트를 벗어났습니다.");
-                    if (MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri)) return;
+                    if (expectOwnedList && MyListingsImport.IsOwnedListUrl(arrived) &&
+                        MyListingsImport.IsSellListUrl(arrived) == MyListingsImport.IsSellListUrl(url)) return;
+                    // A read-only detail probe needs to return to its exact
+                    // official URL, not to a generic management/list page.
+                    if (!expectOwnedList && Uri.TryCreate(arrived, UriKind.Absolute, out var arrivedUri) &&
+                        Uri.TryCreate(url, UriKind.Absolute, out var requestedUri) &&
+                        string.Equals(arrivedUri.GetLeftPart(UriPartial.Path), requestedUri.GetLeftPart(UriPartial.Path),
+                            StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(arrivedUri.Query, requestedUri.Query, StringComparison.Ordinal)) return;
                     // A successful redirect to a login/home page is not a
                     // successful navigation to the management list.
-                    lastError = "관리 목록 대신 로그인/다른 페이지로 이동함";
+                    lastError = "요청한 관리 목록/상세 화면 대신 로그인 또는 다른 화면으로 이동함";
                 }
                 else lastError = $"{response.WebErrorStatus} (HTTP {response.HttpStatusCode})";
             }

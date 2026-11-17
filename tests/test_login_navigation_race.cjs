@@ -10,7 +10,8 @@ const owned = src('AutomationForm.MyListings.cs');
 const login = src('ItemManiaLogin.cs');
 
 const moveStep = automation.split('if (step.Action == "이동")')[1]?.split('if (string.IsNullOrWhiteSpace(step.Selector))')[0] || '';
-assert.match(moveStep, /MyListingsImport\.IsOwnedListUrl\(url\)\) await NavigateOwnedListAsync\(url, token\)/);
+assert.match(moveStep, /MyListingsImport\.IsOwnedListUrl\(url\)/);
+assert.match(moveStep, /if \(!alreadyHere\) await NavigateOwnedListAsync\(url, token\)/);
 
 const genericNav = automation.split('private async Task NavigateAsync(')[1]?.split('private async Task<bool> WaitForElementAsync(')[0] || '';
 assert.match(genericNav, /NavigationStarting \+= starting/);
@@ -23,7 +24,8 @@ assert.doesNotMatch(genericNav, /TrySetResult\(result\.IsSuccess\)/);
 const managedNav = owned.split('private async Task NavigateOwnedListAsync(')[1] || '';
 assert.match(managedNav, /const int maxAttempts = 3/);
 assert.match(managedNav, /e\.NavigationId == targetId\.Value/);
-assert.match(managedNav, /MyListingsImport\.IsOwnedListUrl\(_web\.Source\?\.AbsoluteUri\)/);
+assert.match(managedNav, /expectOwnedList && MyListingsImport\.IsOwnedListUrl\(arrived\)/);
+assert.match(managedNav, /MyListingsImport\.IsSellListUrl\(arrived\) == MyListingsImport\.IsSellListUrl\(url\)/);
 assert.match(managedNav, /await Task\.Delay\(attempt == 1 \? 1200 : 2200, token\)/);
 assert.doesNotMatch(managedNav, /@auto:repost|\.click\(|Invoke\(/);
 
