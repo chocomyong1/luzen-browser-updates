@@ -30,7 +30,7 @@ internal sealed partial class AutomationForm
 
     private void InitializeModernGrids()
     {
-        var path = Path.Combine(Settings.UserDirectory, "grid-columns-v17.json");
+        var path = Path.Combine(Settings.AutomationDirectory(_system), "grid-columns-v17.json");
         try
         {
             if (File.Exists(path))
@@ -181,8 +181,8 @@ internal sealed partial class AutomationForm
                 values.Jobs[ColumnIdentity(col)] = col.Width;
             foreach (DataGridViewColumn col in _autoGrid.Columns)
                 values.Auto[ColumnIdentity(col)] = col.Width;
-            Directory.CreateDirectory(Settings.UserDirectory);
-            string path = Path.Combine(Settings.UserDirectory, "grid-columns-v17.json");
+            Directory.CreateDirectory(Settings.AutomationDirectory(_system));
+            string path = Path.Combine(Settings.AutomationDirectory(_system), "grid-columns-v17.json");
             string temp = path + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(values));
             File.Move(temp, path, true);

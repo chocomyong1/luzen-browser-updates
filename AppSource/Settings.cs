@@ -38,6 +38,11 @@ internal sealed class BrowserMenu
 internal static class Settings
 {
     public static string UserDirectory { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LuzenBrowserReplica");
+    // Keep system A on the old path so existing registrations and credentials
+    // survive unchanged. System B never reads or writes A's account/jobs.
+    public static string AutomationDirectory(string system) =>
+        string.Equals(system, "B", StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(UserDirectory, "SystemB") : UserDirectory;
     public static string Asset(string name) => Path.Combine(AppContext.BaseDirectory, "Assets", name);
     public static string Config(string name) => Path.Combine(AppContext.BaseDirectory, "Config", name);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };

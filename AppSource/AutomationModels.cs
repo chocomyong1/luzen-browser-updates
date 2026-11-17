@@ -125,6 +125,8 @@ internal sealed class AutomationWorkflow
 
 internal sealed class AutomationConfiguration
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string StorageDirectory { get; set; } = Settings.UserDirectory;
     // This is a real browser workflow runner, not the original LuzenSoft server connector.
     public string AllowedHost { get; set; } = "www.itemmania.com";
     public int MaxSubmissionsPerHour { get; set; } = 30;
@@ -183,9 +185,10 @@ internal sealed class AutomationConfiguration
         return workflow;
     }
 
-    public static AutomationConfiguration Load()
+    public static AutomationConfiguration Load(string system = "A")
     {
-        var path = Path.Combine(Settings.UserDirectory, "automation.json");
+        string storageDirectory = Settings.AutomationDirectory(system);
+        var path = Path.Combine(storageDirectory, "automation.json");
         // Recover only from the last confirmed backup if the primary is damaged.
         // Never silently erase a user's jobs when both saved files are unreadable.
         foreach (var candidate in new[] { path, path + ".bak" })
@@ -195,6 +198,7 @@ internal sealed class AutomationConfiguration
                 if (!File.Exists(candidate)) continue;
                 var loaded = JsonSerializer.Deserialize<AutomationConfiguration>(File.ReadAllText(candidate));
                 if (loaded is null) continue;
+                loaded.StorageDirectory = storageDirectory;
                 loaded.Workflows ??= new(); loaded.Jobs ??= new();
                 loaded.SubmissionAttemptsUtc ??= new(); loaded.LastServerAttemptUtc ??= new();
                 loaded.ServerHourlyCounters ??= new(StringComparer.OrdinalIgnoreCase);
@@ -261,15 +265,15 @@ internal sealed class AutomationConfiguration
         // Protect corrupt files for diagnostics rather than overwriting them.
         if (File.Exists(path) || File.Exists(path + ".bak"))
             throw new InvalidDataException("자동등록 설정을 읽지 못했습니다. %LOCALAPPDATA%\\LuzenBrowserReplica 안의 automation.json 및 .bak 파일을 확인하세요. 기존 파일은 변경하지 않았습니다.");
-        var config = new AutomationConfiguration();
+        var config = new AutomationConfiguration { StorageDirectory = storageDirectory };
         foreach (var kind in new[] { "판매등록", "구매등록", "재등록" }) config.WorkflowFor(kind);
         return config;
     }
 
     public void Save()
     {
-        Directory.CreateDirectory(Settings.UserDirectory);
-        var path = Path.Combine(Settings.UserDirectory, "automation.json");
+        Directory.CreateDirectory(StorageDirectory);
+        var path = Path.Combine(StorageDirectory, "automation.json");
         var temp = path + ".tmp";
         var serialized = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(temp, serialized);

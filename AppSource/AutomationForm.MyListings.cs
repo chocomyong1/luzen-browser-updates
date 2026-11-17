@@ -111,7 +111,7 @@ internal sealed partial class AutomationForm
                     "내 등록글 자동 조회", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            var account = ItemManiaAccountStore.Load();
+            var account = ItemManiaAccountStore.Load(_system);
             var plan = MyListingsImport.Prepare(records, _jobs, _defaultSubId, account.UserId);
             if (plan.NewJobs.Count == 0 && plan.Updates.Count == 0)
             {
@@ -231,7 +231,7 @@ internal sealed partial class AutomationForm
     private async Task<MyListingsScan> ReadMyListingsPagesAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync());
+        await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
         if (_web.CoreWebView2 is null) throw new InvalidOperationException("내부 아이템매니아 사이트 엔진을 시작할 수 없습니다.");
 
         var result = new MyListingsScan();

@@ -8,9 +8,15 @@ namespace LuzenBrowserReplica;
 
 // V8: main program is an item-list editor, not a visible Internet browser.
 // Keep Windows' native sizable frame so every edge/corner supports drag-resize.
-internal sealed class MainForm : Form
+internal sealed partial class MainForm : Form
 {
-    private readonly AutomationForm _module;
+    private readonly AutomationForm _moduleA;
+    private readonly AutomationForm _moduleB;
+    private AutomationForm _module => _activeSystem == "B" ? _moduleB : _moduleA;
+    private string _activeSystem = "A";
+    private readonly Label _systemIndicator = new() { AutoSize = true, Text = "시스템 A · 기본 연결", ForeColor = Color.White };
+    private readonly Label _accountInfo = new() { Dock = DockStyle.Right, Width = 340, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
+    private bool _systemBShown;
     private AppUpdateSettings _updateSettings = AppUpdateService.LoadSettings();
     private AppUpdateManifest? _pendingUpdate;
     private string? _downloadedUpdate;
@@ -40,7 +46,7 @@ internal sealed class MainForm : Form
         BackColor = UiTheme.Canvas;
         Font = new Font("맑은 고딕", 9.5F);
 
-        _module = new AutomationForm(username)
+        _moduleA = new AutomationForm(username, "A")
         {
             TopLevel = false,
             FormBorderStyle = FormBorderStyle.None,
@@ -48,20 +54,24 @@ internal sealed class MainForm : Form
             MaximumSize = Size.Empty,
             Dock = DockStyle.Fill
         };
+        _moduleB = new AutomationForm(username, "B")
+        {
+            TopLevel = false,
+            FormBorderStyle = FormBorderStyle.None,
+            MinimumSize = Size.Empty,
+            MaximumSize = Size.Empty,
+            Dock = DockStyle.Fill
+        };
+        _moduleB.ShareSiteQuotaWith(_moduleA);
 
         var top = BuildToolbar();
         var modes = BuildModeTabs();
         var body = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
-        body.Controls.Add(_module);
+        body.Controls.Add(_moduleA);
+        body.Controls.Add(_moduleB);
         var footer = new Panel { Dock = DockStyle.Bottom, Height = 27, BackColor = UiTheme.SurfaceAlt };
-        var info = new Label
-        {
-            Dock = DockStyle.Right, Width = 320, TextAlign = ContentAlignment.MiddleRight,
-            Text = $"사이트: 아이템매니아   |   계정: {username}   ",
-            ForeColor = UiTheme.Muted
-        };
         footer.Controls.Add(_status);
-        footer.Controls.Add(info);
+        footer.Controls.Add(_accountInfo);
         Controls.Add(body);
         Controls.Add(footer);
         Controls.Add(modes);
@@ -69,8 +79,10 @@ internal sealed class MainForm : Form
 
         Shown += (_, _) =>
         {
-            _module.Show();
-            _module.ShowAutomationView();
+            _moduleA.Show();
+            _moduleA.BringToFront();
+            _moduleA.ShowAutomationView();
+            RefreshSystemLabel();
             _status.Text = "  자동등록 현황 · 물품등록 탭은 별도 편집 화면으로 전환됩니다.";
             AppUpdateService.ReportStartupReady();
             _updateTimer.Start();
@@ -82,7 +94,7 @@ internal sealed class MainForm : Form
             if (_installingUpdate || _checkingUpdate || IsDisposed || Disposing) return;
             if (_pendingUpdate is not null)
             {
-                if ((_updateSettings.Automatic || _manualUpdateRequested) && _module.CanInstallSoftwareUpdate &&
+                if ((_updateSettings.Automatic || _manualUpdateRequested) && CanInstallUpdateAcrossSystems &&
                     DateTime.UtcNow >= _nextUpdateRetryUtc)
                     await InstallPendingUpdateAsync(automatic: true);
             }
@@ -91,7 +103,35 @@ internal sealed class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { _updateTimer.Stop(); _module.StopAndSave(); };
+        FormClosing += (_, _) => { _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); };
+    }
+
+    private bool CanInstallUpdateAcrossSystems =>
+        _moduleA.CanInstallSoftwareUpdate && _moduleB.CanInstallSoftwareUpdate;
+
+    private void RefreshSystemLabel()
+    {
+        _systemIndicator.Text = _activeSystem == "B" ? "시스템 B · VPN 연결" : "시스템 A · 기본 연결";
+        _accountInfo.Text = $"아이템매니아  |  시스템 {_activeSystem}  |  설정·목록 분리   ";
+    }
+
+    private void SelectSystem(string system)
+    {
+        if (system == "B" && !DualSystemNetwork.IsBRouteVerified)
+        {
+            OpenSystemBNetworkSettings();
+            if (!DualSystemNetwork.IsBRouteVerified) return;
+        }
+        if (system == "B" && !_systemBShown)
+        {
+            _moduleB.Show();
+            _moduleB.ShowAutomationView();
+            _systemBShown = true;
+        }
+        _activeSystem = system;
+        _module.BringToFront();
+        RefreshSystemLabel();
+        _status.Text = $"  시스템 {system} 작업 화면 · 다른 시스템의 자동등록은 계속 실행됩니다.";
     }
 
     private Control BuildToolbar()
@@ -115,6 +155,11 @@ internal sealed class MainForm : Form
             Font = new Font("맑은 고딕", 9F, FontStyle.Bold),
             Padding = new Padding(2, 2, 0, 0), Margin = new Padding(0, 0, 14, 0)
         });
+        AddToolButton(bar, "A 기본", () => SelectSystem("A"), 82);
+        AddToolButton(bar, "B VPN", () => SelectSystem("B"), 82);
+        AddToolButton(bar, "B 연결 설정", OpenSystemBNetworkSettings, 108);
+        _systemIndicator.Margin = new Padding(9, 14, 8, 0);
+        bar.Controls.Add(_systemIndicator);
         AddToolButton(bar, "조회", () => _module.RefreshListings());
         AddToolButton(bar, "+ 새 물품", () => _module.AddListing(), 98);
         AddToolButton(bar, "복제", () => _module.DuplicateListing());
@@ -226,7 +271,7 @@ internal sealed class MainForm : Form
                 _downloadedUpdate = null;
             _pendingUpdate = candidate;
             _status.Text = "  새 버전 " + candidate.Version + " 발견 · " +
-                (_module.CanInstallSoftwareUpdate ? "업데이트 준비" : "진행 중인 등록 작업 완료 대기");
+                (CanInstallUpdateAcrossSystems ? "업데이트 준비" : "진행 중인 등록 작업 완료 대기");
             if (installImmediately)
             {
                 _manualUpdateRequested = true;
@@ -234,7 +279,7 @@ internal sealed class MainForm : Form
             }
             else if (automatic && _updateSettings.Automatic)
             {
-                if (_module.CanInstallSoftwareUpdate) await InstallPendingUpdateAsync(automatic: true);
+                if (CanInstallUpdateAcrossSystems) await InstallPendingUpdateAsync(automatic: true);
             }
             else if (MessageBox.Show(this,
                 $"새 버전 {candidate.Version}이 있습니다. 지금 설치할까요?\n\n" +
@@ -256,7 +301,7 @@ internal sealed class MainForm : Form
     private async Task InstallPendingUpdateAsync(bool automatic)
     {
         if (_installingUpdate || _pendingUpdate is null) return;
-        if (!_module.CanInstallSoftwareUpdate)
+        if (!CanInstallUpdateAcrossSystems)
         {
             _status.Text = "  업데이트 예약됨 · 자동등록을 일시정지하면 안전하게 설치합니다.";
             if (!automatic)
@@ -276,7 +321,7 @@ internal sealed class MainForm : Form
                 _downloadedUpdate = archive;
             }
             if (IsDisposed || Disposing) return;
-            if (!_module.CanInstallSoftwareUpdate)
+            if (!CanInstallUpdateAcrossSystems)
             {
                 _status.Text = "  업데이트 다운로드 완료 · 진행 중인 작업 종료 대기";
                 return;

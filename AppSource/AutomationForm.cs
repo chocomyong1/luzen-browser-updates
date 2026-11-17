@@ -17,7 +17,8 @@ namespace LuzenBrowserReplica;
 // captcha solvers, anti-bot circumvention, or original LuzenSoft DLLs are included.
 internal sealed partial class AutomationForm : Form
 {
-    private readonly AutomationConfiguration _config = AutomationConfiguration.Load();
+    private readonly AutomationConfiguration _config;
+    private readonly string _system;
     private readonly BindingList<ListingJob> _jobs;
     private readonly string _defaultSubId;
     private List<ListingJob> _filteredJobs = new();
@@ -128,11 +129,13 @@ internal sealed partial class AutomationForm : Form
     };
 
 
-    public AutomationForm(string defaultSubId = "")
+    public AutomationForm(string defaultSubId = "", string system = "A")
     {
+        _system = system;
+        _config = AutomationConfiguration.Load(system);
         _defaultSubId = defaultSubId == "Local" ? "" : defaultSubId;
         _jobs = new BindingList<ListingJob>(_config.Jobs);
-        var currentSiteId = ItemManiaAccountStore.Load().UserId;
+        var currentSiteId = ItemManiaAccountStore.Load(_system).UserId;
         foreach (var oldJob in _jobs)
         {
             // V12 did not have these fields; preserve any explicit existing values.
@@ -289,14 +292,14 @@ internal sealed partial class AutomationForm : Form
             if (!e.IsSuccess || _web.CoreWebView2 is null) return;
             _web.CoreWebView2.WebMessageReceived += OnWebMessage;
             _web.CoreWebView2.ScriptDialogOpening += OnItemManiaScriptDialog;
-            _autoLogin = new ItemManiaAutoLogin(_web, message => AppendLog(message));
+            _autoLogin = new ItemManiaAutoLogin(_web, message => AppendLog(message), _system);
             ItemManiaPopupHandler.InstallSilent(_web, message => AppendLog(message));
         };
         Shown += async (_, _) =>
         {
             try
             {
-                await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync());
+                await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
                 if (_web.CoreWebView2 is not null)
                 {
                     _web.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = false;
@@ -1072,7 +1075,7 @@ internal sealed partial class AutomationForm : Form
 
     private void OpenItemManiaAccountSettings()
     {
-        using var dialog = new ItemManiaAccountForm();
+        using var dialog = new ItemManiaAccountForm(_system);
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         if (_web.CoreWebView2 is not null) _web.CoreWebView2.Navigate("https://www.itemmania.com/");
         AppendLog("아이템매니아 계정 저장 완료. 백그라운드에서 로그인을 시도합니다.");
@@ -1156,6 +1159,30 @@ internal sealed partial class AutomationForm : Form
     // Updates must never interrupt an in-flight site action or queued import.
     public bool CanInstallSoftwareUpdate =>
         !_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport;
+    // Each network keeps its own job list and login, but the SAME ItemMania
+    // account/server quota must be shared. Otherwise A and B could both spend
+    // the same remaining ID allocation in the same hour.
+    public void ShareSiteQuotaWith(AutomationForm primary)
+    {
+        foreach (var (key, b) in _config.ServerHourlyCounters)
+        {
+            if (!primary._config.ServerHourlyCounters.TryGetValue(key, out var a) || a is null || a.HourKey != b.HourKey)
+            {
+                if (a is null || string.CompareOrdinal(a.HourKey, b.HourKey) < 0)
+                    primary._config.ServerHourlyCounters[key] = b;
+                continue;
+            }
+            a.Attempts = Math.Max(a.Attempts, b.Attempts);
+            if (b.SiteRemaining.HasValue)
+                a.SiteRemaining = a.SiteRemaining.HasValue
+                    ? Math.Min(a.SiteRemaining.Value, b.SiteRemaining.Value) : b.SiteRemaining;
+        }
+        foreach (var (key, time) in _config.LastServerAttemptUtc)
+            if (!primary._config.LastServerAttemptUtc.TryGetValue(key, out var existing) || time > existing)
+                primary._config.LastServerAttemptUtc[key] = time;
+        _config.ServerHourlyCounters = primary._config.ServerHourlyCounters;
+        _config.LastServerAttemptUtc = primary._config.LastServerAttemptUtc;
+    }
     public void RefreshListings() { RefreshFilterChoices(); RefreshFilteredLists(); AppendLog("로컬 물품 목록 새로고침"); }
     public void OpenAccountSettings() => OpenItemManiaAccountSettings();
     public void ShowWorkflowSettings() => _editorTabs.SelectedTab = _workflowTab;
@@ -1263,7 +1290,7 @@ internal sealed partial class AutomationForm : Form
     private void AddJob()
     {
         SaveSelectedJob(false);
-        var accountId = ItemManiaAccountStore.Load().UserId;
+        var accountId = ItemManiaAccountStore.Load(_system).UserId;
         var job = new ListingJob { Operation = _newJobMode, Game = GameServerCatalog.LostArk, Server = "", Title = "신규 물품", Enabled = false, SubId = _defaultSubId, SiteId = accountId };
         _jobs.Add(job);
         _config.Jobs = _jobs.ToList();
@@ -1943,6 +1970,12 @@ internal sealed partial class AutomationForm : Form
 
     private void StartScheduler()
     {
+        if (_system == "B" && !DualSystemNetwork.IsBRouteVerified)
+        {
+            MessageBox.Show(this, "시스템 B 연결 설정에서 외부 IP가 기본 연결과 다른지 먼저 확인하세요. 확인 전에는 B가 현재 IP로 등록하지 않습니다.",
+                "B 연결 확인 필요");
+            return;
+        }
         SaveAll();
         if (_schedulerRunning) return;
         if (_busy || _pendingMyListingsImport)
@@ -2030,6 +2063,11 @@ internal sealed partial class AutomationForm : Form
 
     private async Task ExecuteJobAsync(ListingJob job, bool dryRun)
     {
+        if (_system == "B" && !DualSystemNetwork.IsBRouteVerified)
+        {
+            AppendLog("B 연결 확인 필요: 별도 IP 확인 전에는 등록/재등록을 실행하지 않습니다.");
+            return;
+        }
         if (_busy) { AppendLog("이미 다른 물품 작업이 진행 중입니다."); return; }
         if (!ValidateJob(job, dryRun, out var error)) { AppendLog("실행 거절: " + error); return; }
         if (!dryRun && !CanRunNow(job, out var pacingReason))
@@ -2060,7 +2098,7 @@ internal sealed partial class AutomationForm : Form
             AppendLog("재등록 방식: 본인 관리목록에 바로 접속하여 정확한 등록번호·제목 행을 검증합니다.");
         try
         {
-            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync());
+            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
             // The login form can still be submitting/redirecting just after
             // scheduling starts. Wait until its browser navigation settles;
             // otherwise the first repost's management-page navigation may be
@@ -3101,7 +3139,7 @@ internal sealed partial class AutomationForm : Form
         }
         try
         {
-            string directory = System.IO.Path.Combine(Settings.UserDirectory, "logs");
+            string directory = System.IO.Path.Combine(Settings.AutomationDirectory(_system), "logs");
             System.IO.Directory.CreateDirectory(directory);
             string file = System.IO.Path.Combine(directory, "automation_" + DateTime.Now.ToString("yyyyMMdd") + ".log");
             System.IO.File.AppendAllText(file, $"[{when:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");

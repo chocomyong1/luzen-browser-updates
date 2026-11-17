@@ -17,7 +17,7 @@ internal sealed partial class AutomationForm
         { MessageBox.Show(this, "작업을 일시정지한 후 사이트 진단을 실행하세요."); return; }
         try
         {
-            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync());
+            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
             // Navigate to the selected listing's own page or the configured
             // official registration form; no submit actions are performed.
             if (_selected is not null)

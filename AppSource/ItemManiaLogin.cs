@@ -23,28 +23,28 @@ internal sealed class ItemManiaCredentials
 
 internal static class ItemManiaAccountStore
 {
-    private static string PathName => Path.Combine(Settings.UserDirectory, "itemmania_account.json");
+    private static string PathName(string system) => Path.Combine(Settings.AutomationDirectory(system), "itemmania_account.json");
     public static int Revision { get; private set; }
-    public static ItemManiaCredentials Load()
+    public static ItemManiaCredentials Load(string system = "A")
     {
         try
         {
-            if (!File.Exists(PathName)) return new();
-            return JsonSerializer.Deserialize<ItemManiaCredentials>(File.ReadAllText(PathName)) ?? new();
+            if (!File.Exists(PathName(system))) return new();
+            return JsonSerializer.Deserialize<ItemManiaCredentials>(File.ReadAllText(PathName(system))) ?? new();
         }
         catch { return new(); }
     }
-    public static void Save(ItemManiaCredentials account)
+    public static void Save(ItemManiaCredentials account, string system = "A")
     {
-        Directory.CreateDirectory(Settings.UserDirectory);
-        var temp = PathName + ".tmp";
+        Directory.CreateDirectory(Settings.AutomationDirectory(system));
+        var temp = PathName(system) + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(account, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(temp, PathName, overwrite: true);
+        File.Move(temp, PathName(system), overwrite: true);
         Revision++;
     }
-    public static void Clear()
+    public static void Clear(string system = "A")
     {
-        if (File.Exists(PathName)) File.Delete(PathName);
+        if (File.Exists(PathName(system))) File.Delete(PathName(system));
         Revision++;
     }
     public static bool IsOfficialSite(Uri? uri) =>
@@ -58,10 +58,13 @@ internal sealed class ItemManiaAccountForm : Form
     private readonly TextBox _id = new() { Width = 275 };
     private readonly TextBox _password = new() { Width = 275, UseSystemPasswordChar = true };
     private readonly CheckBox _enabled = new() { Text = "다음 실행부터 자동 로그인 (이 Windows 사용자만)", AutoSize = true, Checked = true };
-    private readonly ItemManiaCredentials _existing = ItemManiaAccountStore.Load();
+    private readonly ItemManiaCredentials _existing;
+    private readonly string _system;
 
-    public ItemManiaAccountForm()
+    public ItemManiaAccountForm(string system = "A")
     {
+        _system = system;
+        _existing = ItemManiaAccountStore.Load(system);
         Text = "아이템매니아 로그인 설정";
         Width = 485; Height = 350;
         MinimumSize = MaximumSize = Size;
@@ -98,7 +101,7 @@ internal sealed class ItemManiaAccountForm : Form
         clear.Click += (_, _) =>
         {
             if (MessageBox.Show(this, "저장한 아이템매니아 계정정보를 삭제할까요?\n기존 브라우저 쿠키까지 삭제하지는 않습니다.", "확인", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-            ItemManiaAccountStore.Clear();
+            ItemManiaAccountStore.Clear(_system);
             DialogResult = DialogResult.Cancel; Close();
         };
         Controls.Add(clear);
@@ -120,7 +123,7 @@ internal sealed class ItemManiaAccountForm : Form
             ItemManiaAccountStore.Save(new ItemManiaCredentials
             {
                 UserId = user, PasswordProtected = encrypted, AutoLoginEnabled = _enabled.Checked
-            });
+            }, _system);
             _password.Clear();
             DialogResult = DialogResult.OK; Close();
         }
@@ -130,9 +133,12 @@ internal sealed class ItemManiaAccountForm : Form
 
 internal static class ItemManiaWebViewProfile
 {
-    private static readonly Lazy<Task<CoreWebView2Environment>> Shared = new(() =>
-        CoreWebView2Environment.CreateAsync(null, System.IO.Path.Combine(Settings.UserDirectory, "ItemManiaWebView2")));
-    public static Task<CoreWebView2Environment> GetAsync() => Shared.Value;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Task<CoreWebView2Environment>>> Environments = new();
+    public static Task<CoreWebView2Environment> GetAsync(string system = "A") =>
+        Environments.GetOrAdd(system, key => new Lazy<Task<CoreWebView2Environment>>(() =>
+            CoreWebView2Environment.CreateAsync(null,
+                Path.Combine(Settings.AutomationDirectory(key), "ItemManiaWebView2"),
+                key == "B" ? DualSystemNetwork.BrowserOptionsForB() : null))).Value;
 }
 
 // Detects a recognizable login form on the *official HTTPS ItemMania domain only*.
@@ -141,6 +147,7 @@ internal static class ItemManiaWebViewProfile
 internal sealed class ItemManiaAutoLogin : IDisposable
 {
     private readonly WebView2 _view;
+    private readonly string _system;
     private readonly Action<string>? _notify;
     private readonly System.Windows.Forms.Timer _watcher = new() { Interval = 2500 };
     private DateTime _lastAttemptUtc = DateTime.MinValue;
@@ -168,9 +175,9 @@ internal sealed class ItemManiaAutoLogin : IDisposable
         }
     }
 
-    public ItemManiaAutoLogin(WebView2 view, Action<string>? notify = null)
+    public ItemManiaAutoLogin(WebView2 view, Action<string>? notify = null, string system = "A")
     {
-        _view = view; _notify = notify;
+        _view = view; _notify = notify; _system = system;
         _view.NavigationCompleted += OnNavigationComplete;
         _watcher.Tick += async (_, _) => await TryLoginAsync();
         _watcher.Start();
@@ -193,7 +200,7 @@ internal sealed class ItemManiaAutoLogin : IDisposable
             _lastOpenLoginUtc = DateTime.MinValue;
         }
         if (DateTime.UtcNow - _lastAttemptUtc < TimeSpan.FromMinutes(10)) return;
-        var account = ItemManiaAccountStore.Load();
+        var account = ItemManiaAccountStore.Load(_system);
         if (!account.IsConfigured || !account.AutoLoginEnabled) return;
         var password = PasswordVault.Unprotect(account.PasswordProtected);
         if (password.Length == 0) { _notify?.Invoke("저장된 아이템매니아 비밀번호를 복호화할 수 없습니다. 계정을 다시 설정하세요."); return; }

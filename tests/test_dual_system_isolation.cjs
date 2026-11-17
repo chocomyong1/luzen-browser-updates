@@ -1,0 +1,35 @@
+// Offline safety guards for direct A + separate-proxy B automation.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const read = f => fs.readFileSync(path.join(__dirname, '..', 'AppSource', f), 'utf8');
+const main = read('MainForm.cs');
+const settings = read('Settings.cs');
+const forms = read('AutomationForm.cs');
+const models = read('AutomationModels.cs');
+const login = read('ItemManiaLogin.cs');
+const net = read('DualSystemNetwork.cs');
+const ui = read('MainForm.DualSystem.cs');
+
+assert.match(main, /new AutomationForm\(username, "A"\)/);
+assert.match(main, /new AutomationForm\(username, "B"\)/);
+assert.match(main, /_moduleB\.ShareSiteQuotaWith\(_moduleA\)/);
+assert.match(main, /_module\.BringToFront\(\)/);
+assert.match(main, /if \(system == "B" && !DualSystemNetwork\.IsBRouteVerified\)/);
+assert.match(main, /_moduleA\.CanInstallSoftwareUpdate && _moduleB\.CanInstallSoftwareUpdate/);
+assert.match(settings, /AutomationDirectory\(string system\)/);
+assert.match(settings, /"SystemB"/);
+assert.match(models, /StorageDirectory = storageDirectory/);
+assert.match(models, /Path\.Combine\(StorageDirectory, "automation\.json"\)/);
+assert.match(login, /Path\.Combine\(Settings\.AutomationDirectory\(key\), "ItemManiaWebView2"\)/);
+assert.match(login, /key == "B" \? DualSystemNetwork\.BrowserOptionsForB\(\) : null/);
+assert.match(forms, /ItemManiaAccountStore\.Load\(_system\)/);
+assert.match(forms, /ItemManiaWebViewProfile\.GetAsync\(_system\)/);
+assert.match(forms, /if \(_system == "B" && !DualSystemNetwork\.IsBRouteVerified\)/);
+assert.match(forms, /_config\.ServerHourlyCounters = primary\._config\.ServerHourlyCounters/);
+assert.match(net, /"--proxy-server=" \+ normalized/);
+assert.match(net, /if \(string\.Equals\(direct, b, StringComparison\.OrdinalIgnoreCase\)\)/);
+assert.match(net, /_verifiedProxy = proxy/);
+assert.match(ui, /"연결 저장 \+ IP 확인"/);
+assert.match(ui, /ItemManiaAccountStore\.Save\(a, "B"\)/);
+console.log('PASS two independent profiles, B proxy routing, IP verification and shared site ID quotas');
