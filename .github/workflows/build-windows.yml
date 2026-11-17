@@ -51,6 +51,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Live batch edit safety test failed' }
           node tests/test_dual_system_isolation.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Dual system isolation safety test failed' }
+          node tests/test_menu_layout.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Menu layout regression test failed' }
           dotnet run --project tests/QuotaTests/QuotaTests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Hourly quota logic test failed' }
       - name: Restore assets from the existing verified v22.1 release
@@ -77,15 +79,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.32'
+          $version = '22.2.33'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.32
-          path: LuzenBrowser_22.2.32_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.33
+          path: LuzenBrowser_22.2.33_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -93,7 +95,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.32'
+          $version = '22.2.33'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -105,7 +107,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.32: 한 프로그램에서 A 기본 연결과 B VPN 프록시 연결을 독립 작업 시스템으로 관리합니다. A의 기존 물품과 설정은 유지하며 B의 로그인·물품·실행 기록·브라우저 프로필을 분리합니다. B는 VPN의 SOCKS5/HTTP 프록시 주소를 저장하고 실제 외부 IP가 A와 다른지 검증한 뒤에만 실행할 수 있습니다. 같은 사이트 ID·서버의 시간당 횟수·최소 간격은 A/B에서 공유합니다.'
+            releaseNotes = 'v22.2.33: 중복된 자동 시작·일시정지·중지 버튼과 바깥쪽 중복 탭을 정리했습니다. 자동등록 실행 제어는 상단 한 곳에서, 물품 편집과 일괄수정은 목록 탭에서 합니다. 새 물품 종류(판매·구매·재등록), 선택 물품 자동 ON/OFF, 고급 설정·VPN 연결·업데이트는 펼침 메뉴로 묶었습니다. 기존 등록 목록과 A/B 시스템 설정은 유지됩니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

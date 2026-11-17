@@ -14,7 +14,8 @@ internal sealed partial class MainForm : Form
     private readonly AutomationForm _moduleB;
     private AutomationForm _module => _activeSystem == "B" ? _moduleB : _moduleA;
     private string _activeSystem = "A";
-    private readonly Label _systemIndicator = new() { AutoSize = true, Text = "시스템 A · 기본 연결", ForeColor = Color.White };
+    private Button? _systemAButton;
+    private Button? _systemBButton;
     private readonly Label _accountInfo = new() { Dock = DockStyle.Right, Width = 340, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
     private bool _systemBShown;
     private AppUpdateSettings _updateSettings = AppUpdateService.LoadSettings();
@@ -65,7 +66,6 @@ internal sealed partial class MainForm : Form
         _moduleB.ShareSiteQuotaWith(_moduleA);
 
         var top = BuildToolbar();
-        var modes = BuildModeTabs();
         var body = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         body.Controls.Add(_moduleA);
         body.Controls.Add(_moduleB);
@@ -74,7 +74,6 @@ internal sealed partial class MainForm : Form
         footer.Controls.Add(_accountInfo);
         Controls.Add(body);
         Controls.Add(footer);
-        Controls.Add(modes);
         Controls.Add(top);
 
         Shown += (_, _) =>
@@ -111,7 +110,10 @@ internal sealed partial class MainForm : Form
 
     private void RefreshSystemLabel()
     {
-        _systemIndicator.Text = _activeSystem == "B" ? "시스템 B · VPN 연결" : "시스템 A · 기본 연결";
+        if (_systemAButton is not null)
+            UiTheme.StyleButton(_systemAButton, _activeSystem == "A" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
+        if (_systemBButton is not null)
+            UiTheme.StyleButton(_systemBButton, _activeSystem == "B" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
         _accountInfo.Text = $"아이템매니아  |  시스템 {_activeSystem}  |  설정·목록 분리   ";
     }
 
@@ -138,50 +140,71 @@ internal sealed partial class MainForm : Form
     {
         var bar = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 63, AutoScroll = true, WrapContents = false,
-            BackColor = UiTheme.Navy, Padding = new Padding(14, 10, 8, 7)
+            Dock = DockStyle.Top, Height = 56, AutoScroll = true, WrapContents = false,
+            BackColor = UiTheme.Navy, Padding = new Padding(11, 7, 7, 5)
         };
         var logo = new PictureBox
         {
             Image = Image.FromFile(Settings.Asset("09_536c8.png")),
-            Size = new Size(42, 42), SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 0, 7, 0)
+            Size = new Size(38, 38), SizeMode = PictureBoxSizeMode.Zoom,
+            Margin = new Padding(0, 0, 5, 0)
         };
         bar.Controls.Add(logo);
         bar.Controls.Add(new Label
         {
             Text = "LUZEN\nLISTING MANAGER",
-            ForeColor = Color.White, Size = new Size(157, 42),
+            ForeColor = Color.White, Size = new Size(137, 38),
             Font = new Font("맑은 고딕", 9F, FontStyle.Bold),
-            Padding = new Padding(2, 2, 0, 0), Margin = new Padding(0, 0, 14, 0)
+            Padding = new Padding(2, 2, 0, 0), Margin = new Padding(0, 0, 11, 0)
         });
-        AddToolButton(bar, "A 기본", () => SelectSystem("A"), 82);
-        AddToolButton(bar, "B VPN", () => SelectSystem("B"), 82);
-        AddToolButton(bar, "B 연결 설정", OpenSystemBNetworkSettings, 108);
-        _systemIndicator.Margin = new Padding(9, 14, 8, 0);
-        bar.Controls.Add(_systemIndicator);
-        AddToolButton(bar, "조회", () => _module.RefreshListings());
-        AddToolButton(bar, "+ 새 물품", () => _module.AddListing(), 98);
+        _systemAButton = AddToolButton(bar, "A 기본", () => SelectSystem("A"), 74);
+        _systemBButton = AddToolButton(bar, "B VPN", () => SelectSystem("B"), 74);
+        AddToolbarDivider(bar);
+        AddToolButton(bar, "목록 조회", () => _module.RefreshListings(), 88);
+        var addMenu = new ContextMenuStrip();
+        addMenu.Items.Add("판매글 추가", null, (_, _) => AddNewListing("판매등록"));
+        addMenu.Items.Add("구매글 추가", null, (_, _) => AddNewListing("구매등록"));
+        addMenu.Items.Add("재등록 추가", null, (_, _) => AddNewListing("재등록"));
+        Button? addButton = null;
+        addButton = AddToolButton(bar, "+ 새 물품 ▾", () => addMenu.Show(addButton!, 0, addButton!.Height), 110);
         AddToolButton(bar, "복제", () => _module.DuplicateListing());
         AddToolButton(bar, "삭제", () => _module.RemoveListing());
         AddToolButton(bar, "저장", () => _module.SaveListings());
+        AddToolbarDivider(bar);
         AddToolButton(bar, "매니아 계정", () => _module.OpenAccountSettings(), 112);
-        AddToolButton(bar, "설정", () => _module.ShowWorkflowSettings());
-        // One click checks and installs. Advanced feed settings remain available
-        // from the button's context menu, without an extra confirmation dialog.
-        var updateButton = AddToolButton(bar, "업데이트", () => _ = CheckForUpdateAsync(automatic: false, installImmediately: true), 91);
-        var updateMenu = new ContextMenuStrip();
-        updateMenu.Items.Add("업데이트 주소 · 자동설치 설정", null, (_, _) => OpenUpdateSettingsDialog());
-        updateButton.ContextMenuStrip = updateMenu;
-        AddToolButton(bar, "도움말", () => MessageBox.Show(this,
+        var moreMenu = new ContextMenuStrip();
+        moreMenu.Items.Add("고급 설정 · 사이트 연동", null, (_, _) => _module.ShowWorkflowSettings());
+        moreMenu.Items.Add("B VPN 연결 설정", null, (_, _) => OpenSystemBNetworkSettings());
+        moreMenu.Items.Add(new ToolStripSeparator());
+        moreMenu.Items.Add("업데이트 확인 · 설치", null,
+            (_, _) => _ = CheckForUpdateAsync(automatic: false, installImmediately: true));
+        moreMenu.Items.Add("업데이트 주소 · 자동설치 설정", null, (_, _) => OpenUpdateSettingsDialog());
+        moreMenu.Items.Add(new ToolStripSeparator());
+        moreMenu.Items.Add("도움말", null, (_, _) => MessageBox.Show(this,
             "모서리·테두리를 끌어서 크기를 자유롭게 바꿀 수 있습니다.\n" +
             "사이트 화면은 표시하지 않으며 내부 브라우저에서만 작업합니다.\n" +
             "자동등록 목록, 물품등록 편집, 일괄 CSV 관리, 고급 작업 설정을 사용할 수 있습니다.\n" +
             "보안 확인이나 추가 인증이 필요한 경우 자동 작업은 완료되지 않을 수 있습니다.\n" +
             "실제 사이트 등록 성공 여부는 Windows에서 별도 검증이 필요합니다.", "사용 안내"));
-        AddToolButton(bar, "닫기", Close);
+        moreMenu.Items.Add("프로그램 닫기", null, (_, _) => Close());
+        Button? moreButton = null;
+        moreButton = AddToolButton(bar, "더보기 ▾", () => moreMenu.Show(moreButton!, 0, moreButton!.Height), 88);
+        RefreshSystemLabel();
         return bar;
     }
+
+    private void AddNewListing(string operation)
+    {
+        _module.SelectRegistrationMode(operation);
+        _module.AddListing();
+        _status.Text = $"  시스템 {_activeSystem} · 새 {operation} 물품 편집";
+    }
+
+    private static void AddToolbarDivider(FlowLayoutPanel bar) => bar.Controls.Add(new Panel
+    {
+        Width = 1, Height = 25, BackColor = Color.FromArgb(88, 105, 128),
+        Margin = new Padding(9, 8, 9, 0)
+    });
 
     private void OpenUpdateSettingsDialog()
     {
@@ -350,62 +373,11 @@ internal sealed partial class MainForm : Form
         {
             Text = label, Size = new Size(width, 36), Margin = new Padding(2, 3, 4, 2)
         };
-        UiTheme.StyleButton(button, label == "+ 새 물품" ? UiTheme.ButtonTone.Primary :
+        UiTheme.StyleButton(button, label.StartsWith("+ 새 물품", StringComparison.Ordinal) ? UiTheme.ButtonTone.Primary :
             label == "삭제" ? UiTheme.ButtonTone.Danger : UiTheme.ButtonTone.Dark);
         button.Click += (_, _) => action();
         parent.Controls.Add(button);
         return button;
     }
 
-    private Control BuildModeTabs()
-    {
-        var tabs = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top, Height = 40, WrapContents = false,
-            AutoScroll = true, BackColor = UiTheme.Surface,
-            Padding = new Padding(12, 5, 0, 4)
-        };
-        var navigation = new (string label, Action action)[]
-        {
-            ("자동등록", () => _module.ShowAutomationView()),
-            ("물품등록", () => _module.ShowItemRegistrationView()),
-            ("구매글 추가", () => { _module.SelectRegistrationMode("구매등록"); _module.AddListing(); }),
-            ("재등록 추가", () => { _module.SelectRegistrationMode("재등록"); _module.AddListing(); })
-        };
-        foreach (var (label, action) in navigation)
-        {
-            var button = new Button
-            {
-                Text = label, Width = 118, Height = 29, Margin = new Padding(2, 0, 6, 0)
-            };
-            UiTheme.StyleButton(button);
-            button.FlatAppearance.BorderSize = 0;
-            button.Click += (_, _) =>
-            {
-                action();
-                _status.Text = "  현재 화면: " + label + " · 웹페이지 표시 없음";
-                foreach (Control other in tabs.Controls)
-                    if (other is Button nav)
-                    {
-                        bool active = nav == button;
-                        nav.BackColor = active ? Color.FromArgb(230, 239, 253) : UiTheme.Surface;
-                        nav.ForeColor = active ? UiTheme.Primary : UiTheme.Muted;
-                        nav.Font = new Font(nav.Font, active ? FontStyle.Bold : FontStyle.Regular);
-                    }
-            };
-            if (tabs.Controls.Count == 0)
-            {
-                button.BackColor = Color.FromArgb(230, 239, 253);
-                button.ForeColor = UiTheme.Primary;
-                button.Font = new Font(button.Font, FontStyle.Bold);
-            }
-            tabs.Controls.Add(button);
-        }
-        tabs.Controls.Add(new Label
-        {
-            AutoSize = true, Text = "  등록 목록 / 물품 편집 / 실행 로그 · 사이트 화면 숨김",
-            ForeColor = UiTheme.Muted, Padding = new Padding(5, 8, 0, 0)
-        });
-        return tabs;
-    }
 }

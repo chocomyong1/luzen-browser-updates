@@ -114,8 +114,8 @@ internal sealed partial class AutomationForm : Form
     private string _pickerMode = "";
     private readonly TabControl _editorTabs = new() { Dock = DockStyle.Fill };
     private readonly TabPage _autoTab = new("자동등록 현황");
-    private readonly TabPage _itemTab = new("물품등록 · 편집");
-    private readonly TabPage _workflowTab = new("고급 설정 · 사이트 연동");
+    private readonly TabPage _itemTab = new("물품 목록 · 편집");
+    private readonly TabPage _workflowTab = new("고급 설정");
     private readonly DataGridView _autoGrid = new()
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = false, MultiSelect = false,
@@ -379,10 +379,8 @@ internal sealed partial class AutomationForm : Form
         AddInline(limits, "서버별 글 제한", _serverLimit);
         AddInline(limits, "서버 간격(초)", _serverDelay);
         AddInline(limits, "사이트", _host);
-        var save = new Button { Text = "조건 저장", Width = 101, Height = 28, Margin = new Padding(8, 0, 4, 0) };
-        UiTheme.StyleButton(save);
-        save.Click += (_, _) => SaveAll();
-        limits.Controls.Add(save);
+        // The main window's always-visible '저장' command persists these fields too.
+        // Avoid a second, identically-behaving save button in the settings strip.
         var telegram = new Button { Text = "텔레그램 연결", Width = 113, Height = 28 };
         UiTheme.StyleButton(telegram);
         telegram.Click += async (_, _) => await OpenTelegramSettingsAsync();
@@ -669,59 +667,45 @@ internal sealed partial class AutomationForm : Form
         _editorTabs.TabPages.Add(_autoTab);
         var buttons = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 45, WrapContents = true, AutoScroll = false,
+            Dock = DockStyle.Top, Height = 44, WrapContents = false, AutoScroll = true,
             BackColor = UiTheme.Surface, Padding = new Padding(10, 7, 0, 0)
         };
-        void MakeButton(string name, int width, Action click)
+        Button MakeButton(string name, int width, Action click)
         {
             var b = new Button
             {
                 Text = name,
-                Height = 32, Margin = new Padding(4, 0, 4, 3),
+                Height = 30, Margin = new Padding(3, 0, 5, 2),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
-            UiTheme.StyleButton(b, name == "자동등록 시작" ? UiTheme.ButtonTone.Success :
-                name == "선택 물품 일괄수정" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
+            UiTheme.StyleButton(b, name == "선택 물품 일괄수정" ?
+                UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
             b.Width = Math.Max(width, TextRenderer.MeasureText(name, b.Font).Width + b.Padding.Horizontal + 22);
             b.Click += (_, _) => click();
             buttons.Controls.Add(b);
+            return b;
         }
-        MakeButton("자동등록 시작", 123, StartScheduler);
-        MakeButton("일시정지", 88, PauseScheduler);
-        MakeButton("중지", 72, StopScheduler);
         MakeButton("선택 물품 편집", 125, EditAutoSelectedJob);
-        MakeButton("물품 추가", 92, () => { AddJob(); ShowItemRegistrationView(); RestoreEditorPanel(); });
-        MakeButton("조회 전체선택", 120, () => SetVisibleBatchSelection(true));
-        MakeButton("체크 물품 자동 ON", 148, () => SetBatchEnabled(true));
-        MakeButton("체크 물품 자동 OFF", 149, () => SetBatchEnabled(false));
-        MakeButton("선택 해제", 91, () => SetVisibleBatchSelection(false));
+        MakeButton("+ 물품 추가", 104, AddListing);
         MakeButton("선택 물품 일괄수정", 150, BulkEditSelected);
-        MakeButton("조회 조건", 91, ShowItemRegistrationView);
-        MakeButton("설정 저장", 93, SaveAll);
-        // Windows text scaling can make fixed-width buttons truncate Korean
-        // captions. Reflow into as many rows as fit and grow the toolbar so
-        // wrapped rows remain visible instead of being clipped or scrolled.
-        void UpdateToolbarHeight()
+        buttons.Controls.Add(new Panel
         {
-            if (buttons.ClientSize.Width < 100) return;
-            int available = buttons.ClientSize.Width - buttons.Padding.Horizontal - 4;
-            int used = 0, rows = 1;
-            foreach (Control button in buttons.Controls)
-            {
-                int space = button.Width + button.Margin.Horizontal;
-                if (used > 0 && used + space > available) { rows++; used = 0; }
-                used += space;
-            }
-            int height = buttons.Padding.Vertical + rows * 35 + 3;
-            if (buttons.Height != height) buttons.Height = height;
-        }
-        buttons.SizeChanged += (_, _) => UpdateToolbarHeight();
-        buttons.HandleCreated += (_, _) => UpdateToolbarHeight();
+            Width = 1, Height = 23, BackColor = UiTheme.Border,
+            Margin = new Padding(8, 3, 9, 0)
+        });
+        MakeButton("조회 전체선택", 119, () => SetVisibleBatchSelection(true));
+        MakeButton("선택 해제", 91, () => SetVisibleBatchSelection(false));
+        var batchMenu = new ContextMenuStrip();
+        batchMenu.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
+        batchMenu.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
+        Button? batchButton = null;
+        batchButton = MakeButton("자동 ON/OFF ▾", 139,
+            () => batchMenu.Show(batchButton!, 0, batchButton!.Height));
         var help = new Label
         {
-            Text = "표 맨 위 [☐ 전체] 클릭 → 조회된 물품 일괄선택/해제  |  체크 물품 자동 ON/OFF  |  실제 사이트 제출은 별도 허용이 필요합니다.",
-            Dock = DockStyle.Top, Height = 29,
+            Text = "표의 체크박스로 여러 물품 선택  ·  물품을 더블클릭하면 편집  ·  실제 사이트 제출은 실행 조건에 따라 진행",
+            Dock = DockStyle.Top, Height = 25,
             Padding = new Padding(12, 6, 0, 0), ForeColor = UiTheme.Muted,
             BackColor = UiTheme.SurfaceAlt
         };
@@ -889,7 +873,8 @@ internal sealed partial class AutomationForm : Form
         _batchCountLabel = new Label { AutoSize = true, ForeColor = UiTheme.Primary,
             Font = new Font(Font, FontStyle.Bold), Padding = new Padding(7, 8, 0, 0) };
         primary.Controls.Add(_batchCountLabel);
-        secondary.Controls.Add(ActionButton("내 등록글 불러오기", 145, () => _ = ImportMyRegisteredListingsAsync()));
+        // Import lives in the persistent run-control strip, so it is available
+        // regardless of which editor tab is selected.
         secondary.Controls.Add(ActionButton("자동 ON", 90, () => SetBatchEnabled(true)));
         secondary.Controls.Add(ActionButton("자동 OFF", 90, () => SetBatchEnabled(false)));
         secondary.Controls.Add(ActionButton("열 너비 초기화", 114, ResetGridColumns));
