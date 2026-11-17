@@ -103,7 +103,7 @@ internal static class Program
         var failed = LogPresentation.Format("재등록 실패 요약: 실리안 · 2026070507916856 · 제목 불일치");
         Check(failed.Visible && failed.IsError, "count failed registration once");
         var cooldown = LogPresentation.Format("재등록 대기 요약: 아만 · 사이트 간격 제한");
-        Check(cooldown.Visible && cooldown.IsError, "server rejection shown as a counted warning");
+        Check(cooldown.Visible && !cooldown.IsError, "explicit site cooldown is a normal wait, not a program error");
         var admin = LogPresentation.Format("스케줄러 시작: 83건");
         Check(admin.Visible && !admin.IsError, "keep control events visible");
         Console.WriteLine("PASS independent hourly quotas, silent first baseline, later drift alerts, lower cap, pacing, dedup");
