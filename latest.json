@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.16",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.16/LuzenBrowser_22.2.16_BinaryUpdate.zip",
-  "sha256": "bac46001c2e82297fc78f24de4d6d132c342a8ad6cbc0a78d1a0d654d32203f4",
+  "version": "22.2.17",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.17/LuzenBrowser_22.2.17_BinaryUpdate.zip",
+  "sha256": "0d5e90ea2d793b175b1f5c875a961edffd61116dc454bd5ec6927fb262fc06b2",
   "format": "binary",
-  "releaseNotes": "v22.2.16: 실제 아이템매니아 내 구매등록 글의 상세 보기 화면을 기준으로 캐릭터명·상세설명 추출 보완. 같은 화면에 표시되는 구매자/판매자 캐릭터명과 상세설명 아래의 본문 텍스트를 등록번호 일치 검증 후 읽기 전용으로 추출. 수정 화면 링크가 없어도 원본 상세 보기에서 해당 값들을 수집하도록 개선. 다른 글이나 사이트 전체 문구를 임의로 채우지 않음."
+  "releaseNotes": "v22.2.17: 상태 열에 작업 기록 문구가 섞여 표시되던 오류 수정. 실제 상태만 자동 꺼짐·예약됨·실행 대기·실행 중·제출 확인 중·확인 필요·오류 등으로 통일하고, 이전 작업의 상세 문구는 마우스 오버 설명에 보존. 등록글의 단위 열은 수량 단위(예: 개)를 표시하며 원본의 별도 거래단위와 구분."
 }
