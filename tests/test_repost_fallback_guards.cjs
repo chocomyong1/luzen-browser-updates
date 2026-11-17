@@ -59,6 +59,10 @@ assert(entryChoice.indexOf('OwnedListUrlFor(job)') >= 0);
 assert(entryChoice.indexOf('OwnedListUrlFor(job)') < entryChoice.indexOf('IsSafeDetailUrl(job.EntryUrl'));
 assert.match(bulk, /IsSafeDetailUrl\(j\.EntryUrl, j\.ListingNumber\) \|\|[\s\S]*?OwnedListUrlFor\(j\)/);
 assert.match(models, /loaded\.MinimumServerSeconds = Math\.Clamp\(loaded\.MinimumServerSeconds, 21, 3600\)/);
+assert.match(models, /!Enabled \? "자동 꺼짐"/);
+assert.match(models, /j\.Enabled && !j\.RequiresReview &&[\s\S]*?j\.NextDueUtc == DateTime\.MaxValue/);
+assert.match(imports, /Target\.Price == "1" && !string\.IsNullOrWhiteSpace\(Price\)/);
+assert.match(imports, /const viewLabel=matching\.filter/);
 assert.match(imports, /Regex\.Escape\(number!\).*?RegexOptions\.CultureInvariant/s);
 // Fresh account imports may lack the old detail URL without being blocked.
 // A potentially submitted listing is NEVER released by the import refresh.

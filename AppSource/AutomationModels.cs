@@ -62,7 +62,11 @@ internal sealed class ListingJob
     [System.Text.Json.Serialization.JsonIgnore]
     public string DescriptionDisplay => string.IsNullOrWhiteSpace(Description) && ImportedFromSite ? "미수집" : Description;
     public string ViewTitle => $"[{Operation}] {Title}";
-    public string NextDueLocal => RequiresReview ? "확인 필요" : InitialCompleted && !AutoRepost && Operation != "재등록" ? "완료" : NextDueUtc == DateTime.MaxValue ? "완료/보류" : NextDueUtc == DateTime.MinValue ? "즉시" : NextDueUtc.ToLocalTime().ToString("MM-dd HH:mm:ss");
+    public string NextDueLocal => RequiresReview ? "확인 필요" :
+        InitialCompleted && !AutoRepost && Operation != "재등록" ? "완료" :
+        !Enabled ? "자동 꺼짐" :
+        NextDueUtc == DateTime.MaxValue ? "예약 필요" :
+        NextDueUtc == DateTime.MinValue ? "즉시" : NextDueUtc.ToLocalTime().ToString("MM-dd HH:mm:ss");
 }
 
 internal sealed class AutomationStep
@@ -166,6 +170,13 @@ internal sealed class AutomationConfiguration
                 loaded.MinimumGlobalSeconds = Math.Max(21, loaded.MinimumGlobalSeconds);
                 loaded.SubmissionAttemptsUtc = loaded.SubmissionAttemptsUtc
                     .Where(dt => dt > DateTime.UtcNow.AddHours(-1) && dt <= DateTime.UtcNow).ToList();
+                // Older imports could be switched ON while still carrying the
+                // disabled-only MaxValue sentinel, leaving them in limbo.
+                // Do not change genuinely uncertain submission checkpoints.
+                foreach (var job in loaded.Jobs.Where(j => j.Enabled && !j.RequiresReview &&
+                    !j.PendingRepostAttemptUtc.HasValue && j.NextDueUtc == DateTime.MaxValue &&
+                    (j.Operation == "재등록" || j.AutoRepost || !j.InitialCompleted)))
+                    job.NextDueUtc = DateTime.UtcNow;
                 foreach (var kind in new[] { "판매등록", "구매등록", "재등록" })
                 {
                     var wf = loaded.WorkflowFor(kind);

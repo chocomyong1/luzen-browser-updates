@@ -318,13 +318,21 @@ internal sealed partial class AutomationForm
         if (_web.CoreWebView2 is null) return;
         var needing = scan.Records.Where(r =>
             (string.IsNullOrWhiteSpace(r.Game) || string.IsNullOrWhiteSpace(r.Server) ||
-             string.IsNullOrWhiteSpace(r.Quantity) || string.IsNullOrWhiteSpace(r.Price) ||
+             string.IsNullOrWhiteSpace(r.Quantity) || string.IsNullOrWhiteSpace(r.Unit) ||
+             string.IsNullOrWhiteSpace(r.Price) ||
              string.IsNullOrWhiteSpace(r.ItemCategory) || string.IsNullOrWhiteSpace(r.TradingMethod) ||
              string.IsNullOrWhiteSpace(r.Character) || string.IsNullOrWhiteSpace(r.Description) ||
              string.IsNullOrWhiteSpace(r.MinQuantity) || string.IsNullOrWhiteSpace(r.MaxQuantity)) &&
             MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber)).ToList();
         const int maxDetailPages = 80;
-        if (needing.Count == 0) return;
+        if (needing.Count == 0)
+        {
+            int missing = scan.Records.Count(r =>
+                (string.IsNullOrWhiteSpace(r.Character) || string.IsNullOrWhiteSpace(r.Description)) &&
+                !MyListingsImport.IsSafeDetailUrl(r.ListingUrl, r.ListingNumber));
+            if (missing > 0) AppendLog($"캐릭터·상세설명 미수집 {missing}건: 관리 목록에 해당 등록번호가 포함된 안전한 상세 링크가 없어 내용을 열 수 없습니다.");
+            return;
+        }
         // Do not fetch the same first 80 rows forever when the account has
         // hundreds of listings. Continue from the last checked offset.
         int start = Math.Max(0, _config.DetailEnrichmentCursor) % needing.Count;
@@ -343,18 +351,30 @@ internal sealed partial class AutomationForm
                 var raw = await _web.CoreWebView2.ExecuteScriptAsync(
                     MyListingsImport.BuildDetailScript(record.ListingNumber));
                 var detail = MyListingsImport.DecodeDetail(raw);
+                if (!string.Equals(detail.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
+                {
+                    await Task.Delay(750, token);
+                    raw = await _web.CoreWebView2.ExecuteScriptAsync(
+                        MyListingsImport.BuildDetailScript(record.ListingNumber));
+                    detail = MyListingsImport.DecodeDetail(raw);
+                }
                 // Do not mistake another item's page for this listing.
                 if (!string.Equals(detail.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
                     continue;
                 matched++;
-                int before = new[] { record.Game, record.Server, record.Quantity, record.Price,
+                int before = new[] { record.Game, record.Server, record.Quantity, record.Unit, record.Price,
                     record.ItemCategory, record.TradingMethod, record.MinQuantity, record.MaxQuantity,
                     record.Character, record.Description }
                     .Count(string.IsNullOrWhiteSpace);
                 if (string.IsNullOrWhiteSpace(record.Game)) record.Game = detail.Game;
                 if (string.IsNullOrWhiteSpace(record.Server)) record.Server = detail.Server;
-                if (string.IsNullOrWhiteSpace(record.Quantity)) record.Quantity = detail.Quantity;
-                if (string.IsNullOrWhiteSpace(record.Price)) record.Price = detail.Price;
+                if (string.IsNullOrWhiteSpace(record.Quantity) ||
+                    (record.Quantity == "1" && !string.IsNullOrWhiteSpace(detail.Quantity) && detail.Quantity != "1"))
+                    record.Quantity = detail.Quantity;
+                if (string.IsNullOrWhiteSpace(record.Unit)) record.Unit = detail.Unit;
+                if (string.IsNullOrWhiteSpace(record.Price) ||
+                    (record.Price == "1" && !string.IsNullOrWhiteSpace(detail.Price) && detail.Price != "1"))
+                    record.Price = detail.Price;
                 if (string.IsNullOrWhiteSpace(record.ItemCategory)) record.ItemCategory = detail.ItemCategory;
                 if (string.IsNullOrWhiteSpace(record.TradingMethod)) record.TradingMethod = detail.TradingMethod;
                 if (string.IsNullOrWhiteSpace(record.MinQuantity)) record.MinQuantity = detail.MinQuantity;
@@ -363,7 +383,7 @@ internal sealed partial class AutomationForm
                 if (string.IsNullOrWhiteSpace(record.Description)) record.Description = detail.Description;
                 if (!string.IsNullOrWhiteSpace(detail.Character)) characters++;
                 if (!string.IsNullOrWhiteSpace(detail.Description)) descriptions++;
-                int after = new[] { record.Game, record.Server, record.Quantity, record.Price,
+                int after = new[] { record.Game, record.Server, record.Quantity, record.Unit, record.Price,
                     record.ItemCategory, record.TradingMethod, record.MinQuantity, record.MaxQuantity,
                     record.Character, record.Description }
                     .Count(string.IsNullOrWhiteSpace);
@@ -382,6 +402,8 @@ internal sealed partial class AutomationForm
         {
             AppendLog($"등록글 상세 화면 방문 {visits}건 · 등록번호 일치 {matched}건 · " +
                 $"정보 보완 {updated}건 · 캐릭터 확인 {characters}건 · 상세설명 확인 {descriptions}건");
+            if (matched == 0)
+                AppendLog("상세 링크를 방문했지만 등록번호가 일치하는 실제 물품 화면이 열리지 않았습니다. 로그인 전환·리다이렉트 또는 화면 변경 여부를 확인해야 합니다.");
             if (matched > 0 && characters == 0 && descriptions == 0)
                 AppendLog("캐릭터·상세설명은 조회한 상세화면에서 확인되지 않았습니다. 사이트가 표시하지 않는 값은 추정하지 않습니다.");
         }

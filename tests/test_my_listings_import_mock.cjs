@@ -17,7 +17,8 @@ function listing(number, max, price) {
   const categoryLink = fakeEl('A', '로스트아크 카마인', {
     href: `/buy/list_search.html?search_game_text=${encodeURIComponent('로스트아크')}&search_server_text=${encodeURIComponent('카마인')}`,
   });
-  const detail = fakeEl('A', '보석 구매합니다', {href: `buy_regist_view.html?id=${number}&page=`});
+  const detail = fakeEl('A', '상세 보기', {href: `buy_regist_view.html?id=${number}&page=`});
+  const edit = fakeEl('A', '수정', {href: `buy_regist_edit.html?id=${number}&page=`});
   const repost = fakeEl('A', '', {onclick: `reInsert('${number}','2696');`});
   const range = fakeEl('SPAN', `[1개~${max.toLocaleString('en-US')}개]`);
   const title = fakeEl('DIV', '10레벨 겁화 보석 구매합니다');
@@ -25,7 +26,7 @@ function listing(number, max, price) {
   const cells = [
     fakeEl('TD', '로스트아크 카마인', {}, [categoryLink]),
     fakeEl('TD', '아이템'),
-    fakeEl('TD', `${range.textContent} ${title.textContent}`, {}, [detail,range,title]),
+    fakeEl('TD', `${range.textContent} ${title.textContent}`, {}, [detail,edit,range,title]),
     fakeEl('TD', `1당 ${price.toLocaleString('en-US')}원`, {}, [span]),
     fakeEl('TD', '11-16 10:53', {}, [repost]),
   ];
@@ -35,10 +36,10 @@ function listing(number, max, price) {
   const row = fakeEl('TR', cells.map(x => x.textContent).join(' '), {}, cells);
   row.querySelector = selector => selector === 'td' ? cells[0] : null;
   row.querySelectorAll = selector => {
-    if (selector === '*') return [...cells, categoryLink, detail, range, title, span, repost];
-    if (selector === 'a[href]') return [categoryLink, detail];
-    if (selector === 'a[href],a[onclick],button[onclick],input[name]') return [categoryLink, detail, repost];
-    if (selector === 'a,button,[data-url],[data-href]') return [categoryLink, detail, repost];
+    if (selector === '*') return [...cells, categoryLink, detail, edit, range, title, span, repost];
+    if (selector === 'a[href]') return [categoryLink, detail, edit];
+    if (selector === 'a[href],a[onclick],button[onclick],input[name]') return [categoryLink, detail, edit, repost];
+    if (selector === 'a,button,[data-url],[data-href]') return [categoryLink, detail, edit, repost];
     if (selector === '[class],[id]' || selector.startsWith('[data-')) return [];
     return [];
   };
@@ -63,6 +64,7 @@ assert.equal(items.length, 2, 'First row in a headerless table must NOT be dropp
 assert.equal(items[0].listingNumber,'2026070701992028');
 assert.equal(items[0].itemCategory,'아이템');
 assert.equal(items[0].tradingMethod,'분할');
+assert.equal(items[0].unit,'개');
 assert.equal(items[0].minQuantity,'1');
 assert.equal(items[0].maxQuantity,'999');
 assert.equal(items[1].maxQuantity,'9995');
@@ -71,5 +73,6 @@ assert.equal(items[0].game,'로스트아크');
 assert.equal(items[0].server,'카마인');
 assert.equal(items[0].title,'10레벨 겁화 보석 구매합니다');
 assert.ok(items[0].listingUrl.includes('id=2026070701992028'));
+assert.ok(items[0].listingUrl.includes('buy_regist_view.html'), 'An exact View link wins over a different Edit link for same ID');
 assert.equal(items[0].quantity, '', 'The per-unit label must NOT be mistaken for total stock');
 console.log('PASS ItemMania imported rows: headerless first row, two ranges, price, category, links');
