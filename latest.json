@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.28",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.28/LuzenBrowser_22.2.28_BinaryUpdate.zip",
-  "sha256": "ee8549f3a3bcdd80d62e808bd4e06bc18c0397e57c38a4b61db8335ec2d1f691",
+  "version": "22.2.29",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.29/LuzenBrowser_22.2.29_BinaryUpdate.zip",
+  "sha256": "fc2d4417713271b54b9c1e13be404c885de6893cfff245aa7c4e02996c7a959d",
   "format": "binary",
-  "releaseNotes": "v22.2.28: 내 등록글의 수량 범위 접두어를 제외한 실제 제목도 정확히 비교하여 재등록 오인 차단을 개선하고, 제목이 정말 다르면 사이트 제목을 오류 로그에 표시합니다. 사이트가 해당 서버의 등록 간격 미충족을 명확히 알리면 전체 자동등록은 중단하지 않고 해당 글만 최소 30초 뒤 재시도합니다. 다른 제출 오류는 기존처럼 안전하게 보류합니다."
+  "releaseNotes": "v22.2.29: 실행 기록을 재등록 1건당 성공/실패/대기 한 줄로 간결하게 표시합니다. 제목줄의 오류 N건을 누르면 오류만 볼 수 있고 다시 누르면 전체 기록이 보입니다. 내부 상세 기록과 파일 저장은 그대로 유지하며, 오류 로그 복사는 화면에서 숨긴 진단 단계까지 복사합니다."
 }
