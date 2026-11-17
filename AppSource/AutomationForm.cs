@@ -77,9 +77,6 @@ internal sealed partial class AutomationForm : Form
     private readonly TextBox _title = new(), _quantity = new(), _price = new(), _unit = new(), _description = new(), _character = new(), _entry = new();
     private readonly NumericUpDown _interval = new() { Minimum = 1, Maximum = 10080, Value = 30, Width = 90 };
     private readonly NumericUpDown _hourLimit = new() { Minimum = 1, Maximum = 1000, Width = 68, Value = 30 };
-    private readonly NumericUpDown _serverLimit = new() { Minimum = 1, Maximum = 500, Width = 68, Value = 30 };
-    private readonly NumericUpDown _serverDelay = new() { Minimum = 21, Maximum = 3600, Width = 68, Value = 21 };
-    private readonly TextBox _host = new() { Width = 160 };
     private readonly TextBox _flowUrl = new() { Width = 400 };
     private readonly TextBox _successSelector = new() { Width = 270 };
     private readonly TextBox _repostLinkSelector = new() { Width = 270 };
@@ -149,9 +146,6 @@ internal sealed partial class AutomationForm : Form
         Font = new Font("맑은 고딕", 9.5F);
         Icon = new Icon(Settings.Asset("iBook1.ico"));
         _hourLimit.Value = Math.Clamp(_config.MaxSubmissionsPerHour, 1, 1000);
-        _serverLimit.Value = Math.Clamp(_config.MaxListingsPerServer, 1, 500);
-        _serverDelay.Value = Math.Clamp(_config.MinimumServerSeconds, 21, 3600);
-        _host.Text = _config.AllowedHost;
         _editMode.Items.AddRange(new object[] { "판매등록", "구매등록", "재등록" });
         // Only these four categories are shown in the user's original ItemMania/Luzen registration screenshots.
         _itemCategory.Items.AddRange(ItemManiaFieldCatalog.Categories.Cast<object>().ToArray());
@@ -175,7 +169,7 @@ internal sealed partial class AutomationForm : Form
         _game.SelectedItem = GameServerCatalog.LostArk;
 
         var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = UiTheme.Canvas };
-        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
         outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(outer);
         outer.BringToFront();
@@ -330,7 +324,7 @@ internal sealed partial class AutomationForm : Form
         var top = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         var actions = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 46, WrapContents = false, AutoScroll = true,
+            Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true,
             Padding = new Padding(11, 7, 4, 2), BackColor = UiTheme.Surface
         };
         void Btn(string label, EventHandler action, int width,
@@ -362,30 +356,18 @@ internal sealed partial class AutomationForm : Form
         _state.BackColor = UiTheme.WarningSurface;
         _state.Padding = new Padding(9, 7, 9, 6);
         actions.Controls.Add(_state);
-        top.Controls.Add(actions);
-
-        var limits = new FlowLayoutPanel
+        actions.Controls.Add(new Panel
         {
-            Dock = DockStyle.Bottom, Height = 42, WrapContents = false, AutoScroll = true,
-            Padding = new Padding(11, 6, 0, 0), BackColor = UiTheme.SurfaceAlt
-        };
-        limits.Controls.Add(new Label
-        {
-            Text = "실행 조건", AutoSize = true,
-            Font = new Font(Font, FontStyle.Bold), ForeColor = UiTheme.Text,
-            Padding = new Padding(2, 5, 12, 0)
+            Width = 1, Height = 23, BackColor = UiTheme.Border,
+            Margin = new Padding(11, 4, 8, 0)
         });
-        AddInline(limits, "ID·서버별 시간당", _hourLimit);
-        AddInline(limits, "서버별 글 제한", _serverLimit);
-        AddInline(limits, "서버 간격(초)", _serverDelay);
-        AddInline(limits, "사이트", _host);
-        // The main window's always-visible '저장' command persists these fields too.
-        // Avoid a second, identically-behaving save button in the settings strip.
-        var telegram = new Button { Text = "텔레그램 연결", Width = 113, Height = 28 };
-        UiTheme.StyleButton(telegram);
-        telegram.Click += async (_, _) => await OpenTelegramSettingsAsync();
-        limits.Controls.Add(telegram);
-        top.Controls.Add(limits);
+        AddInline(actions, "ID·서버별 시간당", _hourLimit);
+        actions.Controls.Add(new Label
+        {
+            Text = "회", AutoSize = true, ForeColor = UiTheme.Muted,
+            Padding = new Padding(0, 8, 0, 0)
+        });
+        top.Controls.Add(actions);
         return top;
     }
 
@@ -1594,12 +1576,15 @@ internal sealed partial class AutomationForm : Form
         SaveSelectedJob(false);
         if (_flowMode.SelectedItem is not null) SaveWorkflow();
         _config.MaxSubmissionsPerHour = (int)_hourLimit.Value;
-        _config.MaxListingsPerServer = (int)_serverLimit.Value;
-        _config.MinimumServerSeconds = (int)_serverDelay.Value;
+        // Keep the separate per-server listing-count safeguard, but use the
+        // same user-selected number as the hourly ID/server attempt limit.
+        _config.MaxListingsPerServer = (int)_hourLimit.Value;
+        // ItemMania's same-server minimum interval is fixed by this app.
+        _config.MinimumServerSeconds = 21;
         // Legacy global pacing is no longer used: different servers can follow
         // immediately, while each ID/server retains its own 21-second floor.
         _config.MinimumGlobalSeconds = 21;
-        _config.AllowedHost = _host.Text.Trim().ToLowerInvariant();
+        _config.AllowedHost = "www.itemmania.com";
         _config.Jobs = _jobs.ToList();
         _config.Save();
         AppendLog("전체 설정 저장 완료");

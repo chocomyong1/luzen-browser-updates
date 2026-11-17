@@ -112,6 +112,8 @@ internal sealed partial class AutomationForm
         }
     }
 
+    public void OpenTelegramSettings() => _ = OpenTelegramSettingsAsync();
+
     private async Task OpenTelegramSettingsAsync()
     {
         var (savedToken, savedChatId) = TelegramQuotaAlerts.Load();

@@ -205,7 +205,7 @@ internal sealed class AutomationConfiguration
                 // Legacy/manual edits may contain impossible or unsafe limits.
                 // Keep the persisted configuration within the enforced bounds.
                 loaded.MaxSubmissionsPerHour = Math.Clamp(loaded.MaxSubmissionsPerHour, 1, 1000);
-                loaded.MaxListingsPerServer = Math.Clamp(loaded.MaxListingsPerServer, 1, 500);
+                loaded.MaxListingsPerServer = Math.Clamp(loaded.MaxListingsPerServer, 1, 1000);
                 loaded.MinimumServerSeconds = Math.Clamp(loaded.MinimumServerSeconds, 21, 3600);
                 loaded.MinimumGlobalSeconds = Math.Max(21, loaded.MinimumGlobalSeconds);
                 loaded.SubmissionAttemptsUtc = loaded.SubmissionAttemptsUtc

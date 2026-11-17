@@ -174,6 +174,7 @@ internal sealed partial class MainForm : Form
         AddToolButton(bar, "매니아 계정", () => _module.OpenAccountSettings(), 112);
         var moreMenu = new ContextMenuStrip();
         moreMenu.Items.Add("고급 설정 · 사이트 연동", null, (_, _) => _module.ShowWorkflowSettings());
+        moreMenu.Items.Add("텔레그램 알림 설정", null, (_, _) => _module.OpenTelegramSettings());
         moreMenu.Items.Add("B VPN 연결 설정", null, (_, _) => OpenSystemBNetworkSettings());
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("업데이트 확인 · 설치", null,
