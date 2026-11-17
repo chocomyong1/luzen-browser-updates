@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -144,9 +145,28 @@ internal sealed class ItemManiaAutoLogin : IDisposable
     private readonly System.Windows.Forms.Timer _watcher = new() { Interval = 2500 };
     private DateTime _lastAttemptUtc = DateTime.MinValue;
     private DateTime _lastOpenLoginUtc = DateTime.MinValue;
+    private DateTime _lastLoginNavigationUtc = DateTime.MinValue;
     private int _accountRevision = ItemManiaAccountStore.Revision;
     private bool _checking;
     private bool _disposed;
+
+    // The login link and the submitted login form can both navigate the same
+    // WebView that reposting uses. Give the authentication flow a quiet window
+    // before a listing starts its own navigation.
+    public bool IsLoginNavigationBusy => _checking ||
+        DateTime.UtcNow - _lastLoginNavigationUtc < TimeSpan.FromSeconds(3);
+
+    public async Task WaitForLoginNavigationAsync(CancellationToken token)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(18);
+        while (IsLoginNavigationBusy)
+        {
+            token.ThrowIfCancellationRequested();
+            if (DateTime.UtcNow >= deadline)
+                throw new InvalidOperationException("아이템매니아 로그인 페이지 이동이 완료되지 않았습니다. 잠시 후 자동으로 다시 시도합니다.");
+            await Task.Delay(200, token);
+        }
+    }
 
     public ItemManiaAutoLogin(WebView2 view, Action<string>? notify = null)
     {
@@ -227,6 +247,7 @@ internal sealed class ItemManiaAutoLogin : IDisposable
             if (result == "submitted")
             {
                 _lastAttemptUtc = DateTime.UtcNow;
+                _lastLoginNavigationUtc = DateTime.UtcNow;
                 _notify?.Invoke("백그라운드 아이템매니아 로그인 요청 완료. 결과 확인은 등록 작업 상태로 판단합니다.");
             }
             else if (result == "needs-verification")
@@ -278,6 +299,7 @@ internal sealed class ItemManiaAutoLogin : IDisposable
         if (JsonSerializer.Deserialize<string>(answer) == "opened-login")
         {
             _lastOpenLoginUtc = DateTime.UtcNow;
+            _lastLoginNavigationUtc = DateTime.UtcNow;
             _notify?.Invoke("백그라운드에서 아이템매니아 로그인 절차를 진행 중입니다.");
         }
     }

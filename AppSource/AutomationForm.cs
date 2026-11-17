@@ -43,6 +43,7 @@ internal sealed partial class AutomationForm : Form
     private readonly DataGridView _jobsGrid = new() { Dock = DockStyle.Fill, AutoGenerateColumns = false, MultiSelect = true, SelectionMode = DataGridViewSelectionMode.FullRowSelect, AllowUserToAddRows = false, RowHeadersVisible = false, BackgroundColor = Color.White };
     private readonly DataGridView _stepsGrid = new() { Dock = DockStyle.Fill, AutoGenerateColumns = false, AllowUserToAddRows = false, RowHeadersVisible = false, BackgroundColor = Color.White };
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
+    private ItemManiaAutoLogin? _autoLogin;
     private readonly TextBox _browserUrl = new() { Dock = DockStyle.Fill };
     private readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, BackColor = UiTheme.Navy, ForeColor = Color.FromArgb(222, 232, 244), Font = new Font("Consolas", 9) };
     private readonly Label _logErrors = new() { Text = "오류 0건", Dock = DockStyle.Fill,
@@ -282,7 +283,7 @@ internal sealed partial class AutomationForm : Form
             if (!e.IsSuccess || _web.CoreWebView2 is null) return;
             _web.CoreWebView2.WebMessageReceived += OnWebMessage;
             _web.CoreWebView2.ScriptDialogOpening += OnItemManiaScriptDialog;
-            _ = new ItemManiaAutoLogin(_web, message => AppendLog(message));
+            _autoLogin = new ItemManiaAutoLogin(_web, message => AppendLog(message));
             ItemManiaPopupHandler.InstallSilent(_web, message => AppendLog(message));
         };
         Shown += async (_, _) =>
@@ -2053,6 +2054,12 @@ internal sealed partial class AutomationForm : Form
         try
         {
             await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync());
+            // The login form can still be submitting/redirecting just after
+            // scheduling starts. Wait until its browser navigation settles;
+            // otherwise the first repost's management-page navigation may be
+            // canceled by that unrelated login redirect.
+            if (_autoLogin is not null)
+                await _autoLogin.WaitForLoginNavigationAsync(token);
             if (!IsAllowedUrl(Expand("{EntryUrl}", job, flow))) throw new InvalidOperationException("허용 사이트가 아닙니다.");
             for (int i = 0; i < flow.Steps.Count; i++)
             {
@@ -2789,7 +2796,12 @@ internal sealed partial class AutomationForm : Form
         {
             string url = string.IsNullOrWhiteSpace(value) ? Expand("{EntryUrl}", job, flow) : value;
             if (!IsAllowedUrl(url)) throw new InvalidOperationException("사이트 이동 거부: 허용되지 않은 URL");
-            await NavigateAsync(url, token); return;
+            // Repost/import pages have their own NavigationId-correlated navigation.
+            // A simultaneous background login redirect must not complete or abort
+            // the first repost step by mistake.
+            if (MyListingsImport.IsOwnedListUrl(url)) await NavigateOwnedListAsync(url, token);
+            else await NavigateAsync(url, token);
+            return;
         }
         if (string.IsNullOrWhiteSpace(step.Selector)) throw new InvalidOperationException(step.Action + " 단계에 CSS 선택자가 없습니다.");
         if (!IsAllowedCurrentPage()) throw new InvalidOperationException("현재 페이지가 허용 사이트가 아닙니다. 로그인 화면/외부 사이트 여부를 확인하세요.");
@@ -2877,19 +2889,36 @@ internal sealed partial class AutomationForm : Form
     private async Task NavigateAsync(string url, CancellationToken token)
     {
         if (_web.CoreWebView2 is null) throw new InvalidOperationException("브라우저가 초기화되지 않았습니다.");
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler<CoreWebView2NavigationCompletedEventArgs>? handler = null;
-        handler = (_, result) => completion.TrySetResult(result.IsSuccess);
-        _web.NavigationCompleted += handler;
+        var completion = new TaskCompletionSource<CoreWebView2NavigationCompletedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ulong? requestedNavigationId = null;
+        EventHandler<CoreWebView2NavigationStartingEventArgs>? starting = null;
+        EventHandler<CoreWebView2NavigationCompletedEventArgs>? completed = null;
+        starting = (_, args) =>
+        {
+            if (requestedNavigationId is null && string.Equals(args.Uri, url, StringComparison.OrdinalIgnoreCase))
+                requestedNavigationId = args.NavigationId;
+        };
+        completed = (_, result) =>
+        {
+            if (requestedNavigationId.HasValue && result.NavigationId == requestedNavigationId.Value)
+                completion.TrySetResult(result);
+        };
+        _web.NavigationStarting += starting;
+        _web.NavigationCompleted += completed;
         try
         {
             _web.CoreWebView2.Navigate(url);
-            bool success = await completion.Task.WaitAsync(TimeSpan.FromSeconds(35), token);
-            if (!success) throw new InvalidOperationException("페이지 이동에 실패했습니다: " + url);
+            var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(35), token);
+            if (!result.IsSuccess)
+                throw new InvalidOperationException($"페이지 이동에 실패했습니다: {url} ({result.WebErrorStatus}, HTTP {result.HttpStatusCode})");
             await Task.Delay(600, token);
             if (!IsAllowedCurrentPage()) throw new InvalidOperationException("로그인/이동 후 다른 호스트로 이동했습니다. 해당 사이트에서 수동으로 인증하세요.");
         }
-        finally { _web.NavigationCompleted -= handler; }
+        finally
+        {
+            _web.NavigationStarting -= starting;
+            _web.NavigationCompleted -= completed;
+        }
     }
 
     private async Task<bool> WaitForElementAsync(string selector, int seconds, CancellationToken token)

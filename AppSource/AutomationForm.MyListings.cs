@@ -471,7 +471,12 @@ internal sealed partial class AutomationForm
         // A different navigation (for example a login redirect) may finish
         // while the importer is waiting. Match Starting/Completed NavigationId
         // rather than accepting the first completion event from the WebView.
-        for (int attempt = 1; attempt <= 2; attempt++)
+        // Opening a signed-out homepage may trigger a login link followed by
+        // an automatic form submit. These are separate navigations that can
+        // interrupt the first management-page request. Retries only navigate;
+        // they never click a register/repost button.
+        const int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
             token.ThrowIfCancellationRequested();
             var done = new TaskCompletionSource<Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs>(
@@ -499,9 +504,12 @@ internal sealed partial class AutomationForm
                 {
                     if (!MyListingsImport.IsOfficialUrl(_web.Source?.AbsoluteUri))
                         throw new InvalidOperationException("조회 도중 공식 사이트를 벗어났습니다.");
-                    return;
+                    if (MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri)) return;
+                    // A successful redirect to a login/home page is not a
+                    // successful navigation to the management list.
+                    lastError = "관리 목록 대신 로그인/다른 페이지로 이동함";
                 }
-                lastError = $"{response.WebErrorStatus} (HTTP {response.HttpStatusCode})";
+                else lastError = $"{response.WebErrorStatus} (HTTP {response.HttpStatusCode})";
             }
             catch (TimeoutException)
             {
@@ -512,10 +520,10 @@ internal sealed partial class AutomationForm
                 _web.NavigationStarting -= starting;
                 _web.NavigationCompleted -= completed;
             }
-            AppendLog($"관리 페이지 이동 {attempt}/2 실패: {lastError}" +
-                (attempt == 1 ? " / 잠시 후 한 번 더 시도" : ""));
-            if (attempt == 1) await Task.Delay(900, token);
+            AppendLog($"관리 페이지 이동 {attempt}/{maxAttempts} 실패: {lastError}" +
+                (attempt < maxAttempts ? " / 로그인·페이지 이동 완료 후 재시도" : ""));
+            if (attempt < maxAttempts) await Task.Delay(attempt == 1 ? 1200 : 2200, token);
         }
-        throw new InvalidOperationException("관리 페이지 이동을 두 번 시도했지만 실패했습니다. " + lastError);
+        throw new InvalidOperationException($"관리 페이지 이동을 {maxAttempts}번 시도했지만 실패했습니다. " + lastError);
     }
 }

@@ -9,7 +9,8 @@ const importer = fs.readFileSync(__dirname + '/../AppSource/AutomationForm.MyLis
 assert.match(importer, /e\.NavigationId == targetId\.Value/);
 assert.match(importer, /_web\.NavigationStarting \+= starting/);
 assert.match(importer, /_web\.NavigationCompleted \+= completed/);
-assert.match(importer, /for \(int attempt = 1; attempt <= 2; attempt\+\+\)/);
+assert.match(importer, /for \(int attempt = 1; attempt <= maxAttempts; attempt\+\+\)/);
+assert.match(importer, /const int maxAttempts = 3/);
 assert.match(importer, /scan\.NavigationFailures > 0/);
 const match = src.match(/public const string ExtractPageScript = """\s*\n([\s\S]*?)\n\s*""";/);
 assert.ok(match, 'Missing embedded import extractor');
