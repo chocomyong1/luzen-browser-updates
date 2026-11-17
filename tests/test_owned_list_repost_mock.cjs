@@ -59,13 +59,14 @@ function makeRealMarkupRow(number, name, reinsertNumber = number, stamp = '11-16
 }
 
 function evaluate(rows, { number = id, name = title, click = false,
-  pathname = '/myroom/buy/buy_regist.html', hostname = 'www.itemmania.com' } = {}) {
+  pathname = '/myroom/buy/buy_regist.html', hostname = 'www.itemmania.com', siteReinsert } = {}) {
   const document = {
     querySelectorAll: selector => selector === 'tr' ? rows.map(x => x.row) :
       selector.includes('[data-tid]') ? rows.map(x => x.row) : []
   };
   const scope = { document, location: { protocol: 'https:', hostname, pathname },
     getComputedStyle: () => ({ visibility: 'visible' }) };
+  if (siteReinsert) scope.window = { reInsert: siteReinsert };
   const js = embedded.replace('__ARG__', JSON.stringify({ number, title: name, click }));
   return vm.runInNewContext(js, scope, { timeout: 1000 });
 }
@@ -139,6 +140,17 @@ function evaluate(rows, { number = id, name = title, click = false,
   assert.deepEqual(rows[0].clicks, ['repost']);
   assert.deepEqual(rows[1].clicks, []);
   console.log('PASS real ItemMania CSS-span reregist onclick, never hide/delete');
+}
+{
+  const rows = [makeRealMarkupRow(id, title), makeRealMarkupRow(other, '다른 물품')];
+  const calls = [];
+  const result = evaluate(rows, { click: true, siteReinsert: (number, game) => calls.push([number, game]) });
+  assert.equal(result.status, 'clicked');
+  assert.equal(result.method, 'native');
+  assert.deepEqual(calls, [[id, '2696']]);
+  assert.deepEqual(rows[0].clicks, []);
+  assert.deepEqual(rows[1].clicks, []);
+  console.log('PASS native site reInsert targeted by verified ID, without a DOM click');
 }
 {
   const rows = [makeRealMarkupRow(id, title, id, 'arbitrary text')];

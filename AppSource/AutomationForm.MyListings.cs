@@ -329,7 +329,7 @@ internal sealed partial class AutomationForm
         // hundreds of listings. Continue from the last checked offset.
         int start = Math.Max(0, _config.DetailEnrichmentCursor) % needing.Count;
         int batchSize = Math.Min(needing.Count, maxDetailPages);
-        int visits = 0, updated = 0;
+        int visits = 0, updated = 0, characters = 0, descriptions = 0, matched = 0;
         for (int offset = 0; offset < batchSize; offset++)
         {
             var record = needing[(start + offset) % needing.Count];
@@ -346,6 +346,7 @@ internal sealed partial class AutomationForm
                 // Do not mistake another item's page for this listing.
                 if (!string.Equals(detail.ListingNumber, record.ListingNumber, StringComparison.Ordinal))
                     continue;
+                matched++;
                 int before = new[] { record.Game, record.Server, record.Quantity, record.Price,
                     record.ItemCategory, record.TradingMethod, record.MinQuantity, record.MaxQuantity,
                     record.Character, record.Description }
@@ -360,6 +361,8 @@ internal sealed partial class AutomationForm
                 if (string.IsNullOrWhiteSpace(record.MaxQuantity)) record.MaxQuantity = detail.MaxQuantity;
                 if (string.IsNullOrWhiteSpace(record.Character)) record.Character = detail.Character;
                 if (string.IsNullOrWhiteSpace(record.Description)) record.Description = detail.Description;
+                if (!string.IsNullOrWhiteSpace(detail.Character)) characters++;
+                if (!string.IsNullOrWhiteSpace(detail.Description)) descriptions++;
                 int after = new[] { record.Game, record.Server, record.Quantity, record.Price,
                     record.ItemCategory, record.TradingMethod, record.MinQuantity, record.MaxQuantity,
                     record.Character, record.Description }
@@ -375,7 +378,13 @@ internal sealed partial class AutomationForm
         }
         _config.DetailEnrichmentCursor = (start + batchSize) % needing.Count;
         _config.Save();
-        if (visits > 0) AppendLog($"등록글 상세 화면 {visits}건 읽음 · {updated}건 정보 보완");
+        if (visits > 0)
+        {
+            AppendLog($"등록글 상세 화면 방문 {visits}건 · 등록번호 일치 {matched}건 · " +
+                $"정보 보완 {updated}건 · 캐릭터 확인 {characters}건 · 상세설명 확인 {descriptions}건");
+            if (matched > 0 && characters == 0 && descriptions == 0)
+                AppendLog("캐릭터·상세설명은 조회한 상세화면에서 확인되지 않았습니다. 사이트가 표시하지 않는 값은 추정하지 않습니다.");
+        }
         if (needing.Count > maxDetailPages)
             AppendLog($"상세정보 조회는 한번에 최대 {maxDetailPages}건까지 수행합니다. " +
                 "나머지 등록글은 재등록 전에 직접 확인하세요.");

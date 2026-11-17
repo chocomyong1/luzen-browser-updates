@@ -85,6 +85,9 @@ internal sealed partial class AutomationForm : Form
     private CancellationTokenSource? _myListingsImportCancellation;
     private TaskCompletionSource<bool>? _myListingsImportCompletion;
     private CancellationTokenSource? _currentRun;
+    // Once a live submit begins, do not cancel its independent result probe.
+    // The scheduler stops immediately; the one in-flight result is verified.
+    private bool _submissionVerificationPending;
     // Armed only after the target's exact own-list row has been verified.
     // JavaScript confirm dialogs stay invisible; only a repost-specific prompt
     // from the official own-list page may be accepted automatically.
@@ -1919,7 +1922,8 @@ internal sealed partial class AutomationForm : Form
 
     private void StopScheduler()
     {
-        _schedulerRunning = false; _timer.Stop(); _currentRun?.Cancel();
+        _schedulerRunning = false; _timer.Stop();
+        if (!_submissionVerificationPending) _currentRun?.Cancel();
         _pendingMyListingsImport = false;
         if (_myListingsImportRunning)
         {
@@ -1928,8 +1932,11 @@ internal sealed partial class AutomationForm : Form
             catch (Exception ex) { AppendLog("조회 페이지 중단 대기: " + ex.GetType().Name); }
             AppendLog("내 등록글 조회 취소 요청: 현재 페이지 이동이 끝나는 대로 중단합니다.");
         }
-        _state.Text = "중지됨"; _state.ForeColor = Color.Maroon; RefreshAutoSummary();
-        AppendLog("중지 요청. 실제 제출 중이었다면 사이트에서 등록 여부를 확인하세요.");
+        _state.Text = _submissionVerificationPending ? "중지 요청 · 마지막 제출 결과 확인 중" : "중지됨";
+        _state.ForeColor = Color.Maroon; RefreshAutoSummary();
+        AppendLog(_submissionVerificationPending
+            ? "새 작업은 중지했습니다. 방금 제출한 1건은 등록번호·등록시각 검증을 마친 후 중지합니다."
+            : "중지 요청. 실제 제출 중이었다면 사이트에서 등록 여부를 확인하세요.");
     }
 
     private bool CanRunNow(ListingJob job, out string reason)
@@ -1988,6 +1995,7 @@ internal sealed partial class AutomationForm : Form
         _armedOwnListRepost = "";
         _repostDialogBlocked = "";
         _repostSuccessAlertSeen = false;
+        _submissionVerificationPending = false;
         job.LastStatus = "실행 중"; _jobsGrid.Refresh();
         _state.Text = dryRun ? "시험 실행 중" : "등록 실행 중"; _state.ForeColor = Color.DarkBlue;
         var flow = _config.WorkflowFor(EffectiveOperation(job));
@@ -2093,6 +2101,7 @@ internal sealed partial class AutomationForm : Form
                         _config.Jobs = _jobs.ToList();
                         _config.Save();
                         submitted = true;
+                        _submissionVerificationPending = true;
                     }
                 }
                 AppendLog($"  {i + 1}/{flow.Steps.Count} {step.Action} " + (step.Action == "입력" ? "(내용 입력)" : step.Selector));
@@ -2102,7 +2111,7 @@ internal sealed partial class AutomationForm : Form
                     var result = await InspectOwnedListRepostAsync(job, true, token);
                     if (result.Status != "clicked")
                         throw new InvalidOperationException("해당 등록번호의 행 재등록 클릭 실패: " + result.Message);
-                    AppendLog("본인 물품 행의 재등록 버튼 클릭: " + job.ListingNumber);
+                    AppendLog("본인 물품 재등록 명령 전달 (" + result.Method + "): " + job.ListingNumber);
                     await Task.Delay(650, token);
                     if (!string.IsNullOrEmpty(_repostDialogBlocked))
                         throw new InvalidOperationException(_repostDialogBlocked);
@@ -2220,6 +2229,7 @@ internal sealed partial class AutomationForm : Form
             _armedOwnListRepost = "";
             _repostDialogBlocked = "";
             _repostSuccessAlertSeen = false;
+            _submissionVerificationPending = false;
             _busy = false;
             _jobsGrid.Refresh();
             _config.Save();
@@ -2736,9 +2746,12 @@ internal sealed partial class AutomationForm : Form
     private async Task<bool> VerifySuccessAsync(AutomationWorkflow flow, ListingJob job, string beforeListingNumber,
         string beforeUrl, bool selectorBefore, string beforeRepostStamp, string beforeOwnListUrl, CancellationToken token)
     {
-        var until = DateTime.UtcNow.AddSeconds(20);
-        var earliestListRecheck = DateTime.UtcNow.AddSeconds(4);
-        bool recheckedOwnList = false;
+        // The site's repost handler can be asynchronous and may not show a
+        // success toast. Re-query the official list repeatedly, rather than
+        // treating a single 4-second snapshot as the final result.
+        var until = DateTime.UtcNow.AddSeconds(flow.Operation == "재등록" ? 30 : 20);
+        var nextListRecheck = DateTime.UtcNow.AddSeconds(3);
+        int listRecheckCount = 0;
         do
         {
             token.ThrowIfCancellationRequested();
@@ -2765,16 +2778,15 @@ internal sealed partial class AutomationForm : Form
                     !string.Equals(evidence.Number, beforeListingNumber, StringComparison.Ordinal))
                     return true;
             }
-            // The authenticated My Room page may repost by AJAX with no URL
-            // change or success toast. Reload the same account page ONCE and
-            // accept only a changed, site-rendered time on this exact ID+title.
-            // An unchanged or absent stamp is inconclusive and must stay held.
-            if (flow.Operation == "재등록" && !recheckedOwnList &&
-                DateTime.UtcNow >= earliestListRecheck &&
+            // The authenticated My Room page may repost by AJAX without URL
+            // change or toast. Multiple fresh reads of the exact owned row
+            // detect delayed server updates; a button click alone proves none.
+            if (flow.Operation == "재등록" && DateTime.UtcNow >= nextListRecheck &&
                 !string.IsNullOrWhiteSpace(beforeRepostStamp) &&
                 MyListingsImport.IsOwnedListUrl(beforeOwnListUrl))
             {
-                recheckedOwnList = true;
+                listRecheckCount++;
+                nextListRecheck = DateTime.UtcNow.AddSeconds(4);
                 try
                 {
                     await NavigateAsync(beforeOwnListUrl, token);
@@ -2796,7 +2808,8 @@ internal sealed partial class AutomationForm : Form
                         AppendLog("아이템매니아에서 해당 물품 재등록 시각 변경 확인: " + beforeRepostStamp + " → " + row.Stamp);
                         return true;
                     }
-                    AppendLog("재등록 시각 확인 대기: 대상 글의 등록시각이 아직 바뀌지 않았습니다.");
+                    if (listRecheckCount == 1 || listRecheckCount % 3 == 0)
+                        AppendLog("재등록 결과 재확인 " + listRecheckCount + "회: 대상 글의 등록시각 변경 대기 중");
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { AppendLog("등록시각 재확인 실패: " + ex.GetType().Name); }

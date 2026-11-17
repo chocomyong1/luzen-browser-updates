@@ -305,7 +305,8 @@ internal static class MyListingsImport
     quantity:['수량','판매수량','구매수량','분할수량','보유수량'],
     price:['가격','금액','구매금액','판매금액','분할금액','단가'],
     itemCategory:['물품구분','상품구분'],tradingMethod:['거래유형','거래방식'],
-    character:['캐릭터명','캐릭터'],description:['상세설명','물품설명']};
+    character:['캐릭터명','캐릭터','캐릭터정보','캐릭터이름','캐릭터닉네임'],
+    description:['상세설명','물품설명','물품상세설명','상세내용','물품내용','상품설명']};
   const dataNames={game:['data-game','data-game-name'],
     server:['data-server','data-server-name'],
     quantity:['data-quantity','data-qty','data-count'],
@@ -618,7 +619,8 @@ internal static class MyListingsImport
     price:['가격','금액','판매금액','구매금액','분할금액','단가'],
     itemCategory:['물품구분','상품구분'],tradingMethod:['거래유형','거래방식'],
     minQuantity:['최소수량','최소거래수량'],maxQuantity:['최대수량','최대거래수량'],
-    character:['캐릭터명','캐릭터'],description:['상세설명','물품설명']};
+    character:['캐릭터명','캐릭터','캐릭터정보','캐릭터이름','캐릭터닉네임'],
+    description:['상세설명','물품설명','물품상세설명','상세내용','물품내용','상품설명']};
   const num=(v,type)=>{
     const m=norm(v).match(type==='price'
       ? /(?:₩\s*)?([0-9][0-9,]*)\s*(?:원|KRW)?/i
@@ -631,8 +633,12 @@ internal static class MyListingsImport
     for(const el of document.querySelectorAll('[data-label],dt,th,label,strong,b,span')) {
       const label=clean(el.getAttribute('data-label')||el.textContent);
       if(!labels.includes(label))continue;
-      const value=el.getAttribute('data-label')
-        ? norm(el.textContent) : norm(el.nextElementSibling?.textContent);
+      const sibling=el.nextElementSibling;
+      const labelledControl=el.getAttribute('for')
+        ? document.getElementById?.(el.getAttribute('for')) : null;
+      const value=labelledControl ? norm(labelledControl.value||labelledControl.textContent)
+        : el.getAttribute('data-label')
+          ? norm(el.textContent) : norm(sibling?.value||sibling?.textContent);
       if(!value)continue;
       const numeric=['price','quantity','minQuantity','maxQuantity'].includes(key);
       const parsed=numeric?num(value,key==='price'?'price':'quantity'):value;
@@ -658,8 +664,8 @@ internal static class MyListingsImport
       tradingMethod:/^(tradingMethod|trading_method|trade_type)$/i,
       minQuantity:/^(minQuantity|min_quantity|goods_min)$/i,
       maxQuantity:/^(maxQuantity|max_quantity|goods_max)$/i,
-      character:/^(character|character_name|char_name)$/i,
-      description:/^(description|goods_description|goods_content)$/i};
+      character:/^(character|character_name|characterName|char_name|charName|characterNick|character_nick)$/i,
+      description:/^(description|goods_description|goods_content|goodsContent|goodsDetail|goods_detail|goodsMemo|goods_memo|itemDescription|item_description)$/i};
     for(const el of document.querySelectorAll('input,select,textarea')) {
       const name=el.getAttribute('name')||el.id||'';
       if(!formAliases[key].test(name))continue;
@@ -668,6 +674,17 @@ internal static class MyListingsImport
       const numeric=['price','quantity','minQuantity','maxQuantity'].includes(key);
       const parsed=numeric?num(raw,key==='price'?'price':'quantity'):norm(raw);
       if(parsed&&parsed.length<(key==='description'?2000:100))matches.push(parsed);
+    }
+    // Some site templates use a uniquely named content pane instead of a
+    // label/textarea. Only read exact semantic selectors, never a whole page.
+    const semantic=key==='description'
+      ? '[data-field="goods_content"],[data-field="description"],.goods_description,.goods_content,.goods_detail_content'
+      : key==='character'
+      ? '[data-field="character"],[data-field="character_name"],.character_name'
+      : '';
+    if(semantic)for(const el of document.querySelectorAll(semantic)) {
+      const val=norm(el.value||el.innerText||el.textContent);
+      if(val && val.length<(key==='description'?2000:100))matches.push(val);
     }
     const unique=[...new Set(matches)];
     if(unique.length===1)result[key]=unique[0];

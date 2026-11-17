@@ -40,6 +40,9 @@ assert.match(models, /CharacterDisplay => string\.IsNullOrWhiteSpace\(Character\
 assert.match(myListingsUi, /_config\.DetailEnrichmentCursor = \(start \+ batchSize\) % needing\.Count/);
 assert.match(automation, /NavigateAsync\(beforeOwnListUrl, token\)/);
 assert.match(automation, /row\.Status == "found" && !string\.IsNullOrWhiteSpace\(row\.Stamp\)/);
+assert.match(automation, /if \(!_submissionVerificationPending\) _currentRun\?\.Cancel\(\)/);
+assert.match(automation, /nextListRecheck = DateTime\.UtcNow\.AddSeconds\(4\)/);
+assert.match(automation, /result\.Method/);
 assert.match(automation, /Math\.Clamp\(_config\.MaxSubmissionsPerHour, 1, 1000\)/);
 assert.match(bulk, /IsSafeDetailUrl\(j\.EntryUrl, j\.ListingNumber\) \|\|[\s\S]*?OwnedListUrlFor\(j\)/);
 assert.match(models, /loaded\.MinimumServerSeconds = Math\.Clamp\(loaded\.MinimumServerSeconds, 21, 3600\)/);

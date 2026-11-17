@@ -12,6 +12,8 @@ internal sealed class OwnedListRepostResult
     public string Message { get; set; } = "";
     // Site-rendered registration time for this ONE listing row, not browser clock.
     public string Stamp { get; set; } = "";
+    // Whether the verified site's own function or its row button was used.
+    public string Method { get; set; } = "";
 }
 
 internal static class OwnedListRepost
@@ -141,8 +143,23 @@ internal static class OwnedListRepost
         '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 등록번호와 연결된 reInsert 재등록 버튼을 확인하지 못했습니다');
       if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인',matching[0].stamp);
       const button=matching[0].actions[0];
+      // Prefer the native site handler with the two arguments read from the
+      // EXACT matched row. This avoids the DOM click path used in older builds.
+      // If the function is not globally available, keep the verified-row click
+      // as a fallback. Never retry the click after an invoked handler throws.
+      const handler=String(button.getAttribute?.('onclick')||'');
+      const call=handler.match(/^\s*reInsert\s*\(\s*(['"])(\d{8,20})\1\s*,\s*(['"])([a-zA-Z0-9_-]{1,40})\3\s*\)\s*;?\s*$/);
+      if(call && call[2]===arg.number && typeof window!=='undefined' &&
+         typeof window.reInsert==='function') {
+        try {
+          window.reInsert(call[2],call[4]);
+          return {...result('clicked','사이트 자체 재등록 함수 호출 (성공 여부는 사이트에서 다시 검증)',matching[0].stamp),method:'native'};
+        } catch(e) {
+          return result('error','사이트 자체 재등록 함수 처리 오류; 중복 제출하지 않습니다');
+        }
+      }
       button.click();
-      return result('clicked','해당 물품 행의 재등록 버튼 클릭됨 (최종 등록 성공은 별도 확인 필요)',matching[0].stamp);
+      return {...result('clicked','검증된 물품 행 재등록 버튼 클릭 (성공 여부는 별도 검증)',matching[0].stamp),method:'row-click'};
     })()
     """;
 }

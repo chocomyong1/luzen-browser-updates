@@ -19,6 +19,7 @@ internal sealed class MainForm : Form
     private bool _installingUpdate;
     private DateTime _nextUpdateRetryUtc = DateTime.MinValue;
     private DateTime _lastUpdateCheckUtc = DateTime.MinValue;
+    private bool _manualUpdateRequested;
     private readonly Label _status = new()
     {
         AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
@@ -81,7 +82,7 @@ internal sealed class MainForm : Form
             if (_installingUpdate || _checkingUpdate || IsDisposed || Disposing) return;
             if (_pendingUpdate is not null)
             {
-                if (_updateSettings.Automatic && _module.CanInstallSoftwareUpdate &&
+                if ((_updateSettings.Automatic || _manualUpdateRequested) && _module.CanInstallSoftwareUpdate &&
                     DateTime.UtcNow >= _nextUpdateRetryUtc)
                     await InstallPendingUpdateAsync(automatic: true);
             }
@@ -121,7 +122,12 @@ internal sealed class MainForm : Form
         AddToolButton(bar, "저장", () => _module.SaveListings());
         AddToolButton(bar, "매니아 계정", () => _module.OpenAccountSettings(), 112);
         AddToolButton(bar, "설정", () => _module.ShowWorkflowSettings());
-        AddToolButton(bar, "업데이트", OpenUpdateSettingsDialog, 91);
+        // One click checks and installs. Advanced feed settings remain available
+        // from the button's context menu, without an extra confirmation dialog.
+        var updateButton = AddToolButton(bar, "업데이트", () => _ = CheckForUpdateAsync(automatic: false, installImmediately: true), 91);
+        var updateMenu = new ContextMenuStrip();
+        updateMenu.Items.Add("업데이트 주소 · 자동설치 설정", null, (_, _) => OpenUpdateSettingsDialog());
+        updateButton.ContextMenuStrip = updateMenu;
         AddToolButton(bar, "도움말", () => MessageBox.Show(this,
             "모서리·테두리를 끌어서 크기를 자유롭게 바꿀 수 있습니다.\n" +
             "사이트 화면은 표시하지 않으며 내부 브라우저에서만 작업합니다.\n" +
@@ -190,6 +196,7 @@ internal sealed class MainForm : Form
         }
         _updateSettings = new AppUpdateSettings { FeedUrl = url, Automatic = automatic.Checked };
         AppUpdateService.SaveSettings(_updateSettings);
+        _manualUpdateRequested = false;
         _pendingUpdate = null;
         _downloadedUpdate = null;
         _nextUpdateRetryUtc = DateTime.MinValue;
@@ -198,7 +205,7 @@ internal sealed class MainForm : Form
         else MessageBox.Show(this, "주소가 설정되지 않았습니다. 업데이트 배포 서버 연결 후 자동으로 사용할 수 있습니다.", "업데이트 설정");
     }
 
-    private async Task CheckForUpdateAsync(bool automatic)
+    private async Task CheckForUpdateAsync(bool automatic, bool installImmediately = false)
     {
         if (_checkingUpdate || _installingUpdate || string.IsNullOrWhiteSpace(_updateSettings.FeedUrl)) return;
         _checkingUpdate = true;
@@ -220,7 +227,12 @@ internal sealed class MainForm : Form
             _pendingUpdate = candidate;
             _status.Text = "  새 버전 " + candidate.Version + " 발견 · " +
                 (_module.CanInstallSoftwareUpdate ? "업데이트 준비" : "진행 중인 등록 작업 완료 대기");
-            if (automatic && _updateSettings.Automatic)
+            if (installImmediately)
+            {
+                _manualUpdateRequested = true;
+                await InstallPendingUpdateAsync(automatic: true);
+            }
+            else if (automatic && _updateSettings.Automatic)
             {
                 if (_module.CanInstallSoftwareUpdate) await InstallPendingUpdateAsync(automatic: true);
             }
@@ -287,7 +299,7 @@ internal sealed class MainForm : Form
         finally { _installingUpdate = false; }
     }
 
-    private static void AddToolButton(FlowLayoutPanel parent, string label, Action action, int width = 72)
+    private static Button AddToolButton(FlowLayoutPanel parent, string label, Action action, int width = 72)
     {
         var button = new Button
         {
@@ -297,6 +309,7 @@ internal sealed class MainForm : Form
             label == "삭제" ? UiTheme.ButtonTone.Danger : UiTheme.ButtonTone.Dark);
         button.Click += (_, _) => action();
         parent.Controls.Add(button);
+        return button;
     }
 
     private Control BuildModeTabs()
