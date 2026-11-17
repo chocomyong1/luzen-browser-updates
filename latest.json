@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.27",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.27/LuzenBrowser_22.2.27_BinaryUpdate.zip",
-  "sha256": "b9bd7ee3297ffe45935e96e48381b3fe1db37792ecd49610453628063be9686e",
+  "version": "22.2.28",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.28/LuzenBrowser_22.2.28_BinaryUpdate.zip",
+  "sha256": "ee8549f3a3bcdd80d62e808bd4e06bc18c0397e57c38a4b61db8335ec2d1f691",
   "format": "binary",
-  "releaseNotes": "v22.2.27: 내 등록글 재등록 검색 개선. 각 관리 페이지의 물품 행 로딩을 재확인하고, 등록번호 없음/제목 불일치/재등록 버튼 인식 실패를 구분하여 오류 로그에 기록합니다. 페이지 이동도 해당 페이지의 완료 이벤트를 검증합니다. 등록번호·제목·버튼이 확인되지 않은 글은 제출하지 않습니다."
+  "releaseNotes": "v22.2.28: 내 등록글의 수량 범위 접두어를 제외한 실제 제목도 정확히 비교하여 재등록 오인 차단을 개선하고, 제목이 정말 다르면 사이트 제목을 오류 로그에 표시합니다. 사이트가 해당 서버의 등록 간격 미충족을 명확히 알리면 전체 자동등록은 중단하지 않고 해당 글만 최소 30초 뒤 재시도합니다. 다른 제출 오류는 기존처럼 안전하게 보류합니다."
 }
