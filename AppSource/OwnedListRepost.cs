@@ -38,6 +38,10 @@ internal static class OwnedListRepost
     (() => {
       const arg=__ARG__;
       const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
+      // A saved title can contain the separate quantity-range label while the
+      // site's .trade_title is only the actual item title. Normalize ONLY that
+      // presentation prefix; never accept a different item title by ID alone.
+      const coreTitle=s=>norm(s).replace(/^\[[\d,]+개[~〜-][\d,]+개\]/,'');
       const valid=s=>/^\d{8,20}$/.test(String(s||''));
       const result=(status,message='',stamp='',diagnostic={})=>({status,message,stamp,...diagnostic});
       const official=()=>location.protocol==='https:' &&
@@ -93,6 +97,7 @@ internal static class OwnedListRepost
       };
       const matching=[];const candidateRows=new Set();
       let numberRows=0,titleRows=0;
+      const actualTitles=[];
       const attrs=['data-tid','data-listing-id','data-goods-id','data-trade-id','data-id'];
       for(const d of docs){
         for(const tr of d.querySelectorAll('tr'))candidateRows.add(tr);
@@ -109,7 +114,9 @@ internal static class OwnedListRepost
       for(const row of candidateRows){
         const text=String(row.innerText||row.textContent||'');
         if(text.length>6000)continue;
-        const titleMatches=norm(text).includes(norm(arg.title));
+        const itemTitle=String(row.querySelector?.('.trade_title')?.textContent||'').trim();
+        const titleMatches=norm(text).includes(norm(arg.title)) ||
+          (itemTitle.length>1 && coreTitle(itemTitle)===coreTitle(arg.title));
         if(titleMatches)titleRows++;
         const ids=new Set();
         for(const el of [row,...row.querySelectorAll('*')].slice(0,250)){
@@ -125,7 +132,10 @@ internal static class OwnedListRepost
           }
         }
         if(new RegExp('(?:^|\\D)'+arg.number+'(?!\\d)').test(text))ids.add(arg.number);
-        if(ids.has(arg.number))numberRows++;
+        if(ids.has(arg.number)){
+          numberRows++;
+          if(itemTitle&&actualTitles.length<2)actualTitles.push(itemTitle.slice(0,120));
+        }
         if(!ids.has(arg.number)||!titleMatches)continue;
         if(ids.size!==1)return result('error','한 물품 행에 서로 다른 등록번호가 있어 중단했습니다','',
           {scannedRows:candidateRows.size,numberRows,titleRows});
@@ -146,7 +156,10 @@ internal static class OwnedListRepost
       }
       const diagnostic={scannedRows:candidateRows.size,numberRows,titleRows};
       if(matching.length===0&&numberRows>0)return result('mismatch',
-        '등록번호와 일치하는 행은 있으나 저장된 제목이 사이트 제목과 다릅니다. 원본 글을 다시 확인하세요','',diagnostic);
+        actualTitles.length
+          ?'등록번호는 있지만 저장된 제목과 사이트 제목이 다릅니다. 사이트 제목: '+actualTitles.join(' / ')
+          :'등록번호는 있지만 사이트의 물품 제목 영역을 확인하지 못했습니다. 원본 글을 다시 확인하세요',
+        '',diagnostic);
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?
         '동일 등록번호와 제목의 행이 여러 개라 중단했습니다':
         '이 페이지에서 등록번호와 제목이 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)','',diagnostic);

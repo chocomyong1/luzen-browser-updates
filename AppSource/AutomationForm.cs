@@ -94,6 +94,7 @@ internal sealed partial class AutomationForm : Form
     private string _armedOwnListRepost = "";
     private bool _repostSuccessAlertSeen;
     private string _repostDialogBlocked = "";
+    private bool _repostServerCooldownRejected;
     private int? _siteReportedIdRemaining;
     private string _pickerMode = "";
     private readonly TabControl _editorTabs = new() { Dock = DockStyle.Fill };
@@ -2024,6 +2025,7 @@ internal sealed partial class AutomationForm : Form
         string preRepostListUrl = "";
         _armedOwnListRepost = "";
         _repostDialogBlocked = "";
+        _repostServerCooldownRejected = false;
         _repostSuccessAlertSeen = false;
         _siteReportedIdRemaining = null;
         _submissionVerificationPending = false;
@@ -2256,6 +2258,19 @@ internal sealed partial class AutomationForm : Form
             job.NextDueUtc = DateTime.UtcNow.AddMinutes(10);
             AppendLog("작업 중지: " + job.Title + (submitted ? " / 제출이 진행되었을 수 있으니 중복 등록 전에 반드시 확인" : ""));
         }
+        catch (Exception ex) when (submitted && _repostServerCooldownRejected)
+        {
+            // An explicit site alert that this server cannot post yet is a
+            // definitive rejection, not an unknown submission outcome. Keep
+            // other servers running; retry this item after a conservative gap.
+            job.RequiresReview = false;
+            job.PendingRepostBeforeStamp = "";
+            job.PendingRepostAttemptUtc = null;
+            job.NextDueUtc = DateTime.UtcNow.AddSeconds(Math.Max(30, _config.MinimumServerSeconds));
+            job.LastStatus = "사이트 서버 재등록 간격 대기";
+            AppendLog("사이트가 이 서버의 재등록을 명확히 거절했습니다. 다른 서버는 계속 진행하며 " +
+                $"해당 글은 {job.NextDueLocal} 이후 재시도합니다. " + ex.Message);
+        }
         catch (Exception ex)
         {
             job.LastStatus = submitted ? "제출 결과 확인 필요" : "오류 (미제출)";
@@ -2272,6 +2287,7 @@ internal sealed partial class AutomationForm : Form
         {
             _armedOwnListRepost = "";
             _repostDialogBlocked = "";
+            _repostServerCooldownRejected = false;
             _repostSuccessAlertSeen = false;
             _siteReportedIdRemaining = null;
             _submissionVerificationPending = false;
@@ -2542,6 +2558,11 @@ internal sealed partial class AutomationForm : Form
         var isUnsafe = unsafeWords.Any(x => message.Contains(x, StringComparison.OrdinalIgnoreCase));
         if (e.Kind == CoreWebView2ScriptDialogKind.Alert)
         {
+            // The site's explicit server cooldown message proves no repost was
+            // accepted. Other alerts remain ambiguous and still require review.
+            var compactMessage = string.Concat(message.Where(c => !char.IsWhiteSpace(c)));
+            if (ownListContext && compactMessage.Contains("해당서버에아직등록하실수없습니다", StringComparison.Ordinal))
+                _repostServerCooldownRejected = true;
             // Informational alerts need to be closed before site JS can resume.
             // Only a positive, repost-specific server message is a success signal.
             var negative = new[] { "실패", "오류", "불가", "제한", "초과", "취소", "않", "못", "이미" };

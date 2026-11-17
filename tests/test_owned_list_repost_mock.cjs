@@ -88,13 +88,34 @@ function evaluate(rows, { number = id, name = title, click = false,
 }
 {
   const rows = [makeRealMarkupRow(id, '사이트에서 변경된 제목')];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: '사이트에서 변경된 제목' } : null;
   const result = evaluate(rows, { click: true });
   assert.equal(result.status, 'mismatch');
   assert.equal(result.numberRows, 1);
   assert.equal(result.titleRows, 0);
   assert.equal(result.scannedRows, 1);
   assert.deepEqual(rows[0].clicks, []);
+  assert.match(result.message, /사이트 제목: 사이트에서 변경된 제목/);
   console.log('PASS known ID with changed title is reported without reposting');
+}
+{
+  const core = '10레벨 겁화 보석 구매합니다';
+  const rows = [makeRealMarkupRow(id, '다른 표시 영역 / 제목: ' + core)];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: core } : null;
+  assert.equal(evaluate(rows).status, 'ready');
+  assert.equal(evaluate(rows, { click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS quantity range prefix in saved title does not cause false mismatch');
+}
+{
+  const rows = [makeRealMarkupRow(id, '10레벨 작열 보석 구매합니다')];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: '10레벨 작열 보석 구매합니다' } : null;
+  assert.equal(evaluate(rows, { click: true }).status, 'mismatch');
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS genuinely different core title is never reposted');
 }
 {
   const rows = [makeRealMarkupRow(other, title)];

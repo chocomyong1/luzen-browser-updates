@@ -41,6 +41,16 @@ assert.match(automation, /job\.RequiresReview = true;[\s\S]*?submitted = true;/)
 assert.match(automation, /ScriptDialogOpening \+= OnItemManiaScriptDialog/);
 assert.match(automation, /_armedOwnListRepost = job\.ListingNumber/);
 assert.match(automation, /e\.Kind == CoreWebView2ScriptDialogKind\.Confirm && !isUnsafe/);
+assert.match(automation, /compactMessage\.Contains\("해당서버에아직등록하실수없습니다"/);
+const cooldownRecovery = automation.split('catch (Exception ex) when (submitted && _repostServerCooldownRejected)')[1]
+  ?.split('catch (Exception ex)')[0] || '';
+assert.match(cooldownRecovery, /job\.RequiresReview = false/);
+assert.match(cooldownRecovery, /job\.PendingRepostAttemptUtc = null/);
+assert.match(cooldownRecovery, /Math\.Max\(30, _config\.MinimumServerSeconds\)/);
+assert.doesNotMatch(cooldownRecovery, /PauseScheduler\(/);
+const uncertainSubmissionRecovery = automation.split('catch (Exception ex) when (submitted && _repostServerCooldownRejected)')[1]
+  ?.split('catch (Exception ex)')[1] || '';
+assert.match(uncertainSubmissionRecovery, /PauseScheduler\(/);
 // A native confirm from the owned list is allowed only in its armed exact-ID
 // context; a later positive alert from another OFFICIAL site path can close.
 assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(currentPage\)/);
