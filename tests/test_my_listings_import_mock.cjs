@@ -3,6 +3,14 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
 const src = fs.readFileSync(__dirname + '/../AppSource/MyListingsImport.cs', 'utf8');
+const importer = fs.readFileSync(__dirname + '/../AppSource/AutomationForm.MyListings.cs', 'utf8');
+// Navigation completion from another operation must never be mistaken for the
+// signed-in management page we actually requested. Read-only retry is allowed.
+assert.match(importer, /e\.NavigationId == targetId\.Value/);
+assert.match(importer, /_web\.NavigationStarting \+= starting/);
+assert.match(importer, /_web\.NavigationCompleted \+= completed/);
+assert.match(importer, /for \(int attempt = 1; attempt <= 2; attempt\+\+\)/);
+assert.match(importer, /scan\.NavigationFailures > 0/);
 const match = src.match(/public const string ExtractPageScript = """\s*\n([\s\S]*?)\n\s*""";/);
 assert.ok(match, 'Missing embedded import extractor');
 

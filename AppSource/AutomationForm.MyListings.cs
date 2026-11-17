@@ -100,6 +100,8 @@ internal sealed partial class AutomationForm
             {
                 var reason = scan.LoginRequired
                     ? "아이템매니아 로그인 세션이 확인되지 않았습니다. '매니아 계정'에서 계정·자동 로그인을 확인한 뒤 다시 눌러주세요."
+                    : scan.NavigationFailures > 0
+                    ? $"아이템매니아 관리 페이지로 이동하지 못했습니다 ({scan.NavigationFailures}페이지). 내부 브라우저의 로그인 상태와 사이트 접속을 확인한 뒤 다시 시도하세요.\n마지막 이동 오류: {scan.LastNavigationError}"
                     : "아이템매니아 관리 페이지에서 물품 행을 읽지 못했습니다. 사이트 구조가 달라졌거나 현재 계정에 등록글이 없을 수 있습니다.";
                 AppendLog("내 등록글 자동 조회 실패: " + reason);
                 MessageBox.Show(this,
@@ -222,6 +224,8 @@ internal sealed partial class AutomationForm
         public bool LoginRequired { get; set; }
         public bool CompletedAllPages { get; set; } = true;
         public int PagesVisited { get; set; }
+        public int NavigationFailures { get; set; }
+        public string LastNavigationError { get; set; } = "";
     }
 
     private async Task<MyListingsScan> ReadMyListingsPagesAsync(CancellationToken token)
@@ -244,11 +248,13 @@ internal sealed partial class AutomationForm
             var url = urls.Dequeue();
             if (!MyListingsImport.IsOwnedListUrl(url) || !seen.Add(url)) continue;
             result.PagesVisited++;
+            bool navigated = false;
             try
             {
                 AppendLog("내 등록글 조회: " + (MyListingsImport.IsSellListUrl(url) ? "판매" : "구매") + " 목록 " + result.PagesVisited + "페이지");
                 _state.Text = $"내 등록글 조회 중 · {result.PagesVisited}페이지";
                 await NavigateOwnedListAsync(url, token);
+                navigated = true;
                 ExistingListingPage page = new();
                 // Async rendering is common: give a list a few chances to appear.
                 // Read only. Avoid clicking registration/deletion/confirmation buttons.
@@ -298,6 +304,11 @@ internal sealed partial class AutomationForm
             catch (Exception ex)
             {
                 result.CompletedAllPages = false;
+                if (!navigated)
+                {
+                    result.NavigationFailures++;
+                    result.LastNavigationError = ex.Message;
+                }
                 AppendLog("내 등록글 페이지 조회 오류: " + ex.GetType().Name + " / " + ex.Message);
             }
         }
@@ -456,18 +467,55 @@ internal sealed partial class AutomationForm
         token.ThrowIfCancellationRequested();
         if (!MyListingsImport.IsOfficialUrl(url) || _web.CoreWebView2 is null)
             throw new InvalidOperationException("공식 아이템매니아 주소가 아닙니다.");
-        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs>? handler = null;
-        handler = (_, e) => done.TrySetResult(e.IsSuccess);
-        _web.NavigationCompleted += handler;
-        try
+        string lastError = "확인되지 않음";
+        // A different navigation (for example a login redirect) may finish
+        // while the importer is waiting. Match Starting/Completed NavigationId
+        // rather than accepting the first completion event from the WebView.
+        for (int attempt = 1; attempt <= 2; attempt++)
         {
-            _web.CoreWebView2.Navigate(url);
-            if (!await done.Task.WaitAsync(TimeSpan.FromSeconds(25), token))
-                throw new InvalidOperationException("아이템매니아 페이지로 이동하지 못했습니다.");
-            if (!MyListingsImport.IsOfficialUrl(_web.Source?.AbsoluteUri))
-                throw new InvalidOperationException("조회 도중 공식 사이트를 벗어났습니다.");
+            token.ThrowIfCancellationRequested();
+            var done = new TaskCompletionSource<Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            ulong? targetId = null;
+            EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs>? starting = null;
+            EventHandler<Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs>? completed = null;
+            starting = (_, e) =>
+            {
+                if (targetId is null && string.Equals(e.Uri, url, StringComparison.OrdinalIgnoreCase))
+                    targetId = e.NavigationId;
+            };
+            completed = (_, e) =>
+            {
+                if (targetId.HasValue && e.NavigationId == targetId.Value)
+                    done.TrySetResult(e);
+            };
+            _web.NavigationStarting += starting;
+            _web.NavigationCompleted += completed;
+            try
+            {
+                _web.CoreWebView2.Navigate(url);
+                var response = await done.Task.WaitAsync(TimeSpan.FromSeconds(25), token);
+                if (response.IsSuccess)
+                {
+                    if (!MyListingsImport.IsOfficialUrl(_web.Source?.AbsoluteUri))
+                        throw new InvalidOperationException("조회 도중 공식 사이트를 벗어났습니다.");
+                    return;
+                }
+                lastError = $"{response.WebErrorStatus} (HTTP {response.HttpStatusCode})";
+            }
+            catch (TimeoutException)
+            {
+                lastError = "관리 페이지 이동 완료 대기 25초 초과";
+            }
+            finally
+            {
+                _web.NavigationStarting -= starting;
+                _web.NavigationCompleted -= completed;
+            }
+            AppendLog($"관리 페이지 이동 {attempt}/2 실패: {lastError}" +
+                (attempt == 1 ? " / 잠시 후 한 번 더 시도" : ""));
+            if (attempt == 1) await Task.Delay(900, token);
         }
-        finally { _web.NavigationCompleted -= handler; }
+        throw new InvalidOperationException("관리 페이지 이동을 두 번 시도했지만 실패했습니다. " + lastError);
     }
 }
