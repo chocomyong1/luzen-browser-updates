@@ -20,6 +20,12 @@ assert.match(automation, /\[시험\][\s\S]*?LocateOwnedListFallbackAsync\(job, t
 assert.match(automation, /var beforeRepost = await InspectCurrentIdentityAsync\(job, token\);[\s\S]*?LocateOwnedListFallbackAsync\(job, token\)/);
 assert.match(automation, /if \(fallback\.Status != "ready"\)[\s\S]*?repostFromOwnedList = true/);
 assert.match(automation, /if \(step\.Action == "제출" && repostFromOwnedList\)[\s\S]*?InspectOwnedListRepostAsync\(job, true, token\)/);
+// A second program may move the target to the newest page while we paginate.
+// Recheck the current first page READ-ONLY, then still require the exact row.
+const fallbackSearch = automation.split('private async Task<OwnedListRepostResult> LocateOwnedListRepostAsync(')[1]?.split('private async Task<OwnedListRepostResult> InspectOwnedListRepostAsync(')[0] || '';
+assert.match(fallbackSearch, /await NavigateAsync\(baseUrl, token\);[\s\S]*?InspectOwnedListRepostAsync\(job, false, token\)/);
+assert.match(fallbackSearch, /if \(updated\.Status == "ready"\)/);
+assert.doesNotMatch(fallbackSearch, /InspectOwnedListRepostAsync\(job, true, token\)/);
 assert.match(automation, /job\.RequiresReview = true;[\s\S]*?submitted = true;/);
 // Hidden browser must handle the site's native confirm; unknown prompts never
 // get blanket approval. Server-rendered time can prove a real AJAX repost.

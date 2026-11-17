@@ -2325,8 +2325,39 @@ internal sealed partial class AutomationForm : Form
             }
             catch (Exception ex) { AppendLog("관리 목록 페이지 탐색 오류: " + ex.GetType().Name); }
         }
+        // Another program using the same account can repost an item while we
+        // are paging through this list. That moves its row to the newest page,
+        // which we may have inspected *before* it moved. Recheck the official
+        // first page exactly once. This is read-only; never submit an unverified
+        // row or widen the listing ID/title matching rules.
+        token.ThrowIfCancellationRequested();
+        AppendLog($"관리 목록 {visited.Count}페이지에 대상 없음 → 첫 페이지 최신 목록 재확인: {job.ListingNumber}");
+        try
+        {
+            await NavigateAsync(baseUrl, token);
+            var updated = await InspectOwnedListRepostAsync(job, false, token);
+            if (updated.Status == "not-found")
+            {
+                // The page's shell can appear before its asynchronous item rows.
+                await Task.Delay(750, token);
+                updated = await InspectOwnedListRepostAsync(job, false, token);
+            }
+            if (updated.Status == "ready")
+            {
+                if (!string.Equals(job.SourceListUrl, baseUrl, StringComparison.OrdinalIgnoreCase))
+                {
+                    job.SourceListUrl = baseUrl;
+                    _config.Save();
+                }
+                AppendLog("최신 관리 목록 첫 페이지에서 정확한 등록번호·제목 재확인 성공: " + job.ListingNumber);
+                return updated;
+            }
+            if (updated.Status != "not-found") return updated;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception ex) { AppendLog("최신 첫 페이지 재확인 실패: " + ex.GetType().Name); }
         return new OwnedListRepostResult { Status = "not-found", Message =
-            $"해당 등록번호의 행을 관리 목록 {visited.Count}페이지에서 찾지 못했습니다. 글 상태/페이지 구성을 확인하세요" };
+            $"해당 등록번호의 행을 관리 목록 {visited.Count}페이지와 최신 첫 페이지에서 찾지 못했습니다. 글 상태/페이지 구성을 확인하세요" };
     }
 
     private async Task<OwnedListRepostResult> InspectOwnedListRepostAsync(ListingJob job, bool? click,
