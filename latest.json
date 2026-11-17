@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.20",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.20/LuzenBrowser_22.2.20_BinaryUpdate.zip",
-  "sha256": "c7538379d84094124bacec236d6df5a5501e5b3339b03c8fad2df31efa53b3ef",
+  "version": "22.2.21",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.21/LuzenBrowser_22.2.21_BinaryUpdate.zip",
+  "sha256": "28e9516ce2c197ccc331f5281a2d476bb5527aa3f7dc1b1a8ceab54562fa7e49",
   "format": "binary",
-  "releaseNotes": "v22.2.20: 시간 중간 시작 시 ID·서버별 첫 사이트 잔여 횟수는 텔레그램 알림 없이 기준으로 저장합니다. 이후 사이트 예상 횟수가 달라질 때만 알림·자동 보정하며, 설정한 상한이 사이트 실제 잔여 횟수보다 낮아도 오탐하지 않습니다. 서버별 매시 초기화·21초 이상 간격·자동 분배·다른 서버 계속 진행 유지."
+  "releaseNotes": "v22.2.21: 기존 등록 프로그램과 함께 사용하는 동안 횟수 불일치 텔레그램 알림은 OFF. 사이트 실제 ID·서버별 잔여 횟수를 계속 읽어 자동 보정하고, 서버별 매시 초기화·21초 이상 간격·자동 분배·다른 서버 계속 진행은 유지합니다. 기존 텔레그램 연결 정보는 삭제하지 않습니다."
 }
