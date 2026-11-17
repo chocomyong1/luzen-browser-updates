@@ -75,8 +75,11 @@ internal sealed partial class AutomationForm
     private void ReconcileSiteQuota(ListingJob job, int siteRemaining)
     {
         var state = HourlyServerQuota.Current(_config.ServerHourlyCounters, job, DateTime.UtcNow);
+        bool firstSiteReportThisHour = !state.SiteRemaining.HasValue;
         var difference = HourlyServerQuota.Reconcile(state, _config.MaxSubmissionsPerHour, siteRemaining);
-        AppendLog($"ID·서버별 잔여 횟수: {job.SiteId} / {job.Server} / 사이트 {siteRemaining}회, 이번 시간 프로그램 시도 {state.Attempts}회");
+        AppendLog(firstSiteReportThisHour
+            ? $"ID·서버별 첫 사이트 잔여 횟수 동기화(텔레그램 알림 없음): {job.SiteId} / {job.Server} / 사이트 {siteRemaining}회, 이번 시간 프로그램 시도 {state.Attempts}회"
+            : $"ID·서버별 잔여 횟수: {job.SiteId} / {job.Server} / 사이트 {siteRemaining}회, 이번 시간 프로그램 시도 {state.Attempts}회");
         if (difference is not { } change) return;
         string message = $"[Luzen 자동등록 횟수 불일치]\n" +
             $"아이디: {job.SiteId}\n서버: {job.Server}\n" +

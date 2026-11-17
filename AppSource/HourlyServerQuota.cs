@@ -71,14 +71,22 @@ internal static class HourlyServerQuota
     }
 
     // Called only after the exact listing and the site's success response were
-    // verified. Reconcile without pausing other servers. Caller sends Telegram.
+    // verified. The first official site count in each ID/server/Korean hour is
+    // an authoritative baseline, not a discrepancy: the user may already have
+    // used registrations outside the program earlier in that same hour.
+    // Reconcile without pausing other servers. Caller sends Telegram only for
+    // subsequent, genuinely unexpected changes to the site's remaining count.
     public static HourlyQuotaDifference? Reconcile(HourlyServerCounter state,
         int configuredPerHour, int reportedRemaining)
     {
-        int expected = Remaining(state, configuredPerHour);
+        bool hasOfficialBaseline = state.SiteRemaining.HasValue;
+        // Compare official counts against the previous official count, rather
+        // than the stricter user-configured cap. A configured cap of 30 with
+        // 59 site registrations left must NOT cause an alert after every post.
+        int expected = state.SiteRemaining ?? Remaining(state, configuredPerHour);
         state.SiteRemaining = Math.Max(0, reportedRemaining);
         int effective = Remaining(state, configuredPerHour);
-        if (expected == reportedRemaining) return null;
+        if (!hasOfficialBaseline || expected == reportedRemaining) return null;
         // Suppress per-post repeats of the same discrepancy. When the site has
         // a larger quota than the user's setting, both remaining counts fall
         // after each repost but the observed hourly capacity stays constant.

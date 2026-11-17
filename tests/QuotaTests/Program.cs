@@ -37,25 +37,47 @@ internal static class Program
         Check(HourlyServerQuota.Remaining(b, 60) == 59, "Karmine 1 -> 59");
         Check(HourlyServerQuota.Remaining(c, 60) == 60, "another ID unaffected");
 
-        Check(HourlyServerQuota.Reconcile(a, 60, 39) is not null, "report mismatch");
+        Check(HourlyServerQuota.Reconcile(a, 60, 39) is null, "first site count is silent baseline after earlier posts");
         Check(HourlyServerQuota.Remaining(a, 60) == 39, "use smaller actual quota");
         HourlyServerQuota.MarkAttempt(a);
         Check(HourlyServerQuota.Remaining(a, 60) == 38, "site quota decremented on submit");
         Check(HourlyServerQuota.Reconcile(a, 60, 38) is null, "matching report no alert");
+        // The app can start at 19:20 after the user already posted elsewhere.
+        // A first verified 38 after the program's first attempt is NOT drift.
+        var late = new ListingJob { SiteId = "id3", Game = "로스트아크", Server = "아브렐슈드" };
+        var at1920 = HourlyServerQuota.Current(counters, late, start.AddMinutes(20));
+        HourlyServerQuota.MarkAttempt(at1920);
+        Check(HourlyServerQuota.Reconcile(at1920, 60, 38) is null, "19:20 first 38 report no alert");
+        Check(HourlyServerQuota.Remaining(at1920, 60) == 38, "actual 38 used for remaining allocation");
+        // Persisted state is retained when a new form gets the same counters.
+        Check(HourlyServerQuota.Current(counters, late, start.AddMinutes(21)).SiteRemaining == 38,
+            "first baseline is retained within the hour");
+        HourlyServerQuota.MarkAttempt(at1920);
+        Check(HourlyServerQuota.Reconcile(at1920, 60, 37) is null, "expected 37 next post no alert");
+        HourlyServerQuota.MarkAttempt(at1920);
+        var genuineDrift = HourlyServerQuota.Reconcile(at1920, 60, 35);
+        Check(genuineDrift is not null && genuineDrift.Value.Expected == 36 &&
+            genuineDrift.Value.Reported == 35, "unexpected later 36 to 35 sends alert");
+        Check(HourlyServerQuota.Remaining(at1920, 60) == 35, "genuine drift automatically reconciled");
+        Check(HourlyServerQuota.Reconcile(at1920, 60, 35) is null, "same discrepancy is not resent");
 
         var d = HourlyServerQuota.Current(counters, karmine, start);
         DateTime next = HourlyServerQuota.NextAllowedUtc(start, start.AddSeconds(1), d, 60, 21);
         Check(next >= start.AddSeconds(21) && next <= start.AddSeconds(70), "21s floor plus hourly spread");
         var higher = HourlyServerQuota.Current(counters, anotherId, start);
         HourlyServerQuota.MarkAttempt(higher);
-        Check(HourlyServerQuota.Reconcile(higher, 30, 59) is not null, "first higher quota alert");
+        Check(HourlyServerQuota.Reconcile(higher, 30, 59) is null, "first higher quota establishes baseline");
         HourlyServerQuota.MarkAttempt(higher);
-        Check(HourlyServerQuota.Reconcile(higher, 30, 58) is null, "no duplicate every post");
+        Check(HourlyServerQuota.Reconcile(higher, 30, 58) is null, "lower user cap does not cause a false alert");
+        Check(HourlyServerQuota.Remaining(higher, 30) == 28, "configured cap still applies");
 
         DateTime reset = new(2026, 11, 17, 10, 0, 0, DateTimeKind.Utc); // 19:00 KST
         Check(HourlyServerQuota.Current(counters, kadan, reset).Attempts == 0, "resets on Korean hour");
         Check(HourlyServerQuota.Remaining(HourlyServerQuota.Current(counters, kadan, reset), 60) == 60,
             "fresh hourly allocation");
-        Console.WriteLine("PASS ID/server independent hourly quotas, actual site reconciliation, pacing, Telegram dedup");
+        Check(HourlyServerQuota.Current(counters, late, reset).SiteRemaining is null, "baseline resets in new Korean hour");
+        Check(HourlyServerQuota.Reconcile(HourlyServerQuota.Current(counters, late, reset), 60, 21) is null,
+            "first official count in a new hour also initializes silently");
+        Console.WriteLine("PASS independent hourly quotas, silent first baseline, later drift alerts, lower cap, pacing, dedup");
     }
 }
