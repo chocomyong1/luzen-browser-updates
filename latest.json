@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.22",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.22/LuzenBrowser_22.2.22_BinaryUpdate.zip",
-  "sha256": "fbb34a4f95fa5ec842cbe14b16fd31d8dd72be53dbe20f8854a16d5fd122b38e",
+  "version": "22.2.23",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.23/LuzenBrowser_22.2.23_BinaryUpdate.zip",
+  "sha256": "4eb3c4f34d5edb740e37262f649766df0d62408c1b6f2f716c8cccb9a5de88df",
   "format": "binary",
-  "releaseNotes": "v22.2.22: 여러 프로그램이 함께 재등록할 때 관리목록 검색 중 글이 첫 페이지로 이동해 누락될 수 있어, 25페이지 이내 검색 실패 시 최신 첫 페이지를 한 번 더 확인합니다. 등록번호·제목·재등록 버튼이 정확히 일치할 때만 실행하며, 찾지 못하면 제출하지 않습니다. 횟수 불일치 텔레그램 알림 OFF 및 사이트 잔여 횟수 자동 보정 유지."
+  "releaseNotes": "v22.2.23: 혼란을 주는 1건 실제 실행·시험 실행 버튼과 실제 제출 허용 체크박스를 제거했습니다. 자동 시작 버튼으로 바로 등록을 시작하며 불필요한 시작 확인창도 제거했습니다. 등록번호 검증, 안전 중지, 서버별 간격, 시간당 제한, 횟수 자동 보정은 유지합니다."
 }
