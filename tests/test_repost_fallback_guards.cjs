@@ -44,6 +44,11 @@ assert.match(automation, /if \(!_submissionVerificationPending\) _currentRun\?\.
 assert.match(automation, /nextListRecheck = DateTime\.UtcNow\.AddSeconds\(4\)/);
 assert.match(automation, /result\.Method/);
 assert.match(automation, /Math\.Clamp\(_config\.MaxSubmissionsPerHour, 1, 1000\)/);
+// Known own listing IDs must enter the authenticated management list DIRECTLY;
+// a stale detail URL is a last resort only for legacy unknown trade direction.
+const entryChoice = automation.match(/private static string EntryFor\(ListingJob job, AutomationWorkflow flow\) =>([\s\S]*?);/)?.[1] || '';
+assert(entryChoice.indexOf('OwnedListUrlFor(job)') >= 0);
+assert(entryChoice.indexOf('OwnedListUrlFor(job)') < entryChoice.indexOf('IsSafeDetailUrl(job.EntryUrl'));
 assert.match(bulk, /IsSafeDetailUrl\(j\.EntryUrl, j\.ListingNumber\) \|\|[\s\S]*?OwnedListUrlFor\(j\)/);
 assert.match(models, /loaded\.MinimumServerSeconds = Math\.Clamp\(loaded\.MinimumServerSeconds, 21, 3600\)/);
 assert.match(imports, /Regex\.Escape\(number!\).*?RegexOptions\.CultureInvariant/s);

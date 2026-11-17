@@ -1747,8 +1747,8 @@ internal sealed partial class AutomationForm : Form
     private static bool WantsWork(ListingJob job) =>
         job.Enabled && !job.RequiresReview && (!job.InitialCompleted || job.Operation == "재등록" || job.AutoRepost);
 
-    // A repost may target either a listing-specific detail URL or its verified
-    // OWN registration-list page. A shared list is never treated like a detail.
+    // Repost through the authenticated OWN registration-list page whenever
+    // the listing ID and original buy/sell direction are known.
     private static string OwnedListUrlFor(ListingJob job)
     {
         if (!job.ImportedFromSite && !job.InitialCompleted) return "";
@@ -1766,8 +1766,8 @@ internal sealed partial class AutomationForm : Form
 
     private static string EntryFor(ListingJob job, AutomationWorkflow flow) =>
         flow.Operation != "재등록" ? flow.EntryUrl :
-        MyListingsImport.IsSafeDetailUrl(job.EntryUrl, job.ListingNumber) ? job.EntryUrl.Trim() :
         !string.IsNullOrWhiteSpace(OwnedListUrlFor(job)) ? OwnedListUrlFor(job) :
+        MyListingsImport.IsSafeDetailUrl(job.EntryUrl, job.ListingNumber) ? job.EntryUrl.Trim() :
         (job.EntryUrl ?? "").Trim();
 
     private bool ValidateJob(ListingJob job, bool dryRun, out string message, bool importedReviewConfirmed = false)
@@ -2000,6 +2000,8 @@ internal sealed partial class AutomationForm : Form
         _state.Text = dryRun ? "시험 실행 중" : "등록 실행 중"; _state.ForeColor = Color.DarkBlue;
         var flow = _config.WorkflowFor(EffectiveOperation(job));
         AppendLog($"작업 시작: [{flow.Operation}] {job.Server} / {job.Title}" + (dryRun ? " (미제출 테스트)" : ""));
+        if (flow.Operation == "재등록" && MyListingsImport.IsOwnedListUrl(EntryFor(job, flow)))
+            AppendLog("재등록 방식: 본인 관리목록에 바로 접속하여 정확한 등록번호·제목 행을 검증합니다.");
         try
         {
             await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync());
