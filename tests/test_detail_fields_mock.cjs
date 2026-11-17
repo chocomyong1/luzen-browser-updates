@@ -8,7 +8,7 @@ const raw = source.match(/public const string ExtractDetailScript = """([\s\S]*?
 assert(raw);
 const id = '2026070507571234';
 
-function extract(path, labels, fields = [], inFrame = false) {
+function extract(path, labels, fields = [], inFrame = false, visibleText = '') {
   const labelNodes = labels.map(([label, value]) => ({
     textContent: label,
     getAttribute: () => null,
@@ -19,6 +19,7 @@ function extract(path, labels, fields = [], inFrame = false) {
     getAttribute: key => key === 'name' ? name : null
   }));
   const frameDocument = {
+    body: {innerText: visibleText},
     querySelectorAll: selector => selector === '[data-tid],[data-listing-id],[data-goods-id]' ? [] :
       selector === '[data-label],dt,th,label,strong,b,span' ? labelNodes :
       selector === 'input,select,textarea' ? inputs : [],
@@ -46,6 +47,10 @@ assert.equal(fromForm.description, '보석 거래 상세');
 const fromSameOriginFrame = extract(id, [], [['character_name', '프레임캐릭터'], ['goods_content', '프레임 상세설명']], true);
 assert.equal(fromSameOriginFrame.character, '프레임캐릭터');
 assert.equal(fromSameOriginFrame.description, '프레임 상세설명');
+const screenshotVisible = extract(id, [], [], false,
+  '구매등록 물품\n물품정보\n[1개~9,995개] 10레벨 보석 구매합니다\n구매자 캐릭터명 : 푸닉스\n내 거래정보\n거래 진행 상황\n상세설명\n상시대기중입니다\n');
+assert.equal(screenshotVisible.character, '푸닉스', 'Visible own-detail buyer character must import');
+assert.equal(screenshotVisible.description, '상시대기중입니다', 'Visible own-detail description must import');
 const perUnit = extract(id, [
   ['판매금액', '1당 80,000원'],
   ['수량', '[1개~9,995개]'],

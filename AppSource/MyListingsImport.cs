@@ -336,7 +336,7 @@ internal static class MyListingsImport
     unit:['단위','수량단위','거래단위','물품단위'],
     price:['가격','금액','구매금액','판매금액','분할금액','단가'],
     itemCategory:['물품구분','상품구분'],tradingMethod:['거래유형','거래방식'],
-    character:['캐릭터명','캐릭터','캐릭터정보','캐릭터이름','캐릭터닉네임'],
+    character:['캐릭터명','구매자캐릭터명','판매자캐릭터명','캐릭터','캐릭터정보','캐릭터이름','캐릭터닉네임'],
     description:['상세설명','물품설명','물품상세설명','상세내용','물품내용','상품설명']};
   const dataNames={game:['data-game','data-game-name'],
     server:['data-server','data-server-name'],
@@ -671,7 +671,7 @@ internal static class MyListingsImport
     price:['가격','금액','판매금액','구매금액','분할금액','단가'],
     itemCategory:['물품구분','상품구분'],tradingMethod:['거래유형','거래방식'],
     minQuantity:['최소수량','최소거래수량'],maxQuantity:['최대수량','최대거래수량'],
-    character:['캐릭터명','캐릭터','캐릭터정보','캐릭터이름','캐릭터닉네임'],
+    character:['캐릭터명','구매자캐릭터명','판매자캐릭터명','캐릭터','캐릭터정보','캐릭터이름','캐릭터닉네임'],
     description:['상세설명','물품설명','물품상세설명','상세내용','물품내용','상품설명']};
   const num=(v,type)=>{
     const value=norm(v);
@@ -763,6 +763,28 @@ internal static class MyListingsImport
     }
     const unique=[...new Set(matches)];
     if(unique.length===1)result[key]=unique[0];
+  }
+  // The current ItemMania own BUY detail page displays these fields as
+  // ordinary visible text, not necessarily as a label/value sibling pair:
+  //   구매자 캐릭터명 : 푸닉스
+  //   상세설명
+  //   상시대기중입니다
+  // Only use tightly bounded text immediately following those exact headings
+  // on the already verified, ID-matching official detail page.
+  for(const d of docs) {
+    const lines=String(d.body?.innerText||'').split(/\r?\n/).map(s=>s.trim());
+    if(!result.character)for(const line of lines) {
+      const match=line.match(/^(?:구매자|판매자)?\s*캐릭터명\s*[:：]\s*(.{1,80})$/);
+      if(match && !/[|<>]/.test(match[1])) { result.character=match[1].trim(); break; }
+    }
+    if(!result.description)for(let i=0;i<lines.length;i++) {
+      if(!/^상세\s*설명\s*[:：]?$/.test(lines[i]))continue;
+      const content=lines.slice(i+1,i+5).find(v=>v.length>0);
+      if(content && content.length<=1500 && !/^(수정하기|삭제하기|숨기기|거래 진행 상황|물품정보|구매등록)$/.test(content)) {
+        result.description=content;
+        break;
+      }
+    }
   }
   const servers=['루페온','실리안','아만','카마인','카제로스','아브렐슈드','카단','니나브'];
   const category=all('[class*="breadcrumb"],[class*="category"]')
