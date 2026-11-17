@@ -134,6 +134,7 @@ internal sealed class AutomationConfiguration
     public int DetailEnrichmentCursor { get; set; }
     public List<DateTime> SubmissionAttemptsUtc { get; set; } = new();
     public Dictionary<string, DateTime> LastServerAttemptUtc { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, HourlyServerCounter> ServerHourlyCounters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<ListingJob> Jobs { get; set; } = new();
     public List<AutomationWorkflow> Workflows { get; set; } = new();
 
@@ -196,6 +197,7 @@ internal sealed class AutomationConfiguration
                 if (loaded is null) continue;
                 loaded.Workflows ??= new(); loaded.Jobs ??= new();
                 loaded.SubmissionAttemptsUtc ??= new(); loaded.LastServerAttemptUtc ??= new();
+                loaded.ServerHourlyCounters ??= new(StringComparer.OrdinalIgnoreCase);
                 // Legacy/manual edits may contain impossible or unsafe limits.
                 // Keep the persisted configuration within the enforced bounds.
                 loaded.MaxSubmissionsPerHour = Math.Clamp(loaded.MaxSubmissionsPerHour, 1, 1000);

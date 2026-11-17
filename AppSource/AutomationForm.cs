@@ -95,7 +95,7 @@ internal sealed partial class AutomationForm : Form
     private string _armedOwnListRepost = "";
     private bool _repostSuccessAlertSeen;
     private string _repostDialogBlocked = "";
-    private DateTime _nextGlobalAllowedUtc = DateTime.MinValue;
+    private int? _siteReportedIdRemaining;
     private string _pickerMode = "";
     private readonly TabControl _editorTabs = new() { Dock = DockStyle.Fill };
     private readonly TabPage _autoTab = new("자동등록 현황");
@@ -324,14 +324,18 @@ internal sealed partial class AutomationForm : Form
             Padding = new Padding(2, 5, 12, 0)
         });
         limits.Controls.Add(_livePosting);
-        AddInline(limits, "시간당", _hourLimit);
-        AddInline(limits, "서버당", _serverLimit);
+        AddInline(limits, "ID·서버별 시간당", _hourLimit);
+        AddInline(limits, "서버별 글 제한", _serverLimit);
         AddInline(limits, "서버 간격(초)", _serverDelay);
         AddInline(limits, "사이트", _host);
         var save = new Button { Text = "조건 저장", Width = 101, Height = 28, Margin = new Padding(8, 0, 4, 0) };
         UiTheme.StyleButton(save);
         save.Click += (_, _) => SaveAll();
         limits.Controls.Add(save);
+        var telegram = new Button { Text = "텔레그램 연결", Width = 113, Height = 28 };
+        UiTheme.StyleButton(telegram);
+        telegram.Click += async (_, _) => await OpenTelegramSettingsAsync();
+        limits.Controls.Add(telegram);
         top.Controls.Add(limits);
         return top;
     }
@@ -1532,6 +1536,8 @@ internal sealed partial class AutomationForm : Form
         _config.MaxSubmissionsPerHour = (int)_hourLimit.Value;
         _config.MaxListingsPerServer = (int)_serverLimit.Value;
         _config.MinimumServerSeconds = (int)_serverDelay.Value;
+        // Legacy global pacing is no longer used: different servers can follow
+        // immediately, while each ID/server retains its own 21-second floor.
         _config.MinimumGlobalSeconds = 21;
         _config.AllowedHost = _host.Text.Trim().ToLowerInvariant();
         _config.Jobs = _jobs.ToList();
@@ -1903,12 +1909,17 @@ internal sealed partial class AutomationForm : Form
         foreach (var job in enabled)
             if (!ValidateJob(job, false, out var error)) { MessageBox.Show(this, job.Title + ": " + error, "자동 시작 불가"); return; }
         if (MessageBox.Show(this, $"{enabled.Count}개의 등록/재등록 작업을 자동 제출합니다.\n" +
-            $"시간당 최대 {_config.MaxSubmissionsPerHour}회, 같은 서버 최소 {_config.MinimumServerSeconds}초\n\n" +
+            $"ID·서버별 시간당 최대 {_config.MaxSubmissionsPerHour}회, 같은 서버 최소 {_config.MinimumServerSeconds}초\n\n" +
             "사이트 이용약관과 게시 제한을 준수해야 하며 CAPTCHA/본인인증/유료 결제는 자동 처리하지 않습니다.\n자동 실행을 시작할까요?",
             "자동 등록 시작", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
         _schedulerRunning = true; _timer.Start();
+        // Old builds scheduled each item at a fixed 30-minute interval. Hourly
+        // per-server allocation now controls the pace; remove old future times.
+        foreach (var job in enabled)
+            if (job.NextDueUtc != DateTime.MaxValue) job.NextDueUtc = DateTime.UtcNow;
+        _config.Save();
         _state.Text = "자동 실행 중"; _state.ForeColor = Color.ForestGreen; RefreshAutoSummary();
-        AppendLog("스케줄러 시작: " + enabled.Count + "건, 시간당 " + _config.MaxSubmissionsPerHour + "회 제한");
+        AppendLog("스케줄러 시작: " + enabled.Count + "건, ID·서버별 시간당 " + _config.MaxSubmissionsPerHour + "회 제한");
     }
 
     private void PauseScheduler()
@@ -1942,24 +1953,20 @@ internal sealed partial class AutomationForm : Form
     private bool CanRunNow(ListingJob job, out string reason)
     {
         var now = DateTime.UtcNow;
-        _config.SubmissionAttemptsUtc.RemoveAll(x => x < now.AddHours(-1));
-        int hourlyLimit = Math.Clamp(_config.MaxSubmissionsPerHour, 1, 1000);
-        int serverDelay = Math.Max(21, _config.MinimumServerSeconds);
-        if (_config.SubmissionAttemptsUtc.Count >= hourlyLimit)
+        var counter = HourlyServerQuota.Current(_config.ServerHourlyCounters, job, now);
+        if (HourlyServerQuota.Remaining(counter, _config.MaxSubmissionsPerHour) <= 0)
         {
-            reason = "최근 1시간 등록 시도 횟수가 상한에 도달했습니다."; return false;
+            reason = $"{job.Server} 서버의 이번 시간 등록 가능 횟수를 모두 사용했습니다."; return false;
         }
-        var last = _config.SubmissionAttemptsUtc.Count == 0 ? DateTime.MinValue : _config.SubmissionAttemptsUtc.Max();
-        int pace = Math.Max(Math.Max(21, _config.MinimumGlobalSeconds), (int)Math.Ceiling(3600.0 / hourlyLimit));
-        var globalAllowed = last == DateTime.MinValue ? DateTime.MinValue : last.AddSeconds(pace);
-        globalAllowed = globalAllowed > _nextGlobalAllowedUtc ? globalAllowed : _nextGlobalAllowedUtc;
-        if (now < globalAllowed)
+        string key = HourlyServerQuota.Key(job);
+        // Preserve the previous build's server-only timestamp on upgrade.
+        DateTime lastServer = _config.LastServerAttemptUtc.TryGetValue(key, out var recent) ? recent :
+            _config.LastServerAttemptUtc.TryGetValue(job.Server, out var legacy) ? legacy : DateTime.MinValue;
+        DateTime allowedAt = HourlyServerQuota.NextAllowedUtc(lastServer, now, counter,
+            _config.MaxSubmissionsPerHour, _config.MinimumServerSeconds);
+        if (now < allowedAt)
         {
-            reason = $"전체 등록 간격 제한: {Math.Ceiling((globalAllowed - now).TotalSeconds)}초 남음"; return false;
-        }
-        if (_config.LastServerAttemptUtc.TryGetValue(job.Server, out var lastServer) && now < lastServer.AddSeconds(serverDelay))
-        {
-            reason = $"{job.Server} 서버 최소 간격: {Math.Ceiling((lastServer.AddSeconds(serverDelay) - now).TotalSeconds)}초 남음"; return false;
+            reason = $"{job.Server} 서버 배분 간격: {Math.Ceiling((allowedAt - now).TotalSeconds)}초 남음"; return false;
         }
         reason = ""; return true;
     }
@@ -1968,7 +1975,8 @@ internal sealed partial class AutomationForm : Form
     {
         if (_busy || !_schedulerRunning) return;
         var jobs = _jobs.Where(x => WantsWork(x) && x.NextDueUtc <= DateTime.UtcNow)
-                        .OrderBy(x => x.NextDueUtc).ThenBy(x => x.LastSucceededUtc).ToList();
+                        .OrderBy(x => x.LastSucceededUtc ?? DateTime.MinValue)
+                        .ThenBy(x => x.NextDueUtc).ToList();
         foreach (var job in jobs)
         {
             if (!CanRunNow(job, out _)) continue;
@@ -1982,6 +1990,8 @@ internal sealed partial class AutomationForm : Form
     {
         if (_busy) { AppendLog("이미 다른 물품 작업이 진행 중입니다."); return; }
         if (!ValidateJob(job, dryRun, out var error)) { AppendLog("실행 거절: " + error); return; }
+        if (!dryRun && !CanRunNow(job, out var pacingReason))
+        { AppendLog("실행 대기: " + pacingReason); return; }
         _busy = true;
         _currentRun?.Dispose(); _currentRun = new CancellationTokenSource();
         var token = _currentRun.Token;
@@ -1996,6 +2006,7 @@ internal sealed partial class AutomationForm : Form
         _armedOwnListRepost = "";
         _repostDialogBlocked = "";
         _repostSuccessAlertSeen = false;
+        _siteReportedIdRemaining = null;
         _submissionVerificationPending = false;
         job.LastStatus = "실행 중"; _jobsGrid.Refresh();
         _state.Text = dryRun ? "시험 실행 중" : "등록 실행 중"; _state.ForeColor = Color.DarkBlue;
@@ -2088,11 +2099,8 @@ internal sealed partial class AutomationForm : Form
                             preSubmitUrl.Contains(flow.SuccessUrlContains, StringComparison.OrdinalIgnoreCase);
                         if (urlAlreadyMatches && (string.IsNullOrWhiteSpace(flow.SuccessSelector) || successSelectorBefore))
                             throw new InvalidOperationException("제출 전에 성공 확인 조건이 이미 충족되어 있습니다. 등록 완료 화면 전용 CSS 또는 URL을 설정하세요.");
-                        _config.SubmissionAttemptsUtc.Add(now);
-                        _config.LastServerAttemptUtc[job.Server] = now;
-                        int pace = Math.Max(Math.Max(21, _config.MinimumGlobalSeconds),
-                            (int)Math.Ceiling(3600.0 / Math.Clamp(_config.MaxSubmissionsPerHour, 1, 1000)));
-                        _nextGlobalAllowedUtc = now.AddSeconds(pace);
+                        HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, now));
+                        _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = now;
                         // IMPORTANT: checkpoint to disk BEFORE touching the submit button.
                         // Process termination during a live submission must never silently
                         // retry the listing on the next launch.
@@ -2179,6 +2187,8 @@ internal sealed partial class AutomationForm : Form
                 }
                 job.LastSucceededUtc = DateTime.UtcNow;
                 AppendLog("등록번호 확인: " + job.ListingNumber);
+                if (_siteReportedIdRemaining is int reportedRemaining)
+                    ReconcileSiteQuota(job, reportedRemaining);
                 if (flow.Operation != "재등록" && job.AutoRepost && string.IsNullOrWhiteSpace(job.EntryUrl))
                 {
                     job.EntryUrl = await CaptureRepostUrlAsync(flow, job, token, identity);
@@ -2197,7 +2207,10 @@ internal sealed partial class AutomationForm : Form
                     {
                         if (job.Enabled)
                         {
-                            job.NextDueUtc = DateTime.UtcNow.AddMinutes(Math.Max(1, job.IntervalMinutes));
+                            // The server quota clock distributes registered posts
+                            // fairly. Fixed per-item intervals used to waste most
+                            // of the permitted registrations.
+                            job.NextDueUtc = DateTime.UtcNow;
                             job.LastStatus = "성공 확인 / 재등록 예약";
                             AppendLog("등록 확인 / 다음 재등록: " + job.Title + " / " + job.NextDueLocal);
                         }
@@ -2241,6 +2254,7 @@ internal sealed partial class AutomationForm : Form
             _armedOwnListRepost = "";
             _repostDialogBlocked = "";
             _repostSuccessAlertSeen = false;
+            _siteReportedIdRemaining = null;
             _submissionVerificationPending = false;
             _busy = false;
             _jobsGrid.Refresh();
@@ -2404,6 +2418,8 @@ internal sealed partial class AutomationForm : Form
                 (message.Contains("재등록") || message.Contains("다시 등록")) &&
                 new[] { "완료", "성공", "되었습니다", "처리되었습니다" }.Any(message.Contains) &&
                 !negative.Any(message.Contains);
+            if (_repostSuccessAlertSeen)
+                _siteReportedIdRemaining = HourlyServerQuota.ParseIdRemaining(message);
             if (!_repostSuccessAlertSeen)
                 _repostDialogBlocked = "사이트의 재등록 안내를 확인해야 합니다: " + text;
             AppendLog((_repostSuccessAlertSeen ? "재등록 성공 안내: " : "사이트 안내(자동등록 보류): ") + text);
