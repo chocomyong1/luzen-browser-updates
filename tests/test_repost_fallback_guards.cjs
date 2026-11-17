@@ -55,7 +55,7 @@ assert.match(models, /loaded\.MinimumServerSeconds = Math\.Clamp\(loaded\.Minimu
 assert.match(imports, /Regex\.Escape\(number!\).*?RegexOptions\.CultureInvariant/s);
 // Fresh account imports may lack the old detail URL without being blocked.
 // A potentially submitted listing is NEVER released by the import refresh.
-const trustCheck = imports.match(/private static bool CanTrustOwnedImport\([\s\S]*?;\n/)?.[0] || '';
+const trustCheck = imports.match(/private static bool CanTrustOwnedImport\([\s\S]*?;\r?\n/)?.[0] || '';
 assert.match(trustCheck, /IsOwnedListUrl\(row\.SourceListUrl\)/);
 assert.match(trustCheck, /row\.TradeSide == "판매"/);
 assert.match(trustCheck, /row\.TradeSide == "구매"/);
