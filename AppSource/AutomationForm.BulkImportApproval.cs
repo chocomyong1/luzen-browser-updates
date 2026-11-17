@@ -31,7 +31,7 @@ internal sealed partial class AutomationForm
             "• 사이트에 보이는 물품 종류와 실제 가격을 확인했습니다.\n" +
             "• 자동 재등록 시 이 물품들이 순차적으로 다시 게시될 수 있다는 점을 이해합니다.\n\n" +
             (oddPrice > 0 ? $"주의: {oddPrice}건은 표시 가격이 1원/0원 또는 공란입니다. 실제 사이트 가격을 확인하세요.\n\n" : "") +
-            "실제 제출은 별도 [실제 제출 허용]과 [자동 시작] 확인을 거치며,\n" +
+            "실제 제출은 [자동 시작] 버튼을 눌렀을 때만 진행되며,\n" +
             "각 물품의 등록번호·제목 검사는 제출 직전에 다시 수행합니다.";
         if (MessageBox.Show(this, message, "내 등록글 일괄 확인 후 자동 ON", MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return 0;

@@ -46,7 +46,6 @@ internal sealed partial class AutomationForm : Form
     private readonly TextBox _browserUrl = new() { Dock = DockStyle.Fill };
     private readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, BackColor = UiTheme.Navy, ForeColor = Color.FromArgb(222, 232, 244), Font = new Font("Consolas", 9) };
     private readonly Label _state = new() { AutoSize = true, Text = "중지됨", ForeColor = Color.Maroon };
-    private readonly CheckBox _livePosting = new() { Text = "실제 제출 허용", AutoSize = true };
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly ComboBox _editMode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170 };
     private readonly RadioButton _sellRadio = new() { Text = "판매", AutoSize = true, Checked = true };
@@ -292,8 +291,6 @@ internal sealed partial class AutomationForm : Form
             actions.Controls.Add(b);
         }
         Btn("내 등록글 불러오기", async (_, _) => await ImportMyRegisteredListingsAsync(), 158, UiTheme.ButtonTone.Primary);
-        Btn("1건 실제 실행", async (_, _) => await RunSelectedAsync(false), 125, UiTheme.ButtonTone.Primary);
-        Btn("시험 실행", async (_, _) => await RunSelectedAsync(true), 96);
         actions.Controls.Add(new Panel
         {
             Width = 1, Height = 23, BackColor = UiTheme.Border,
@@ -323,7 +320,6 @@ internal sealed partial class AutomationForm : Form
             Font = new Font(Font, FontStyle.Bold), ForeColor = UiTheme.Text,
             Padding = new Padding(2, 5, 12, 0)
         });
-        limits.Controls.Add(_livePosting);
         AddInline(limits, "ID·서버별 시간당", _hourLimit);
         AddInline(limits, "서버별 글 제한", _serverLimit);
         AddInline(limits, "서버 간격(초)", _serverDelay);
@@ -992,7 +988,7 @@ internal sealed partial class AutomationForm : Form
         AddInline(header, "설정할 작업", _flowMode);
         var help = new Button { Text = "단계 설명", Width = 93, Height = 28 };
         help.Click += (_, _) => MessageBox.Show(this,
-            "이동: URL 열기 ({EntryUrl}은 물품별 URL 우선)\n입력: CSS 선택자의 입력칸에 값 입력\n클릭: 버튼 클릭\n선택: select 태그 또는 지정한 목록 내부에서 실제 옵션 선택\n체크: 체크박스 선택\n대기: 요소가 나타날 때까지 대기\n멈춤: 밀리초 대기\n제출: 최종 등록 버튼 클릭 (시험 실행에서는 건너뜀)\n\n아이템매니아 웹페이지는 표시하지 않습니다. 기본 필드는 라벨 기반 자동 탐색(@auto:)이며, 일치하는 항목이 없거나 여러 개면 등록을 중단합니다. 실사이트 연결은 별도 확인이 필요합니다.\n\n{Game}, {Server}, {Title}, {Quantity}, {Unit}, {Price}, {Character}, {Description}, {EntryUrl} 변수 지원.\n\n사이트 구조 변화나 추가 인증이 필요하면 실제 제출이 실패할 수 있습니다.",
+            "이동: URL 열기 ({EntryUrl}은 물품별 URL 우선)\n입력: CSS 선택자의 입력칸에 값 입력\n클릭: 버튼 클릭\n선택: select 태그 또는 지정한 목록 내부에서 실제 옵션 선택\n체크: 체크박스 선택\n대기: 요소가 나타날 때까지 대기\n멈춤: 밀리초 대기\n제출: 최종 등록 버튼 클릭\n\n아이템매니아 웹페이지는 표시하지 않습니다. 기본 필드는 라벨 기반 자동 탐색(@auto:)이며, 일치하는 항목이 없거나 여러 개면 등록을 중단합니다.\n\n{Game}, {Server}, {Title}, {Quantity}, {Unit}, {Price}, {Character}, {Description}, {EntryUrl} 변수 지원.\n\n사이트 구조 변화나 추가 인증이 필요하면 실제 제출이 실패할 수 있습니다.",
             "사이트 작업 설정 방법", MessageBoxButtons.OK, MessageBoxIcon.Information);
         header.Controls.Add(help);
         var diagnostic = new Button { Text = "사이트 입력칸 진단 (개발용)", Width = 196, Height = 28 };
@@ -1671,7 +1667,7 @@ internal sealed partial class AutomationForm : Form
             _stepsGrid.Refresh();
             if (added.Count > 0) SaveWorkflow();
             string message = added.Count == 0 ? "확신할 수 있는 입력칸을 찾지 못했습니다. 요소 선택 기능으로 직접 연결하세요." :
-                "자동으로 연결한 입력칸:\n" + string.Join("\n", added) + "\n\n실제 동작을 시험 실행으로 확인해 주세요.";
+                "자동으로 연결한 입력칸:\n" + string.Join("\n", added) + "\n\n자동 시작 전 등록할 물품과 금액을 확인해 주세요.";
             message += "\n게임/서버 표시는 목록 선택으로 바뀌었습니다. 사이트 옵션 연결과 성공 판정은 별도 검증이 필요합니다.";
             MessageBox.Show(this, message, "현재 페이지 입력칸 탐색", MessageBoxButtons.OK, MessageBoxIcon.Information);
             AppendLog($"현재 페이지 입력칸 탐색: 후보 {fields.Count}개, 자동 연결 {added.Count}개");
@@ -1834,7 +1830,6 @@ internal sealed partial class AutomationForm : Form
         }
         if (!dryRun)
         {
-            if (!_livePosting.Checked) { message = "실제 제출 허용에 체크해야 합니다."; return false; }
             if (!flow.Steps.Any(s => s.Action == "제출" && !string.IsNullOrWhiteSpace(s.Selector))) { message = "제출 버튼의 CSS 선택자를 설정하세요."; return false; }
             if (flow.Steps.Any(s => (s.Action is "입력" or "클릭" or "선택" or "체크" or "대기") && string.IsNullOrWhiteSpace(s.Selector)))
             { message = "자동 탐색(@auto:) 또는 사이트 CSS 선택자가 비어 있는 단계가 있습니다."; return false; }
@@ -1903,15 +1898,10 @@ internal sealed partial class AutomationForm : Form
             MessageBox.Show(this, "현재 작업 또는 기존 등록글 불러오기가 완료된 후 자동 시작할 수 있습니다.", "자동등록 대기");
             return;
         }
-        if (!_livePosting.Checked) { MessageBox.Show(this, "자동 등록은 '실제 제출 허용'을 체크해야 시작할 수 있습니다."); return; }
         var enabled = _jobs.Where(WantsWork).ToList();
         if (enabled.Count == 0) { MessageBox.Show(this, "자동 실행이 체크된 미완료 물품 또는 재등록 물품이 없습니다."); return; }
         foreach (var job in enabled)
             if (!ValidateJob(job, false, out var error)) { MessageBox.Show(this, job.Title + ": " + error, "자동 시작 불가"); return; }
-        if (MessageBox.Show(this, $"{enabled.Count}개의 등록/재등록 작업을 자동 제출합니다.\n" +
-            $"ID·서버별 시간당 최대 {_config.MaxSubmissionsPerHour}회, 같은 서버 최소 {_config.MinimumServerSeconds}초\n\n" +
-            "사이트 이용약관과 게시 제한을 준수해야 하며 CAPTCHA/본인인증/유료 결제는 자동 처리하지 않습니다.\n자동 실행을 시작할까요?",
-            "자동 등록 시작", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
         _schedulerRunning = true; _timer.Start();
         // Old builds scheduled each item at a fixed 30-minute interval. Hourly
         // per-server allocation now controls the pace; remove old future times.
