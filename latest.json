@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.26",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.26/LuzenBrowser_22.2.26_BinaryUpdate.zip",
-  "sha256": "e27d56647b747d8414821f65b5bf58c3bf4ca7d6b2520acde1a5197ef7cb23ec",
+  "version": "22.2.27",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.27/LuzenBrowser_22.2.27_BinaryUpdate.zip",
+  "sha256": "b9bd7ee3297ffe45935e96e48381b3fe1db37792ecd49610453628063be9686e",
   "format": "binary",
-  "releaseNotes": "v22.2.26: 실행 로그 위에 오류 로그 복사 버튼 추가. 최근 오류 8건과 앞뒤 작업 기록을 모아 클립보드에 복사하며 텔레그램 봇 토큰·비밀번호·인증 키를 가립니다. 오류가 없으면 최근 60줄을 복사합니다. 외부 자동 업로드는 하지 않습니다."
+  "releaseNotes": "v22.2.27: 내 등록글 재등록 검색 개선. 각 관리 페이지의 물품 행 로딩을 재확인하고, 등록번호 없음/제목 불일치/재등록 버튼 인식 실패를 구분하여 오류 로그에 기록합니다. 페이지 이동도 해당 페이지의 완료 이벤트를 검증합니다. 등록번호·제목·버튼이 확인되지 않은 글은 제출하지 않습니다."
 }
