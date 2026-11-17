@@ -57,6 +57,20 @@ internal sealed class ListingJob
     public DateTime NextDueUtc { get; set; } = DateTime.MinValue;
     public DateTime? LastSucceededUtc { get; set; }
     public string LastStatus { get; set; } = "대기";
+    // Display the confirmed quantity together with its unit. Do not substitute
+    // the new-listing default of 1 for a site import whose quantity is unknown.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string QuantityDisplay
+    {
+        get
+        {
+            string quantity = (Quantity ?? "").Trim();
+            string unit = (Unit ?? "").Trim();
+            if (quantity.Length == 0) return ImportedFromSite ? "미수집" : "";
+            return unit.Length == 0 || quantity.EndsWith(unit, StringComparison.Ordinal)
+                ? quantity : quantity + unit;
+        }
+    }
     [System.Text.Json.Serialization.JsonIgnore]
     public string CharacterDisplay => string.IsNullOrWhiteSpace(Character) && ImportedFromSite ? "미수집" : Character;
     [System.Text.Json.Serialization.JsonIgnore]

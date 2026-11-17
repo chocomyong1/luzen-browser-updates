@@ -1031,15 +1031,14 @@ internal sealed partial class AutomationForm : Form
         _jobsGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "BatchSelected", HeaderText = "선택", DataPropertyName = "SelectedForBulk", Width = 47 });
         _jobsGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = "자동", DataPropertyName = "Enabled", Width = 45 });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "구분", DataPropertyName = "Operation", Width = 83, ReadOnly = true });
-        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "서브 ID", DataPropertyName = "SubId", Width = 95, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "사이트 ID", DataPropertyName = "SiteId", Width = 92, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "등록번호", DataPropertyName = "ListingNumber", Width = 129, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "원래 거래", DataPropertyName = "OriginalTradeSide", Width = 69, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "게임", DataPropertyName = "Game", Width = 100, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "서버", DataPropertyName = "Server", Width = 100, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "물품구분", DataPropertyName = "ItemCategory", Width = 92, ReadOnly = true });
-        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "수량", DataPropertyName = "Quantity", Width = 68, ReadOnly = true });
-        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "단위", DataPropertyName = "Unit", Width = 65, ReadOnly = true });
+        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "수량", DataPropertyName = "QuantityDisplay", Width = 78, ReadOnly = true,
+            ToolTipText = "확인된 수량과 단위를 합쳐 표시합니다. 미수집은 사이트에서 확인되지 않은 수량입니다." });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "가격(원)", DataPropertyName = "Price", Width = 112, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "거래유형", DataPropertyName = "TradingMethod", Width = 83, ReadOnly = true });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "최소", DataPropertyName = "MinQuantity", Width = 70, ReadOnly = true });
@@ -1050,8 +1049,6 @@ internal sealed partial class AutomationForm : Form
             ToolTipText = "미수집: 사이트의 목록·상세 화면에서 확인되지 않은 값입니다. 자동으로 임의 입력하지 않습니다." });
         _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "상세설명", DataPropertyName = "DescriptionDisplay", Width = 250, ReadOnly = true,
             ToolTipText = "미수집: 사이트의 목록·상세 화면에서 확인되지 않은 값입니다. 자동으로 임의 입력하지 않습니다." });
-        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "다음 예정", DataPropertyName = "NextDueLocal", Width = 115, ReadOnly = true });
-        _jobsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "상태", DataPropertyName = "LastStatus", Width = 90, ReadOnly = true });
         _jobsGrid.CurrentCellDirtyStateChanged += (_, _) => { if (_jobsGrid.IsCurrentCellDirty) _jobsGrid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
         _jobsGrid.CellValueChanged += (_, e) =>
         {

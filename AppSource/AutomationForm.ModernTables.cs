@@ -44,7 +44,7 @@ internal sealed partial class AutomationForm
         SetupGridStyle(_autoGrid);
         // Keep critical business information visible without horizontal scrolling.
         ReorderColumns(_jobsGrid, "SelectedForBulk", "Enabled", "Operation", "ListingNumber",
-            "Game", "Server", "Quantity", "Price", "Title", "NextDueLocal", "LastStatus");
+            "Game", "Server", "QuantityDisplay", "Price", "Title");
         ReorderColumns(_autoGrid, "SelectedForBulk", "Enabled", "Operation", "Game",
             "Server", "Quantity", "Price", "Title", "NextDueLocal", "LastStatus");
         _readingColumnLayout = true;
@@ -114,7 +114,7 @@ internal sealed partial class AutomationForm
         {
             col.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
             col.Resizable = DataGridViewTriState.True;
-            if (col.DataPropertyName is "Price" or "Quantity" or "MinQuantity" or "MaxQuantity" or "IntervalMinutes")
+            if (col.DataPropertyName is "Price" or "Quantity" or "QuantityDisplay" or "MinQuantity" or "MaxQuantity" or "IntervalMinutes")
                 col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
         }
         grid.CellFormatting += (_, e) =>
