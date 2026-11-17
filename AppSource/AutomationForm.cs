@@ -45,6 +45,13 @@ internal sealed partial class AutomationForm : Form
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     private readonly TextBox _browserUrl = new() { Dock = DockStyle.Fill };
     private readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, BackColor = UiTheme.Navy, ForeColor = Color.FromArgb(222, 232, 244), Font = new Font("Consolas", 9) };
+    private readonly Label _logErrors = new() { Text = "오류 0건", Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand,
+        ForeColor = UiTheme.Muted, BackColor = UiTheme.SurfaceAlt };
+    private readonly List<string> _rawLogLines = new();
+    private readonly List<(string Text, bool Error)> _displayLogLines = new();
+    private int _errorLogCount;
+    private bool _showOnlyErrors;
     private readonly Label _state = new() { AutoSize = true, Text = "중지됨", ForeColor = Color.Maroon };
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private readonly ComboBox _editMode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170 };
@@ -197,10 +204,11 @@ internal sealed partial class AutomationForm : Form
         logPanel.Controls.Add(_log);
         var logHeader = new TableLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 34, ColumnCount = 2, RowCount = 1,
+            Dock = DockStyle.Top, Height = 34, ColumnCount = 3, RowCount = 1,
             BackColor = UiTheme.SurfaceAlt
         };
         logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
         logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
         logHeader.Controls.Add(new Label
         {
@@ -208,6 +216,13 @@ internal sealed partial class AutomationForm : Form
             Dock = DockStyle.Fill, Padding = new Padding(12, 8, 0, 0),
             ForeColor = UiTheme.Muted
         }, 0, 0);
+        _logErrors.Click += (_, _) =>
+        {
+            _showOnlyErrors = !_showOnlyErrors;
+            RefreshErrorCounter();
+            RenderCompactLog();
+        };
+        logHeader.Controls.Add(_logErrors, 1, 0);
         var copyErrors = new Button
         {
             Text = "오류 로그 복사", Dock = DockStyle.Fill,
@@ -218,7 +233,7 @@ internal sealed partial class AutomationForm : Form
         {
             try
             {
-                Clipboard.SetText(ErrorLogCopy.Build(_log.Lines,
+                Clipboard.SetText(ErrorLogCopy.Build(_rawLogLines,
                     AppUpdateService.CurrentVersion, DateTime.Now));
                 copyErrors.Text = "복사 완료 ✓";
             }
@@ -228,7 +243,7 @@ internal sealed partial class AutomationForm : Form
                 AppendLog("오류 로그 복사 실패: " + ex.GetType().Name);
             }
         };
-        logHeader.Controls.Add(copyErrors, 1, 0);
+        logHeader.Controls.Add(copyErrors, 2, 0);
         logPanel.Controls.Add(logHeader);
         contentSplit.Panel2.Controls.Add(logPanel);
 
@@ -2159,6 +2174,7 @@ internal sealed partial class AutomationForm : Form
             {
                 job.LastStatus = "시험 완료 (미제출)";
                 AppendLog("시험 완료. 실제 제출 여부는 사이트 폼을 확인하세요.");
+                AppendLog($"시험 완료 요약: {job.Server} · {job.ListingNumber} · 제출 없음");
             }
             else
             {
@@ -2249,6 +2265,10 @@ internal sealed partial class AutomationForm : Form
                     job.LastStatus = "등록 성공 (재등록 꺼짐)";
                     AppendLog("등록 확인: " + job.Title);
                 }
+                string remaining = _siteReportedIdRemaining is int left ? $" · 사이트 잔여 {left}회" : "";
+                AppendLog($"{(flow.Operation == "재등록" ? "재등록 완료 요약:" : "등록 완료 요약:")} " +
+                    $"{job.Server} · {job.ListingNumber}{remaining}" +
+                    (job.RequiresReview ? " · 추가 확인 필요" : ""));
             }
         }
         catch (OperationCanceledException)
@@ -2257,6 +2277,8 @@ internal sealed partial class AutomationForm : Form
             if (submitted) job.RequiresReview = true;
             job.NextDueUtc = DateTime.UtcNow.AddMinutes(10);
             AppendLog("작업 중지: " + job.Title + (submitted ? " / 제출이 진행되었을 수 있으니 중복 등록 전에 반드시 확인" : ""));
+            AppendLog($"작업 중지 요약: {job.Server} · {job.ListingNumber} · " +
+                (submitted ? "결과 확인 필요" : "미제출"));
         }
         catch (Exception ex) when (submitted && _repostServerCooldownRejected)
         {
@@ -2270,6 +2292,8 @@ internal sealed partial class AutomationForm : Form
             job.LastStatus = "사이트 서버 재등록 간격 대기";
             AppendLog("사이트가 이 서버의 재등록을 명확히 거절했습니다. 다른 서버는 계속 진행하며 " +
                 $"해당 글은 {job.NextDueLocal} 이후 재시도합니다. " + ex.Message);
+            AppendLog($"재등록 대기 요약: {job.Server} · {job.ListingNumber} · 사이트 간격 제한 · " +
+                $"{job.NextDueLocal} 재시도");
         }
         catch (Exception ex)
         {
@@ -2277,6 +2301,8 @@ internal sealed partial class AutomationForm : Form
             if (submitted) job.RequiresReview = true;
             job.NextDueUtc = DateTime.UtcNow.AddMinutes(10);
             AppendLog("작업 오류: " + ex.Message);
+            AppendLog($"{(flow.Operation == "재등록" ? "재등록 실패 요약:" : "등록 실패 요약:")} " +
+                $"{job.Server} · {job.ListingNumber} · {ex.Message}");
             if (_schedulerRunning && submitted)
             {
                 PauseScheduler();
@@ -3003,16 +3029,58 @@ internal sealed partial class AutomationForm : Form
     {
         if (IsDisposed) return;
         if (InvokeRequired) { BeginInvoke(new Action(() => AppendLog(message))); return; }
-        _log.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+        var when = DateTime.Now;
+        string raw = $"[{when:HH:mm:ss}] {message}";
+        _rawLogLines.Add(raw);
+        if (_rawLogLines.Count > 2500) _rawLogLines.RemoveRange(0, 500);
+
+        // Everyday view: one compact result per listing. Keep every original
+        // step in the raw log and on-disk history for later troubleshooting.
+        var display = LogPresentation.Format(message);
+        if (display.Visible)
+        {
+            _displayLogLines.Add(($"[{when:HH:mm:ss}] {display.Text}", display.IsError));
+            if (_displayLogLines.Count > 1200) _displayLogLines.RemoveRange(0, 200);
+            if (display.IsError)
+            {
+                _errorLogCount++;
+                RefreshErrorCounter();
+            }
+            if (!_showOnlyErrors || display.IsError)
+            {
+                if (_showOnlyErrors || _log.TextLength > 45000) RenderCompactLog();
+                else
+                {
+                    _log.AppendText($"[{when:HH:mm:ss}] {display.Text}{Environment.NewLine}");
+                    _log.SelectionStart = _log.TextLength;
+                    _log.ScrollToCaret();
+                }
+            }
+        }
         try
         {
             string directory = System.IO.Path.Combine(Settings.UserDirectory, "logs");
             System.IO.Directory.CreateDirectory(directory);
             string file = System.IO.Path.Combine(directory, "automation_" + DateTime.Now.ToString("yyyyMMdd") + ".log");
-            System.IO.File.AppendAllText(file, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+            System.IO.File.AppendAllText(file, $"[{when:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
         }
         catch { /* Never let log I/O interrupt a run. */ }
-        if (_log.TextLength > 75000) _log.Text = _log.Text[^50000..];
-        _log.SelectionStart = _log.TextLength; _log.ScrollToCaret();
+    }
+
+    private void RefreshErrorCounter()
+    {
+        _logErrors.Text = _showOnlyErrors ? $"오류 {_errorLogCount}건 · 보기 중" : $"오류 {_errorLogCount}건";
+        _logErrors.ForeColor = _errorLogCount > 0 ? Color.FromArgb(164, 38, 38) : UiTheme.Muted;
+        _logErrors.BackColor = _showOnlyErrors ? Color.FromArgb(254, 235, 234) : UiTheme.SurfaceAlt;
+    }
+
+    private void RenderCompactLog()
+    {
+        var rows = _displayLogLines.Where(x => !_showOnlyErrors || x.Error)
+            .TakeLast(450).Select(x => x.Text).ToArray();
+        _log.Text = rows.Length > 0 ? string.Join(Environment.NewLine, rows) + Environment.NewLine :
+            (_showOnlyErrors ? "오류가 없습니다. '오류 0건'을 다시 누르면 전체 기록으로 돌아갑니다." : "");
+        _log.SelectionStart = _log.TextLength;
+        _log.ScrollToCaret();
     }
 }

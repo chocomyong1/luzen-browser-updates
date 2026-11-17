@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="../../AppSource/HourlyServerQuota.cs" Link="HourlyServerQuota.cs" />
     <Compile Include="../../AppSource/ErrorLogCopy.cs" Link="ErrorLogCopy.cs" />
+    <Compile Include="../../AppSource/LogPresentation.cs" Link="LogPresentation.cs" />
   </ItemGroup>
 </Project>

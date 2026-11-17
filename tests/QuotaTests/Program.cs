@@ -95,6 +95,17 @@ internal static class Program
         Check(!diagnostic.Contains("pretendSecret"), "redact password");
         Check(!diagnostic.Contains("sampleSecret"), "redact named secret");
         Check(diagnostic.Contains("22.2.26"), "include version");
+        var routine = LogPresentation.Format("본인 물품 재등록 명령 전달 (native): 2026070610747586");
+        Check(!routine.Visible && !routine.IsError, "hide verbose repost steps in compact log");
+        var done = LogPresentation.Format("재등록 완료 요약: 카제로스 · 2026070610747586 · 사이트 잔여 24회");
+        Check(done.Visible && !done.IsError && done.Text.Contains("카제로스") &&
+            done.Text.Contains("24회"), "one line per verified repost");
+        var failed = LogPresentation.Format("재등록 실패 요약: 실리안 · 2026070507916856 · 제목 불일치");
+        Check(failed.Visible && failed.IsError, "count failed registration once");
+        var cooldown = LogPresentation.Format("재등록 대기 요약: 아만 · 사이트 간격 제한");
+        Check(cooldown.Visible && cooldown.IsError, "server rejection shown as a counted warning");
+        var admin = LogPresentation.Format("스케줄러 시작: 83건");
+        Check(admin.Visible && !admin.IsError, "keep control events visible");
         Console.WriteLine("PASS independent hourly quotas, silent first baseline, later drift alerts, lower cap, pacing, dedup");
     }
 }
