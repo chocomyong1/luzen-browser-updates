@@ -26,6 +26,10 @@ const fallbackSearch = automation.split('private async Task<OwnedListRepostResul
 assert.match(fallbackSearch, /await NavigateAsync\(baseUrl, token\);[\s\S]*?InspectOwnedListRepostAsync\(job, false, token\)/);
 assert.match(fallbackSearch, /if \(updated\.Status == "ready"\)/);
 assert.doesNotMatch(fallbackSearch, /InspectOwnedListRepostAsync\(job, true, token\)/);
+assert.match(fallbackSearch, /_jobs\.Select\(j => j\.SourceListUrl\)/);
+assert.match(fallbackSearch, /MyListingsImport\.IsOwnedListUrl\(u\)/);
+assert.match(fallbackSearch, /MyListingsImport\.IsSellListUrl\(u\) == selling/);
+assert.match(fallbackSearch, /foreach \(string knownPage in knownPages\) queue\.Enqueue\(knownPage\)/);
 assert.match(automation, /job\.RequiresReview = true;[\s\S]*?submitted = true;/);
 // Hidden browser must handle the site's native confirm; unknown prompts never
 // get blanket approval. Server-rendered time can prove a real AJAX repost.

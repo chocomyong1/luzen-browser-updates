@@ -2284,6 +2284,18 @@ internal sealed partial class AutomationForm : Form
         queue.Enqueue(current);
         string baseUrl = selling ? MyListingsImport.SellListingsUrl : MyListingsImport.BuyListingsUrl;
         if (!current.Equals(baseUrl, StringComparison.OrdinalIgnoreCase)) queue.Enqueue(baseUrl);
+        // The site may show only the first ten pagination links even when a
+        // later page exists. An earlier successful OWN-list import already
+        // recorded the actual page URL for each registered listing. Include
+        // those verified URLs, without guessing page numbers or endpoints.
+        var knownPages = _jobs.Select(j => j.SourceListUrl)
+            .Where(u => MyListingsImport.IsOwnedListUrl(u) &&
+                MyListingsImport.IsSellListUrl(u) == selling)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (string knownPage in knownPages) queue.Enqueue(knownPage);
+        if (knownPages.Count > 0)
+            AppendLog($"본인 등록글에서 확인해 저장한 {knownPages.Count}개 관리 목록 페이지도 재등록 검색에 포함합니다.");
         const int maxPages = 25;
         while (queue.Count > 0 && visited.Count < maxPages)
         {

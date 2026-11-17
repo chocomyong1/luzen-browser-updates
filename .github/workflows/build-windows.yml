@@ -69,15 +69,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.24'
+          $version = '22.2.25'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.24
-          path: LuzenBrowser_22.2.24_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.25
+          path: LuzenBrowser_22.2.25_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -85,7 +85,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.24'
+          $version = '22.2.25'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -97,7 +97,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.24: 내 등록글 불러오기 중 다른 탐색 이벤트를 관리 페이지 이동 실패로 오인하지 않도록 NavigationId를 일치시킵니다. 실패 시 자동 재시도 1회 및 HTTP·WebView 오류 기록, 페이지 이동 오류와 등록글 없음/구조 오류 안내를 구분합니다. 등록·재등록은 하지 않는 읽기 전용 조회입니다.'
+            releaseNotes = 'v22.2.25: 내 등록글 재등록 검색 시 현재 페이지 링크에 더해 과거 공식 관리목록에서 확인·저장한 페이지 주소도 검사합니다. 10페이지 링크만 노출될 때 뒤쪽 페이지 누락 가능성을 줄이고, 검색 실패 시 최신 첫 페이지 재확인을 유지합니다. 정확한 등록번호·제목·버튼 검증 없이 제출하지 않습니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
