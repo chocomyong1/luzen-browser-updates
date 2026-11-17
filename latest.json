@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.30",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.30/LuzenBrowser_22.2.30_BinaryUpdate.zip",
-  "sha256": "6bef22bcfab44dac17ec90bb9835d48f4ae367726324ef9cb75345d222e50b7d",
+  "version": "22.2.31",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.31/LuzenBrowser_22.2.31_BinaryUpdate.zip",
+  "sha256": "2e597a079b0dfbd725e3c61465a58fbefe5f69402b55ee990a511824e1e3d996",
   "format": "binary",
-  "releaseNotes": "v22.2.30: 백그라운드 자동 로그인과 재등록 첫 페이지 이동이 겹치는 오류를 수정했습니다. 로그인 완료를 기다리고 페이지 이동마다 정확한 탐색 ID를 확인합니다. 관리 목록 이동이 일시적으로 중단되면 안전하게 조회만 최대 3회 재시도하며 실제 재등록 제출은 반복하지 않습니다."
+  "releaseNotes": "v22.2.31: 자동등록을 일시정지하지 않고 선택 물품 일괄수정을 사용할 수 있습니다. 작업 중인 물품은 현재 등록의 제목·가격·수량 검증이 끝난 뒤 수정값을 적용하고, 다른 선택 물품은 즉시 저장합니다. 등록글 불러오기 중에는 목록 변경 충돌을 피하기 위해 수정을 기다립니다."
 }
