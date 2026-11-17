@@ -59,15 +59,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.9'
+          $version = '22.2.10'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.9
-          path: LuzenBrowser_22.2.9_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.10
+          path: LuzenBrowser_22.2.10_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -75,7 +75,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.9'
+          $version = '22.2.10'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -87,7 +87,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.9: 재등록할 때 오래된 개별 상세 URL을 먼저 열던 경로를 제거하고, 본인 구매/판매 관리목록으로 직접 진입하도록 변경. 등록번호와 제목이 일치하는 한 행만 검증한 후 사이트 고유 재등록 함수를 호출. 예전 주소는 거래 방향을 알 수 없는 글에 대한 안전한 후순위 경로로만 유지. 기존 최소 등록 간격, 확인창 보안, 제출 결과 검증은 유지. 오프라인 테스트 통과, 실사이트 1건 확인 필요.'
+            releaseNotes = 'v22.2.10: 본인 등록글 목록에서 번호/거래방향/제목/가격이 확인된 기존 글의 불필요한 보류를 자동 해제. 예전 상세 URL이 없거나 변경되어도 보류가 유지되는 오류 수정. 재등록 이전 제출 결과가 불명확한 글도 직접 사이트 확인 후 1건만 재시도하는 안내창 제공. 한 번 확인한 글은 이중 확인창 없이 1건 실행, 자동 반복은 꺼진 상태 유지. 실제 이전 제출 여부가 확인되지 않은 글은 자동 해제하지 않음. 오프라인 검증 완료, 실사이트 1건 확인 필요.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

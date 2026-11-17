@@ -7,19 +7,26 @@ namespace LuzenBrowserReplica;
 
 internal sealed partial class AutomationForm
 {
-    // Older imports were all marked RequiresReview. A fresh import has no
-    // uncertain POST from this application; it is distinct from a submission
-    // that may have succeeded but whose response was not verified.
+    // A selected imported item can be manually acknowledged for ONE run after
+    // inspecting its actual site state. Keep past uncertain submissions held
+    // until that explicit acknowledgement; never auto-enable the scheduler.
     private static bool CanConfirmImportedReviewForSingleRun(ListingJob job)
     {
-        if (!job.ImportedFromSite || !job.InitialCompleted ||
-            job.Operation != "재등록") return false;
+        return job.ImportedFromSite && job.InitialCompleted &&
+               job.Operation == "재등록" &&
+               ListingIdentity.HasNumber(job.ListingNumber) &&
+               MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job));
+    }
+
+    private static bool HasUnverifiedSubmission(ListingJob job)
+    {
         string status = job.LastStatus ?? "";
-        return !status.StartsWith("제출 중", StringComparison.Ordinal) &&
-               !status.StartsWith("제출 결과 확인 필요", StringComparison.Ordinal) &&
-               !status.StartsWith("중지됨 (사이트 확인 필요)", StringComparison.Ordinal) &&
-               !status.StartsWith("등록 성공 / 재등록 물품 URL 확인 필요", StringComparison.Ordinal) &&
-               !status.StartsWith("실행 중", StringComparison.Ordinal);
+        return job.PendingRepostAttemptUtc.HasValue ||
+               status.StartsWith("제출 중", StringComparison.Ordinal) ||
+               status.StartsWith("제출 결과 확인 필요", StringComparison.Ordinal) ||
+               status.StartsWith("중지됨 (사이트 확인 필요)", StringComparison.Ordinal) ||
+               status.StartsWith("작업 오류", StringComparison.Ordinal) ||
+               status.StartsWith("실행 중", StringComparison.Ordinal);
     }
 
     // The user must check the specific existing listing before acknowledging
@@ -27,6 +34,7 @@ internal sealed partial class AutomationForm
     // automatic re-enabling is performed here.
     private bool ConfirmImportedReviewForSingleRun(ListingJob job)
     {
+        bool hasUnverifiedSubmission = HasUnverifiedSubmission(job);
         using var dialog = new Form
         {
             Text = "불러온 등록글 확인 · 1건만 실행",
@@ -44,9 +52,11 @@ internal sealed partial class AutomationForm
             Dock = DockStyle.Fill,
             AutoSize = false,
             Padding = new Padding(15, 12, 15, 5),
-            Text = "아이템매니아에서 불러온 기존 글은 자동실행이 보류되어 있습니다.\n" +
-                   "해당 등록번호가 현재 내 글이고 실제 금액이 맞는지 사이트에서 확인하세요.\n" +
-                   "확인되지 않은 글이나 이미 제출했지만 성공 여부가 불분명한 글은 실행하지 마세요.\n\n" +
+            Text = (hasUnverifiedSubmission
+                    ? "주의: 이 글은 이전 재등록 시도가 이미 성공했을 수 있습니다.\n" +
+                      "사이트에서 이전 시도의 등록시각과 중복 여부를 먼저 확인하세요.\n"
+                    : "사이트에서 불러온 기존 글입니다. 현재 등록 상태를 확인해 주세요.\n") +
+                   "확인되지 않은 글은 실행하지 마세요. 확인하더라도 자동 실행은 켜지지 않습니다.\n\n" +
                    $"등록번호: {job.ListingNumber}\n" +
                    $"거래: {job.OriginalTradeSide}   게임/서버: {job.Game} / {job.Server}\n" +
                    $"표시 가격: {job.Price}원 (불러오기 오류 가능, 특히 1원이라면 주의)\n" +
@@ -58,7 +68,9 @@ internal sealed partial class AutomationForm
             Dock = DockStyle.Top,
             Height = 38,
             AutoSize = false,
-            Text = "사이트에서 해당 등록번호·금액·현재 등록 상태를 직접 확인했습니다."
+            Text = hasUnverifiedSubmission
+                ? "이전 재등록 결과·중복 여부와 해당 등록번호·금액을 사이트에서 확인했습니다."
+                : "사이트에서 해당 등록번호·금액·현재 등록 상태를 직접 확인했습니다."
         };
         var buttons = new FlowLayoutPanel
         {
@@ -70,15 +82,14 @@ internal sealed partial class AutomationForm
         var cancel = new Button { Text = "취소", Width = 105, Height = 32, DialogResult = DialogResult.Cancel };
         var proceed = new Button
         {
-            Text = "확인 후 1건 실행", Width = 146, Height = 32,
+            Text = hasUnverifiedSubmission ? "확인 후 1건 재시도" : "확인 후 1건 실행", Width = 157, Height = 32,
             DialogResult = DialogResult.OK, Enabled = false
         };
         checkedBox.CheckedChanged += (_, _) => proceed.Enabled = checkedBox.Checked;
         var open = new Button { Text = "사이트 물품/목록 열기", Width = 165, Height = 32 };
         open.Click += (_, _) =>
         {
-            string url = MyListingsImport.IsSafeDetailUrl(job.EntryUrl, job.ListingNumber)
-                ? job.EntryUrl : OwnedListUrlFor(job);
+            string url = OwnedListUrlFor(job);
             if (string.IsNullOrWhiteSpace(url))
             {
                 MessageBox.Show(dialog, "이 글의 상세 URL 또는 내 등록글 목록을 확인할 수 없습니다.");

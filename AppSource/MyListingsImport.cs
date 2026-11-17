@@ -144,11 +144,17 @@ internal static class MyListingsImport
 
     internal static bool IsImportOnlyStatus(string? status) =>
         (status ?? "").StartsWith("가져옴:", StringComparison.Ordinal) ||
-        (status ?? "").StartsWith("기존 글 정보 보완됨:", StringComparison.Ordinal);
+        (status ?? "").StartsWith("기존 글 정보 보완됨:", StringComparison.Ordinal) ||
+        (status ?? "").StartsWith("내 등록글 정보 갱신됨", StringComparison.Ordinal);
 
-    private static bool CanTrustOwnedImport(ExistingListingRecord row, string number, string url) =>
-        Regex.IsMatch(number, @"^\d{8,20}$") && IsOwnedListUrl(row.SourceListUrl) &&
-        IsSafeDetailUrl(url, number) &&
+    private static bool CanTrustOwnedImport(ExistingListingRecord row, string number) =>
+        Regex.IsMatch(number, @"^\d{8,20}$") &&
+        IsOwnedListUrl(row.SourceListUrl) &&
+        ((row.TradeSide == "판매" && IsSellListUrl(row.SourceListUrl)) ||
+         (row.TradeSide == "구매" && !IsSellListUrl(row.SourceListUrl))) &&
+        !string.IsNullOrWhiteSpace(row.Title) &&
+        // An old detail link may be missing or stale; the signed-in OWN list
+        // already identifies the item by listing number, direction and price.
         Regex.IsMatch(Clean(row.Price, 30), @"^[1-9][0-9,]*$");
 
     public static ExistingListingMergeSummary Prepare(IEnumerable<ExistingListingRecord> records, IEnumerable<ListingJob> existing,
@@ -218,8 +224,9 @@ internal static class MyListingsImport
                         Description = string.IsNullOrWhiteSpace(target.Description) ? Clean(row.Description, 2000) : "",
                         MinQuantity = repairDefaultRange ? minFromSite : "",
                         MaxQuantity = repairDefaultRange ? maxFromSite : "",
-                        ClearImportOnlyReview = target.RequiresReview && IsImportOnlyStatus(target.LastStatus) &&
-                            CanTrustOwnedImport(row, number, url),
+                        ClearImportOnlyReview = target.RequiresReview && !target.PendingRepostAttemptUtc.HasValue &&
+                            IsImportOnlyStatus(target.LastStatus) &&
+                            CanTrustOwnedImport(row, number),
                         EntryUrl = string.IsNullOrWhiteSpace(target.EntryUrl) ? url : "",
                         SourceListUrl = string.IsNullOrWhiteSpace(target.SourceListUrl) &&
                             IsOwnedListUrl(row.SourceListUrl) ? CanonicalUrl(row.SourceListUrl) : ""
@@ -252,8 +259,8 @@ internal static class MyListingsImport
                 Quantity = Clean(row.Quantity, 30), Price = Clean(row.Price, 30), EntryUrl = url,
                 SourceListUrl = IsOwnedListUrl(row.SourceListUrl) ? CanonicalUrl(row.SourceListUrl) : "",
                 Enabled = false, AutoRepost = true, InitialCompleted = true,
-                RequiresReview = !CanTrustOwnedImport(row, number, url), NextDueUtc = DateTime.MaxValue,
-                LastStatus = CanTrustOwnedImport(row, number, url)
+                RequiresReview = !CanTrustOwnedImport(row, number), NextDueUtc = DateTime.MaxValue,
+                LastStatus = CanTrustOwnedImport(row, number)
                     ? "가져옴: 내 등록글 확인됨 · 자동 실행 OFF"
                     : "가져옴: 등록번호·가격 또는 상세 URL 확인 필요"
             };

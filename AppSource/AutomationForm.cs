@@ -1867,7 +1867,7 @@ internal sealed partial class AutomationForm : Form
         bool importedReviewConfirmed = !dryRun && _selected.RequiresReview &&
             CanConfirmImportedReviewForSingleRun(_selected);
         if (importedReviewConfirmed && !ConfirmImportedReviewForSingleRun(_selected)) return;
-        if (!dryRun && MessageBox.Show(this,
+        if (!dryRun && !importedReviewConfirmed && MessageBox.Show(this,
             $"사이트에 물품을 실제로 제출합니다.\n\n구분: {_selected.Operation}\n서버: {_selected.Server}\n제목: {_selected.Title}\n금액: {_selected.Price}원\n\n진행할까요? (사이트 이용약관, 등록료 및 제한 확인 필요)",
             "실제 물품 등록 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
         if (!ValidateJob(_selected, dryRun, out var message, importedReviewConfirmed)) { MessageBox.Show(this, message, "작업 설정 확인"); return; }

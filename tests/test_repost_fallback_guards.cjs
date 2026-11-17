@@ -12,6 +12,7 @@ const imports = read('MyListingsImport.cs');
 const bulk = read('AutomationForm.BulkImportApproval.cs');
 const models = read('AutomationModels.cs');
 const myListingsUi = read('AutomationForm.MyListings.cs');
+const importReview = read('AutomationForm.ImportReview.cs');
 
 // Require fallback for BOTH manual dry-run and real submission, and no click
 // until the same row is located again at the point of submission.
@@ -52,6 +53,22 @@ assert(entryChoice.indexOf('OwnedListUrlFor(job)') < entryChoice.indexOf('IsSafe
 assert.match(bulk, /IsSafeDetailUrl\(j\.EntryUrl, j\.ListingNumber\) \|\|[\s\S]*?OwnedListUrlFor\(j\)/);
 assert.match(models, /loaded\.MinimumServerSeconds = Math\.Clamp\(loaded\.MinimumServerSeconds, 21, 3600\)/);
 assert.match(imports, /Regex\.Escape\(number!\).*?RegexOptions\.CultureInvariant/s);
+// Fresh account imports may lack the old detail URL without being blocked.
+// A potentially submitted listing is NEVER released by the import refresh.
+const trustCheck = imports.match(/private static bool CanTrustOwnedImport\([\s\S]*?;\n/)?.[0] || '';
+assert.match(trustCheck, /IsOwnedListUrl\(row\.SourceListUrl\)/);
+assert.match(trustCheck, /row\.TradeSide == "판매"/);
+assert.match(trustCheck, /row\.TradeSide == "구매"/);
+assert.doesNotMatch(trustCheck, /IsSafeDetailUrl/);
+assert.match(imports, /!target\.PendingRepostAttemptUtc\.HasValue[\s\S]*?IsImportOnlyStatus\(target\.LastStatus\)/);
+assert.match(imports, /StartsWith\("내 등록글 정보 갱신됨"/);
+// A past ambiguous POST can only be retried after the user confirms they
+// checked the exact listing and duplicates; one-off consent stays auto-OFF.
+assert.match(importReview, /HasUnverifiedSubmission\(job\)/);
+assert.match(importReview, /job\.PendingRepostAttemptUtc\.HasValue/);
+assert.match(importReview, /이전 재등록 결과·중복 여부와 해당 등록번호·금액을 사이트에서 확인했습니다/);
+assert.match(automation, /if \(!dryRun && !importedReviewConfirmed && MessageBox\.Show/);
+assert.match(automation, /if \(importedReviewConfirmed\)[\s\S]*?_selected\.Enabled = false;/);
 
 const scriptStart = imports.indexOf('public const string ExtractDetailScript');
 const quoteStart = imports.indexOf('"""', scriptStart);
