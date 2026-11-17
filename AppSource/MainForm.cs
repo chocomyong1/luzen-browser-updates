@@ -16,6 +16,8 @@ internal sealed partial class MainForm : Form
     private string _activeSystem = "A";
     private Button? _systemAButton;
     private Button? _systemBButton;
+    private bool _checkingBConnection;
+    private int _systemSelectionSequence;
     private readonly Label _accountInfo = new() { Dock = DockStyle.Right, Width = 340, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
     private bool _systemBShown;
     private AppUpdateSettings _updateSettings = AppUpdateService.LoadSettings();
@@ -117,11 +119,47 @@ internal sealed partial class MainForm : Form
         _accountInfo.Text = $"아이템매니아  |  시스템 {_activeSystem}  |  설정·목록 분리   ";
     }
 
-    private void SelectSystem(string system)
+    private async Task SelectSystemAsync(string system)
     {
+        if (system == "B" && _checkingBConnection) return;
+        int selection = ++_systemSelectionSequence;
         if (system == "B" && !DualSystemNetwork.IsBRouteVerified)
         {
-            OpenSystemBNetworkSettings();
+            // A successful verification is intentionally process-local; after
+            // an app update/restart, recheck the saved proxy without forcing
+            // the user through the configuration dialog again.
+            if (string.IsNullOrWhiteSpace(DualSystemNetwork.Load().ProxyUrl))
+            {
+                OpenSystemBNetworkSettings();
+            }
+            else
+            {
+                _checkingBConnection = true;
+                if (_systemBButton is not null) _systemBButton.Enabled = false;
+                _status.Text = "  시스템 B 연결 자동 확인 중 · 기존 A 인터넷은 유지됩니다.";
+                try
+                {
+                    await DualSystemNetwork.VerifyBRouteAsync();
+                }
+                catch (Exception ex)
+                {
+                    if (selection != _systemSelectionSequence || IsDisposed || Disposing) return;
+                    _status.Text = "  B 연결 확인 실패 · A 시스템은 계속 사용할 수 있습니다.";
+                    if (MessageBox.Show(this,
+                        "저장된 B 프록시 연결을 확인하지 못했습니다.\n" +
+                        "Cloudflare WARP가 로컬 프록시 모드로 연결돼 있는지 확인하세요.\n\n" +
+                        ex.Message + "\n\nB 연결 설정창을 열까요?",
+                        "B 연결 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                        OpenSystemBNetworkSettings();
+                }
+                finally
+                {
+                    _checkingBConnection = false;
+                    if (_systemBButton is not null && !_systemBButton.IsDisposed)
+                        _systemBButton.Enabled = true;
+                }
+            }
+            if (selection != _systemSelectionSequence || IsDisposed || Disposing) return;
             if (!DualSystemNetwork.IsBRouteVerified) return;
         }
         if (system == "B" && !_systemBShown)
@@ -157,8 +195,8 @@ internal sealed partial class MainForm : Form
             Font = new Font("맑은 고딕", 9F, FontStyle.Bold),
             Padding = new Padding(2, 2, 0, 0), Margin = new Padding(0, 0, 11, 0)
         });
-        _systemAButton = AddToolButton(bar, "A 기본", () => SelectSystem("A"), 74);
-        _systemBButton = AddToolButton(bar, "B VPN", () => SelectSystem("B"), 74);
+        _systemAButton = AddToolButton(bar, "A 기본", () => _ = SelectSystemAsync("A"), 74);
+        _systemBButton = AddToolButton(bar, "B VPN", () => _ = SelectSystemAsync("B"), 74);
         AddToolbarDivider(bar);
         AddToolButton(bar, "목록 조회", () => _module.RefreshListings(), 88);
         var addMenu = new ContextMenuStrip();

@@ -55,6 +55,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Menu layout regression test failed' }
           node tests/test_compact_scheduler_controls.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Compact scheduler control test failed' }
+          node tests/test_auto_b_connect.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Automatic B proxy verification test failed' }
           dotnet run --project tests/QuotaTests/QuotaTests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Hourly quota logic test failed' }
       - name: Restore assets from the existing verified v22.1 release
@@ -81,15 +83,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.34'
+          $version = '22.2.35'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.34
-          path: LuzenBrowser_22.2.34_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.35
+          path: LuzenBrowser_22.2.35_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -97,7 +99,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.34'
+          $version = '22.2.35'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -109,7 +111,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.34: 별도 실행 조건 줄을 없애고 ID·서버별 시간당 제한만 상단 실행 버튼 옆에 배치했습니다. 서버별 등록 물품 수 상한은 동일한 값으로 연동하고 서버 간격은 21초, 사이트는 공식 아이템매니아 도메인으로 고정했습니다. 텔레그램 연결은 더보기 메뉴로 옮겼습니다. A/B 계정·등록목록과 실행 기능은 유지됩니다.'
+            releaseNotes = 'v22.2.35: 업데이트나 재실행 후 B VPN 버튼을 누르면 저장된 프록시 주소로 외부 IP를 자동 재확인합니다. 정상적으로 다른 IP가 확인되면 설정창 없이 곧바로 B 작업 화면으로 전환합니다. 연결 문제가 있을 때만 설정 안내를 표시하며, A의 인터넷 연결과 작업은 그대로 유지합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
