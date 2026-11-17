@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.12",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.12/LuzenBrowser_22.2.12_BinaryUpdate.zip",
-  "sha256": "56cfbd25e01a3706d172444903d360f7b5602d023348f274cbbc4732ac817e99",
+  "version": "22.2.13",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.13/LuzenBrowser_22.2.13_BinaryUpdate.zip",
+  "sha256": "e4e6b1fec9bbe27d917c079e6959de908a9243d933849b22bda0be69e75110ef",
   "format": "binary",
-  "releaseNotes": "v22.2.12: 완료/보류의 의미를 자동 꺼짐으로 명확하게 표시하고, 자동 ON인데 실행시각 미예약인 옛 등록글은 안전하게 예약 복구. 본인 목록에서 상세 보기·수정 주소가 둘 다 존재할 때 안전한 상세 보기 링크를 우선 선택. 캐릭터·상세설명·단위의 목록 및 상세/편집 필드 수집 범위 확대, 본인 계정의 같은 출처 프레임도 읽기 전용 확인. 1당 80,000원 가격을 1원으로 잘못 해석하던 오류와 분할 수량 범위를 전체수량 1로 오인하던 오류 수정. 검증된 내 글의 정확한 가격으로 과거 1원 가져오기 값 보완. 미수집 원인은 로그로 안내. 사이트에 없는 값은 임의 생성하지 않음."
+  "releaseNotes": "v22.2.13: 원본 물품등록 화면과 비교하여 서브 ID를 기존 값 선택·직접 입력이 가능한 목록으로 변경. 즉시구매 항목 명칭 정리. 로스트아크 서버별 10만 골드 기준 외부 참고 실시간 시세(매니아·베이)를 2분 간격으로 조회하고 출처 링크·갱신 버튼 추가. 저장 가능한 매크로 선택 항목을 편집 화면에 복구. 직업·레벨 등 캐릭터 정보는 감추고 캐릭터명만 표시. 가격 조회 실패 때 임의 숫자를 표시하지 않으며 외부 시세는 자동 등록 가격을 변경하지 않음."
 }
