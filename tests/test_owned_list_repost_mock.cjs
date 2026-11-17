@@ -87,6 +87,24 @@ function evaluate(rows, { number = id, name = title, click = false,
   console.log('PASS same title with wrong ID blocked');
 }
 {
+  const rows = [makeRealMarkupRow(id, '사이트에서 변경된 제목')];
+  const result = evaluate(rows, { click: true });
+  assert.equal(result.status, 'mismatch');
+  assert.equal(result.numberRows, 1);
+  assert.equal(result.titleRows, 0);
+  assert.equal(result.scannedRows, 1);
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS known ID with changed title is reported without reposting');
+}
+{
+  const rows = [makeRealMarkupRow(other, title)];
+  const result = evaluate(rows);
+  assert.equal(result.status, 'not-found');
+  assert.equal(result.numberRows, 0);
+  assert.equal(result.titleRows, 1);
+  console.log('PASS missing ID and matching title are diagnosed separately');
+}
+{
   const rows = [makeRow(id, title), makeRow(id, title)];
   assert.equal(evaluate(rows, { click: true }).status, 'error');
   assert(rows.every(x => x.clicks.length === 0));

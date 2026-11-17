@@ -14,6 +14,10 @@ internal sealed class OwnedListRepostResult
     public string Stamp { get; set; } = "";
     // Whether the verified site's own function or its row button was used.
     public string Method { get; set; } = "";
+    // Read-only diagnostics: never used as permission to submit a repost.
+    public int ScannedRows { get; set; }
+    public int NumberRows { get; set; }
+    public int TitleRows { get; set; }
 }
 
 internal static class OwnedListRepost
@@ -35,7 +39,7 @@ internal static class OwnedListRepost
       const arg=__ARG__;
       const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
       const valid=s=>/^\d{8,20}$/.test(String(s||''));
-      const result=(status,message='',stamp='')=>({status,message,stamp});
+      const result=(status,message='',stamp='',diagnostic={})=>({status,message,stamp,...diagnostic});
       const official=()=>location.protocol==='https:' &&
         (location.hostname==='itemmania.com'||location.hostname.endsWith('.itemmania.com'));
       const ownList=()=>/^\/myroom\/(sell\/sell_regist|buy\/buy_regist)\.html$/i.test(location.pathname);
@@ -88,6 +92,7 @@ internal static class OwnedListRepost
         return /M12\s*7v5l4\s*2/.test(paths) && /M3\s*3v5h5/.test(paths);
       };
       const matching=[];const candidateRows=new Set();
+      let numberRows=0,titleRows=0;
       const attrs=['data-tid','data-listing-id','data-goods-id','data-trade-id','data-id'];
       for(const d of docs){
         for(const tr of d.querySelectorAll('tr'))candidateRows.add(tr);
@@ -103,7 +108,9 @@ internal static class OwnedListRepost
       }
       for(const row of candidateRows){
         const text=String(row.innerText||row.textContent||'');
-        if(text.length>6000||!norm(text).includes(norm(arg.title)))continue;
+        if(text.length>6000)continue;
+        const titleMatches=norm(text).includes(norm(arg.title));
+        if(titleMatches)titleRows++;
         const ids=new Set();
         for(const el of [row,...row.querySelectorAll('*')].slice(0,250)){
           for(const name of attrs){
@@ -118,8 +125,10 @@ internal static class OwnedListRepost
           }
         }
         if(new RegExp('(?:^|\\D)'+arg.number+'(?!\\d)').test(text))ids.add(arg.number);
-        if(!ids.has(arg.number))continue;
-        if(ids.size!==1)return result('error','한 물품 행에 서로 다른 등록번호가 있어 중단했습니다');
+        if(ids.has(arg.number))numberRows++;
+        if(!ids.has(arg.number)||!titleMatches)continue;
+        if(ids.size!==1)return result('error','한 물품 행에 서로 다른 등록번호가 있어 중단했습니다','',
+          {scannedRows:candidateRows.size,numberRows,titleRows});
         const controls=[...new Set(row.querySelectorAll(
           'button,input[type="button"],input[type="submit"],a[href],a[onclick],[role="button"],[onclick],[class*="cursor-pointer"]'))]
           .filter(visible);
@@ -135,13 +144,16 @@ internal static class OwnedListRepost
         const stamp=/^\d{2}-\d{2}\s+\d{2}:\d{2}$/.test(stampText)?stampText.replace(/\s+/g,' '):'';
         matching.push({row,actions,stamp});
       }
+      const diagnostic={scannedRows:candidateRows.size,numberRows,titleRows};
+      if(matching.length===0&&numberRows>0)return result('mismatch',
+        '등록번호와 일치하는 행은 있으나 저장된 제목이 사이트 제목과 다릅니다. 원본 글을 다시 확인하세요','',diagnostic);
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?
         '동일 등록번호와 제목의 행이 여러 개라 중단했습니다':
-        '이 페이지에서 등록번호와 제목이 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)');
-      if(arg.click===null)return result('found','현재 내 등록글 목록에서 해당 등록번호·제목을 다시 확인함',matching[0].stamp);
+        '이 페이지에서 등록번호와 제목이 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)','',diagnostic);
+      if(arg.click===null)return result('found','현재 내 등록글 목록에서 해당 등록번호·제목을 다시 확인함',matching[0].stamp,diagnostic);
       if(matching[0].actions.length!==1)return result('error',matching[0].actions.length?
-        '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 등록번호와 연결된 reInsert 재등록 버튼을 확인하지 못했습니다');
-      if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인',matching[0].stamp);
+        '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 등록번호와 연결된 reInsert 재등록 버튼을 확인하지 못했습니다','',diagnostic);
+      if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인',matching[0].stamp,diagnostic);
       const button=matching[0].actions[0];
       // Prefer the native site handler with the two arguments read from the
       // EXACT matched row. This avoids the DOM click path used in older builds.

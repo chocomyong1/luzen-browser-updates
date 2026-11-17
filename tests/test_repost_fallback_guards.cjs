@@ -23,7 +23,12 @@ assert.match(automation, /if \(step\.Action == "제출" && repostFromOwnedList\)
 // A second program may move the target to the newest page while we paginate.
 // Recheck the current first page READ-ONLY, then still require the exact row.
 const fallbackSearch = automation.split('private async Task<OwnedListRepostResult> LocateOwnedListRepostAsync(')[1]?.split('private async Task<OwnedListRepostResult> InspectOwnedListRepostAsync(')[0] || '';
-assert.match(fallbackSearch, /await NavigateAsync\(baseUrl, token\);[\s\S]*?InspectOwnedListRepostAsync\(job, false, token\)/);
+assert.match(fallbackSearch, /await NavigateOwnedListAsync\(baseUrl, token\);[\s\S]*?InspectOwnedListPageAsync\(job, token\)/);
+assert.match(fallbackSearch, /await NavigateOwnedListAsync\(next, token\)/);
+assert.match(fallbackSearch, /page\.Listings\.Count > 0 \|\| page\.IsEmptyList/);
+assert.match(fallbackSearch, /pageNotReady = page\.Listings\.Count == 0 && !page\.IsEmptyList/);
+assert.match(fallbackSearch, /등록번호는 확인했지만 저장된 제목이 현재 사이트와 다릅니다/);
+assert.match(fallbackSearch, /await Task\.Delay\(750, token\)/);
 assert.match(fallbackSearch, /if \(updated\.Status == "ready"\)/);
 assert.doesNotMatch(fallbackSearch, /InspectOwnedListRepostAsync\(job, true, token\)/);
 assert.match(fallbackSearch, /_jobs\.Select\(j => j\.SourceListUrl\)/);

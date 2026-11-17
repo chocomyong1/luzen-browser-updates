@@ -2326,6 +2326,8 @@ internal sealed partial class AutomationForm : Form
         if (knownPages.Count > 0)
             AppendLog($"본인 등록글에서 확인해 저장한 {knownPages.Count}개 관리 목록 페이지도 재등록 검색에 포함합니다.");
         const int maxPages = 25;
+        int loadedPages = 0, unrenderedPages = 0, visibleListings = 0;
+        int numberRows = 0, titleRows = 0;
         while (queue.Count > 0 && visited.Count < maxPages)
         {
             token.ThrowIfCancellationRequested();
@@ -2333,8 +2335,8 @@ internal sealed partial class AutomationForm : Form
             if (!MyListingsImport.IsOwnedListUrl(next) || MyListingsImport.IsSellListUrl(next) != selling ||
                 !visited.Add(next)) continue;
             if (!string.Equals(_web.Source?.AbsoluteUri, next, StringComparison.OrdinalIgnoreCase))
-                await NavigateAsync(next, token);
-            var row = await InspectOwnedListRepostAsync(job, false, token);
+                await NavigateOwnedListAsync(next, token);
+            var (row, page) = await InspectOwnedListPageAsync(job, token);
             if (row.Status == "ready")
             {
                 if (!string.Equals(job.SourceListUrl, next, StringComparison.OrdinalIgnoreCase))
@@ -2345,16 +2347,20 @@ internal sealed partial class AutomationForm : Form
                 if (visited.Count > 1) AppendLog($"재등록 물품을 관리 목록 {visited.Count}페이지 검사 후 찾았습니다: " + job.ListingNumber);
                 return row;
             }
-            if (row.Status != "not-found") return row; // Ambiguous button/ID must never trigger a different row.
-            try
+            if (row.Status != "not-found")
             {
-                string json = await _web.CoreWebView2.ExecuteScriptAsync(MyListingsImport.ExtractPageScript);
-                var page = MyListingsImport.DecodePage(json);
-                foreach (string link in page.NextPageUrls.Take(30))
-                    if (MyListingsImport.IsOwnedListUrl(link) && MyListingsImport.IsSellListUrl(link) == selling &&
-                        !visited.Contains(link)) queue.Enqueue(link);
+                AppendLog($"재등록 검색 진단: 관리 목록 {visited.Count}페이지 검사 중 등록번호 해당 행 발견 " +
+                    $"{row.NumberRows}건, 제목 일치 행 {row.TitleRows}건. {row.Message}");
+                return row; // Never click on an unverified or mismatched row.
             }
-            catch (Exception ex) { AppendLog("관리 목록 페이지 탐색 오류: " + ex.GetType().Name); }
+            if (page.Listings.Count > 0 || page.IsEmptyList) loadedPages++;
+            else unrenderedPages++;
+            visibleListings += page.Listings.Count;
+            numberRows += row.NumberRows;
+            titleRows += row.TitleRows;
+            foreach (string link in page.NextPageUrls.Take(30))
+                if (MyListingsImport.IsOwnedListUrl(link) && MyListingsImport.IsSellListUrl(link) == selling &&
+                    !visited.Contains(link)) queue.Enqueue(link);
         }
         // Another program using the same account can repost an item while we
         // are paging through this list. That moves its row to the newest page,
@@ -2362,17 +2368,14 @@ internal sealed partial class AutomationForm : Form
         // first page exactly once. This is read-only; never submit an unverified
         // row or widen the listing ID/title matching rules.
         token.ThrowIfCancellationRequested();
-        AppendLog($"관리 목록 {visited.Count}페이지에 대상 없음 → 첫 페이지 최신 목록 재확인: {job.ListingNumber}");
+        AppendLog($"관리 목록 {visited.Count}페이지 검사: 표시 확인 {loadedPages}페이지, " +
+            $"물품 {visibleListings}건, 미표시 {unrenderedPages}페이지, " +
+            $"등록번호 일치 행 {numberRows}건, 제목 일치 행 {titleRows}건. " +
+            $"첫 페이지 최신 목록 재확인: {job.ListingNumber}");
         try
         {
-            await NavigateAsync(baseUrl, token);
-            var updated = await InspectOwnedListRepostAsync(job, false, token);
-            if (updated.Status == "not-found")
-            {
-                // The page's shell can appear before its asynchronous item rows.
-                await Task.Delay(750, token);
-                updated = await InspectOwnedListRepostAsync(job, false, token);
-            }
+            await NavigateOwnedListAsync(baseUrl, token);
+            var (updated, _) = await InspectOwnedListPageAsync(job, token);
             if (updated.Status == "ready")
             {
                 if (!string.Equals(job.SourceListUrl, baseUrl, StringComparison.OrdinalIgnoreCase))
@@ -2388,7 +2391,73 @@ internal sealed partial class AutomationForm : Form
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception ex) { AppendLog("최신 첫 페이지 재확인 실패: " + ex.GetType().Name); }
         return new OwnedListRepostResult { Status = "not-found", Message =
-            $"해당 등록번호의 행을 관리 목록 {visited.Count}페이지와 최신 첫 페이지에서 찾지 못했습니다. 글 상태/페이지 구성을 확인하세요" };
+            $"관리 목록 {visited.Count}페이지에서 등록번호 {job.ListingNumber}를 찾지 못했습니다 " +
+            $"(읽힌 물품 {visibleListings}건, 미표시 {unrenderedPages}페이지). " +
+            "원본 글이 다른 상태/페이지로 이동했거나 저장된 등록번호가 변경됐을 수 있습니다" };
+    }
+
+    // The site renders its management rows asynchronously. A navigation-complete
+    // event alone does not prove the listing table is ready to inspect.
+    // Always remain read-only here; a mismatch is never permission to repost.
+    private async Task<(OwnedListRepostResult Row, ExistingListingPage Page)> InspectOwnedListPageAsync(
+        ListingJob job, CancellationToken token)
+    {
+        var row = await InspectOwnedListRepostAsync(job, false, token);
+        var page = new ExistingListingPage();
+        if (row.Status != "not-found") return (row, page);
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                string json = await _web.CoreWebView2.ExecuteScriptAsync(MyListingsImport.ExtractPageScript);
+                page = MyListingsImport.DecodePage(json);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                page = new ExistingListingPage { Error = "목록 읽기 오류: " + ex.GetType().Name };
+            }
+            if (page.LoginRequired)
+                return (new OwnedListRepostResult { Status = "error", Message = "관리 목록에 로그인해야 합니다. 재등록하지 않았습니다" }, page);
+
+            bool idInParsedList = page.Listings.Any(x =>
+                string.Equals(x.ListingNumber, job.ListingNumber, StringComparison.Ordinal));
+            bool pageNotReady = page.Listings.Count == 0 && !page.IsEmptyList;
+            if ((!pageNotReady && !idInParsedList) || attempt == 2) break;
+
+            await Task.Delay(750, token);
+            row = await InspectOwnedListRepostAsync(job, false, token);
+            if (row.Status != "not-found") return (row, page);
+        }
+
+        // The import parser and the repost parser intentionally use independent
+        // selectors. If one sees the ID but the other cannot verify its button,
+        // report that difference instead of pretending the listing is absent.
+        var matches = page.Listings.Where(x =>
+            string.Equals(x.ListingNumber, job.ListingNumber, StringComparison.Ordinal)).ToList();
+        if (matches.Count > 0)
+        {
+            bool titleMatches = matches.Any(x =>
+                string.Equals(string.Concat((x.Title ?? "").Where(c => !char.IsWhiteSpace(c))),
+                    string.Concat((job.Title ?? "").Where(c => !char.IsWhiteSpace(c))),
+                    StringComparison.OrdinalIgnoreCase));
+            return (new OwnedListRepostResult
+            {
+                Status = "error",
+                Message = titleMatches
+                    ? "목록 추출에서는 등록번호·제목을 확인했지만 재등록 버튼을 연결하지 못했습니다. 페이지 구조를 점검해야 합니다"
+                    : "목록 추출에서 등록번호는 확인했지만 저장된 제목이 현재 사이트와 다릅니다. 제목을 다시 불러오세요",
+                ScannedRows = row.ScannedRows,
+                NumberRows = Math.Max(row.NumberRows, matches.Count),
+                TitleRows = row.TitleRows
+            }, page);
+        }
+        if (page.Listings.Count == 0 && !page.IsEmptyList)
+            return (new OwnedListRepostResult { Status = "error", Message =
+                "관리 목록의 물품 행이 끝내 표시되지 않았습니다. 비어 있음을 확인할 수 없어 재등록하지 않았습니다. " + page.Error }, page);
+        return (row, page);
     }
 
     private async Task<OwnedListRepostResult> InspectOwnedListRepostAsync(ListingJob job, bool? click,
