@@ -25,10 +25,20 @@ assert(!/MakeButton\("(?:자동등록 시작|일시정지|중지)"/.test(autoTab
   '안쪽 목록 도구막대에 중복 실행 제어가 있음');
 
 // Existing features are not deleted: only their presentation is regrouped.
-for (const caption of ['선택 물품 편집', '+ 물품 추가', '선택 물품 일괄수정',
-  '조회 전체선택', '선택 해제', '자동 ON/OFF ▾']) {
+for (const caption of ['선택 물품 편집', '+ 물품 추가', '같은 가격 선택',
+  '선택 물품 일괄수정', '선택 가격 반영', '선택/설정 ▾']) {
   assert(autoTab.includes(`MakeButton("${caption}"`), `${caption} UI가 사라짐`);
 }
+for (const action of ['조회 전체선택', '선택 해제', '선택 물품 자동 ON', '선택 물품 자동 OFF'])
+  assert(autoTab.includes(`batchMenu.Items.Add("${action}"`), `${action} 메뉴가 사라짐`);
+assert(!autoTab.includes('MakeButton("조회 전체선택"') && !autoTab.includes('MakeButton("선택 해제"'),
+  '조회/선택 관리 버튼은 보조 메뉴에서만 보여야 함');
+const itemToolbar = automation.slice(automation.indexOf('private void BuildJobTab()'), automation.indexOf('private void ConfigureJobsGrid()', automation.indexOf('private void BuildJobTab()')));
+assert(itemToolbar.includes('ActionButton("같은 가격 선택"') && itemToolbar.includes('ActionButton("선택 가격 반영"'),
+  '편집 탭 일괄 가격 동선이 사라짐');
+assert(itemToolbar.includes('selectionTools.Items.Add("CSV 가져오기"') &&
+  itemToolbar.includes('selectionTools.Items.Add("표 넓게 보기/복원"'),
+  '보조 도구 메뉴에서 CSV 또는 표 넓게 보기가 사라짐');
 assert(autoTab.includes('SetBatchEnabled(true)') && autoTab.includes('SetBatchEnabled(false)'),
   '일괄 자동 ON/OFF 경로가 사라짐');
 assert(main.includes('"판매글 추가"') && main.includes('AddNewListing("판매등록")'),
