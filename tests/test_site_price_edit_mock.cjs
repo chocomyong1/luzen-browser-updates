@@ -109,7 +109,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   pathname = approvedSubmit ? '/myroom/buy/buy_re_reg.html' : '/buy/edit.html',
   formId = 'frmBuy', priceFieldName = 'user_division_price',
   nativeSubmitCount = 1, submitId = 'ok_btn', submitClass = 'buy_re_reg',
-  includeFormId = true } = {}) {
+  includeFormId = true, formAction = '', formMethod = 'post' } = {}) {
   let clicked = 0;
   const clickedLabels = [];
   let inputEvents = 0;
@@ -142,9 +142,17 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   }));
   const allButtons = [...buttons, ...nativeSubmits];
   const hidden = { value: id, getAttribute: () => null };
-  const form = { tagName: 'FORM', getAttribute: key => ({
-    id: formId, action: '/myroom/buy/buy_re_reg_ok.html'
-  })[key] || null,
+  const formAttrs = {id: formId, action: formAction, method: formMethod};
+  let submitHandler = null;
+  const form = { tagName: 'FORM', getAttribute: key => formAttrs[key] || null,
+    setAttribute: (key, value) => { formAttrs[key] = value; },
+    addEventListener: (name, fn) => { if (name === 'submit') submitHandler = fn; },
+    removeEventListener: (name, fn) => { if (name === 'submit' && submitHandler === fn) submitHandler = null; },
+    requestSubmit: submitter => {
+      assert.ok(nativeSubmits.includes(submitter));
+      clicked++; clickedLabels.push('REAL_NATIVE_POST');
+      submitHandler?.({defaultPrevented: false, submitter});
+    },
     querySelectorAll: key => key === 'input[type="hidden"]' ? (includeFormId ? [hidden] : []) :
       key === 'button[type="submit"]' ? nativeSubmits : key.startsWith('button,') ? allButtons : [] };
   const headingCell = { textContent: heading };
@@ -164,7 +172,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
       getComputedStyle: () => ({ visibility: 'visible' })
     }, { timeout: 1000 });
   return { evaluate, get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
-    clickedLabels, prices };
+    clickedLabels, prices, formAttrs };
 }
 
 {
@@ -175,8 +183,11 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(audited.evaluate(true).status, 'submitted');
   assert.equal(audited.prices[0].value, '35100');
   assert.equal(audited.inputEvents, 2);
-  assert.deepEqual(audited.clickedLabels, ['REAL_SITE_RE_REG']);
-  console.log('PASS audited frmBuy buy_re_reg: only button#ok_btn.buy_re_reg submits');
+  assert.deepEqual(audited.clickedLabels, ['REAL_NATIVE_POST']);
+  assert.equal(audited.formAttrs.action, '/myroom/buy/buy_re_reg_ok.php');
+  assert.equal(audited.formAttrs.method, 'post');
+  assert.equal(audited.formAttrs.enctype, 'multipart/form-data');
+  console.log('PASS audited frmBuy uses native validated multipart POST to the manually confirmed URL');
 }
 
 {
@@ -226,7 +237,9 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     {submitId:'character_name_save'},
     {submitClass:'btn_name_save'},
     {nativeSubmitCount:2},
-    {includeFormId:false}
+    {includeFormId:false},
+    {formAction:'/myroom/wrong_action.php'},
+    {formMethod:'get'}
   ]) {
     const invalid = editFormCase({approvedSubmit:true, ...change});
     assert.notEqual(invalid.evaluate(true).status, 'submitted', JSON.stringify(change));
