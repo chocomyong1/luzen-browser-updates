@@ -97,8 +97,18 @@ internal static class SitePriceEdit
           .filter(e=>core(e.textContent)===core(a.title));
         if(titleLinks.length!==1)return result('error',titleLinks.length?
           '등록글 제목이 여러 개 연결되어 있습니다':'검증된 등록글의 클릭 가능한 제목을 찾지 못했습니다',titleLinks.length);
+        const titleNode=titleLinks[0];
+        let target=titleNode;
+        for(let el=titleNode;el&&el!==row;el=el.parentElement){
+          if(el.matches?.('a[href],a[onclick],button,[role="button"],[onclick]')){
+            target=el;break;
+          }
+        }
+        const clickable=target!==titleNode||titleNode.matches?.('a[href],a[onclick],button,[onclick]')||
+          getComputedStyle(titleNode).cursor==='pointer';
+        if(!clickable)return result('error','제목은 보이지만 클릭할 수 있는 링크·동작을 확인하지 못했습니다');
         if(!a.click)return result('ready','등록번호·제목이 일치하는 상세 화면 제목 링크 확인',1);
-        titleLinks[0].click();
+        target.click();
         return result('opened','검증된 등록글 제목 클릭',1);
       }
       const label=e=>norm([e.innerText,e.value,e.getAttribute('title'),e.getAttribute('aria-label'),
