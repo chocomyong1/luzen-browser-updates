@@ -20,8 +20,69 @@ internal sealed partial class AutomationForm
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
 
-    // Local Save never submits a price to ItemMania. An explicit action queues
-    // the change for this job's ordinary next automatic registration turn.
+    // A newly drafted listing uses its edited price on its first ordinary post.
+    // Only an imported, verified owned BUY post can queue an on-site price edit.
+    private static bool IsUnsubmittedNewListing(ListingJob job) =>
+        !job.ImportedFromSite && !ListingIdentity.HasNumber(job.ListingNumber) &&
+        !job.InitialCompleted && !job.LastSucceededUtc.HasValue &&
+        !job.PendingRepostAttemptUtc.HasValue && job.Operation is "구매등록" or "판매등록";
+
+    // Plan first, mutate only after EVERY selected job passes validation. The
+    // pending value is bound to the verified listing, never an independent task.
+    private bool TryPlanAutomaticPriceApply(IReadOnlyList<ListingJob> selected, string amount,
+        out Dictionary<ListingJob, string> pendingByJob, out string problem)
+    {
+        pendingByJob = new Dictionary<ListingJob, string>();
+        problem = "";
+        if (!TrySitePrice(amount, out long amountValue) || amountValue % 10 != 0)
+        {
+            problem = "가격은 1,000원 이상, 10원 단위로 입력하세요.";
+            return false;
+        }
+        if (selected.Count == 0 || selected.Distinct().Count() != selected.Count ||
+            selected.Any(job => !_jobs.Contains(job)))
+        {
+            problem = "선택한 물품이 현재 목록에 없습니다.";
+            return false;
+        }
+        var changed = selected.Where(job =>
+            !TrySitePrice(job.Price, out long oldPrice) || oldPrice != amountValue).ToList();
+        var existing = changed.Where(job => !IsUnsubmittedNewListing(job)).ToList();
+        if (existing.Count > 20 || existing.Any(job =>
+            !job.ImportedFromSite || job.OriginalTradeSide != "구매" || job.RequiresReview ||
+            (job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
+             (job.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
+              job.LastStatus.Contains("결과 확인 필요", StringComparison.Ordinal))) ||
+            !ListingIdentity.HasNumber(job.ListingNumber) ||
+            !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job))))
+        {
+            problem = "기존글 가격 반영은 등록번호·관리목록이 확인된 본인 구매글만 시스템당 최대 20건까지 가능합니다. " +
+                "판매글·확인 대기 중인 글은 변경하지 않았습니다.";
+            return false;
+        }
+        string accountId = ItemManiaAccountStore.Load(_system).UserId;
+        if (existing.Select(job => job.SiteId).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1 ||
+            (!string.IsNullOrWhiteSpace(accountId) && existing.Any(job =>
+                !string.Equals(job.SiteId, accountId, StringComparison.OrdinalIgnoreCase))) ||
+            existing.Any(job => _jobs.Any(other => !ReferenceEquals(other, job) &&
+                string.Equals(other.SiteId, job.SiteId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(other.ListingNumber, job.ListingNumber, StringComparison.Ordinal))))
+        {
+            problem = "기존글의 사이트 계정이 다르거나 등록번호가 중복되어 가격 반영을 예약하지 않았습니다.";
+            return false;
+        }
+        foreach (var job in selected)
+        {
+            if (!changed.Contains(job))
+                pendingByJob[job] = job.PendingSitePriceTarget;
+            else
+                pendingByJob[job] = IsUnsubmittedNewListing(job) ? "" : amountValue.ToString();
+        }
+        return true;
+    }
+
+    // Legacy internal reservation path. The everyday editor now queues price
+    // changes automatically when the user presses Save/Apply.
     private async Task ApplySelectedSitePriceAsync()
     {
         if (_selected is null) return;

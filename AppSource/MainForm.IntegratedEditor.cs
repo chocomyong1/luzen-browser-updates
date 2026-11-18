@@ -435,8 +435,8 @@ internal sealed partial class MainForm
         }
         using var dialog = new Form
         {
-            Text = "A/B/C 선택 물품 일괄수정", Size = new Size(560, 383),
-            MinimumSize = new Size(530, 370), StartPosition = FormStartPosition.CenterParent,
+            Text = "A/B/C 선택 물품 일괄수정", Size = new Size(560, 330),
+            MinimumSize = new Size(530, 330), StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false,
             BackColor = UiTheme.Surface, Font = Font
         };
@@ -466,23 +466,21 @@ internal sealed partial class MainForm
         fieldInput.SelectedIndex = 0;
         var valueLabel = new Label { Text = "새 값", Left = 23, Top = 115, Width = 95 };
         var valueInput = new TextBox { Left = 128, Top = 112, Width = 382, PlaceholderText = "예: 93,000" };
-        var reserve = new CheckBox
-        {
-            Text = "사이트 가격도 다음 자동등록 순번에 변경 예약",
-            Left = 128, Top = 158, Width = 395, Height = 31, Checked = true
-        };
         var note = new Label
         {
-            Left = 23, Top = 198, Width = 489, Height = 76,
-            Text = "자동등록을 멈추지 않고 저장합니다. 진행 중인 1건은 작업 종료 후 적용됩니다.\n" +
-                   "사이트 가격 예약은 확인된 본인 구매글만 시스템당 20건까지 허용합니다.\n" +
-                   "그 외 변경 항목은 프로그램의 로컬 설정만 수정합니다.",
+            Left = 23, Top = 160, Width = 489, Height = 69,
+            Text = "가격 적용: 기존 본인 구매글은 다음 자동등록 순번에 반영, 신규글은 첫 등록에 사용합니다.\n" +
+                   "진행 중인 1건은 완료 후 저장합니다. 기존글 가격 반영은 시스템당 최대 20건입니다.",
             ForeColor = UiTheme.Muted
         };
         fieldInput.SelectedIndexChanged += (_, _) =>
         {
             var field = fields[fieldInput.SelectedIndex].Field;
-            reserve.Visible = field == IntegratedEditField.Price;
+            note.Text = field == IntegratedEditField.Price
+                ? "가격 적용: 기존 본인 구매글은 다음 자동등록 순번에 반영, 신규글은 첫 등록에 사용합니다.\n" +
+                  "진행 중인 1건은 완료 후 저장합니다. 기존글 가격 반영은 시스템당 최대 20건입니다."
+                : "선택한 물품의 로컬 설정만 변경합니다. 사이트에 즉시 제출하지 않습니다.\n" +
+                  "자동등록 진행 중인 물품은 현재 작업 완료 후 적용합니다.";
             valueInput.PlaceholderText = field switch
             {
                 IntegratedEditField.Price => "예: 93,000",
@@ -492,8 +490,8 @@ internal sealed partial class MainForm
                 _ => "선택한 물품에 적용할 값"
             };
         };
-        var cancel = new Button { Text = "취소", Left = 290, Top = 286, Width = 98, Height = 36 };
-        var apply = new Button { Text = "변경 적용", Left = 401, Top = 286, Width = 109, Height = 36 };
+        var cancel = new Button { Text = "취소", Left = 290, Top = 241, Width = 98, Height = 36 };
+        var apply = new Button { Text = "변경 적용", Left = 401, Top = 241, Width = 109, Height = 36 };
         UiTheme.StyleButton(cancel);
         UiTheme.StyleButton(apply, UiTheme.ButtonTone.Primary);
         cancel.Click += (_, _) => dialog.Close();
@@ -503,8 +501,7 @@ internal sealed partial class MainForm
             string value = valueInput.Text.Trim();
             if (field == IntegratedEditField.Price) value = value.Replace(",", "").Replace("원", "");
             if (field == IntegratedEditField.Enabled) value = value.ToUpperInvariant();
-            bool reserveSite = field == IntegratedEditField.Price && reserve.Checked;
-            var command = new IntegratedEditCommand(field, value, reserveSite);
+            var command = new IntegratedEditCommand(field, value);
             var groups = targets.GroupBy(row => row.System).OrderBy(group => group.Key)
                 .Select(group => (System: group.Key, Form: IntegratedOwner(group.Key),
                     Jobs: (IReadOnlyList<ListingJob>)group.Select(row => row.Job).ToList())).ToList();
@@ -517,8 +514,9 @@ internal sealed partial class MainForm
             }
             if (MessageBox.Show(dialog,
                 $"{counts}에 '{fields[fieldInput.SelectedIndex].Label}'을(를) 적용할까요?\n\n" +
-                (reserveSite ? "사이트에는 지금 제출하지 않고 각 글의 다음 자동등록 순번에 변경 예약합니다." :
-                    "사이트의 기존 게시글은 즉시 바꾸지 않습니다. 로컬 목록만 변경합니다.") +
+                (field == IntegratedEditField.Price
+                    ? "기존 본인 구매글은 다음 자동등록 순번에 반영하고 신규글은 첫 등록에 사용합니다."
+                    : "사이트의 기존 게시글은 즉시 바꾸지 않습니다. 로컬 목록만 변경합니다.") +
                 "\n\nA/B/C의 작업 순번과 시간당 제한은 그대로 유지됩니다.",
                 "통합 일괄수정", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
@@ -553,13 +551,13 @@ internal sealed partial class MainForm
             RebuildIntegratedRows();
             _status.Text = $"  A/B/C 통합 수정 완료 · {immediate}건 저장" +
                 (deferred > 0 ? $" · 실행 중 {deferred}건은 작업 종료 후 적용" : "") +
-                (reserveSite ? " · 사이트 가격은 다음 자동등록 순번에 반영" : " · 사이트 즉시 제출 없음");
+                (field == IntegratedEditField.Price ? " · 기존글 가격은 다음 순번 반영" : " · 사이트 즉시 제출 없음");
             dialog.DialogResult = DialogResult.OK;
             dialog.Close();
         };
         dialog.Controls.Add(fieldLabel); dialog.Controls.Add(fieldInput);
         dialog.Controls.Add(valueLabel); dialog.Controls.Add(valueInput);
-        dialog.Controls.Add(reserve); dialog.Controls.Add(note);
+        dialog.Controls.Add(note);
         dialog.Controls.Add(cancel); dialog.Controls.Add(apply);
         UiTheme.ApplyControlStyles(dialog);
         dialog.ShowDialog(this);

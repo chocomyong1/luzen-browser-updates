@@ -36,10 +36,10 @@ internal sealed class ListingJob
     public string Quantity { get; set; } = "1";
     public string Unit { get; set; } = "개";
     public string Price { get; set; } = "";
-    // Local price changes are not live submissions. Only an explicitly approved
-    // request is submitted at this job's NEXT ordinary automatic repost turn.
-    // Persist the exact desired amount separately so unrelated local edits
-    // cannot silently turn into a different site submission.
+    // Saving an edited price of a verified owned BUY listing queues it for that
+    // job's NEXT normal turn (never an immediate extra POST). New drafts leave
+    // this empty and use their new amount on first registration.
+    // Keep the exact planned amount for mismatch detection before submission.
     public string PendingSitePriceTarget { get; set; } = "";
     public string Description { get; set; } = "";
     public string Character { get; set; } = "";

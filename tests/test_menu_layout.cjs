@@ -51,8 +51,11 @@ assert.match(automation, /_log\.Visible = false/,
 assert.match(main, /TextRenderer\.MeasureText\(label, button\.Font\)/,
   '상단 실행 버튼의 글자가 잘리면 안 됨');
 const itemToolbar = automation.slice(automation.indexOf('private void BuildJobTab()'), automation.indexOf('private void ConfigureJobsGrid()', automation.indexOf('private void BuildJobTab()')));
-for (const caption of ['+ 새 물품', '같은 가격 선택', '일괄수정', '가격 반영 예약', '더보기 ▾'])
+for (const caption of ['+ 새 물품', '같은 가격 선택', '일괄수정', '더보기 ▾'])
   assert(itemToolbar.includes(`ActionButton("${caption}"`), `물품 편집의 ${caption} 버튼이 사라짐`);
+assert(!itemToolbar.includes('ActionButton("가격 반영 예약"') &&
+  !itemToolbar.includes('FooterButton("가격 변경 예약"'),
+  '가격 수정 후 적용만으로 예약되므로 중복 예약 버튼을 보이면 안 됨');
 assert(itemToolbar.includes('selectionTools.Items.Add("CSV 가져오기"') &&
   itemToolbar.includes('selectionTools.Items.Add("표 넓게 보기/복원"'),
   '보조 도구 메뉴에서 CSV 또는 표 넓게 보기가 사라짐');

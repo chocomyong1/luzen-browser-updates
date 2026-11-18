@@ -56,7 +56,7 @@ internal sealed partial class AutomationForm
         });
         header.Controls.Add(new Label
         {
-            Text = "가격은 물품의 다음 자동등록 순번에 예약할 수 있습니다. 자동등록은 멈추지 않습니다.",
+            Text = "가격을 적용하면 기존 본인 구매글은 다음 등록 순번에 반영하고 신규글은 첫 등록에 사용합니다.",
             Dock = DockStyle.Bottom, Height = 38, ForeColor = UiTheme.Muted,
             Padding = new Padding(19, 8, 0, 0)
         });
@@ -69,14 +69,6 @@ internal sealed partial class AutomationForm
         };
         var close = new Button { Text = "닫기", Dock = DockStyle.Right, Width = 107, Margin = new Padding(8) };
         close.Click += (_, _) => window.Close();
-        var changedPriceTargets = new List<ListingJob>();
-        var siteApply = new Button { Text = "다음 순번에 예약", Dock = DockStyle.Right,
-            Width = 185, Margin = new Padding(8), Enabled = false };
-        siteApply.Click += (_, _) =>
-        {
-            window.DialogResult = DialogResult.OK;
-            window.Close();
-        };
         BatchUndoToken? dialogUndo = null;
         var undo = new Button { Text = "마지막 수정 되돌리기", Dock = DockStyle.Right,
             Width = 163, Margin = new Padding(8), Enabled = false };
@@ -90,12 +82,9 @@ internal sealed partial class AutomationForm
             if (!TryUndoBatchEdit(dialogUndo, out issue)) { Error(issue); return; }
             result.Text = "✓ " + issue;
             undo.Enabled = false;
-            siteApply.Enabled = false;
-            changedPriceTargets.Clear();
         };
         footer.Controls.Add(result);
         footer.Controls.Add(close);
-        footer.Controls.Add(siteApply);
         footer.Controls.Add(undo);
 
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = UiTheme.Surface };
@@ -156,7 +145,7 @@ internal sealed partial class AutomationForm
         }
 
         bool ApplyField<T>(string field, Func<ListingJob, T> read, Action<ListingJob, T> write,
-            T value, bool confirmLocalSave = true, string? newPendingPrice = null)
+            T value, bool confirmLocalSave = true, Func<ListingJob, string?>? pendingForJob = null)
         {
             // If an earlier edit changed the current search results (e.g. title),
             // don't silently modify jobs that are now hidden by the active query.
@@ -182,7 +171,7 @@ internal sealed partial class AutomationForm
             var immediate = previous.Where(x => !ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
             var deferred = previous.Where(x => ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
             var changes = active.Select(item => CaptureBatchUndoChange(item, read, write, value,
-                newPendingPrice)).ToList();
+                pendingForJob?.Invoke(item))).ToList();
             var byJob = changes.ToDictionary(change => change.Job);
             int deferredStart = _deferredExecutingJobEdits.Count;
             foreach (var (item, _) in immediate) ApplyBatchUndoChange(byJob[item]);
@@ -234,51 +223,28 @@ internal sealed partial class AutomationForm
             { Error("사이트 구매글 가격은 1,000원 이상, 10원 단위로 입력하세요."); return; }
             var activePriceTargets = _filteredJobs.Where(j => j.SelectedForBulk && items.Contains(j)).ToList();
             if (activePriceTargets.Count == 0) { Error("선택한 물품이 없습니다."); return; }
+            if (!TryPlanAutomaticPriceApply(activePriceTargets, price.ToString(),
+                out var pendingByJob, out var problem))
+            { Error(problem); return; }
             var preview = string.Join("\n", activePriceTargets.Take(8).Select(j =>
                 $"{j.Server} · {j.ListingNumber} : {j.Price}원 → {price:N0}원"));
             if (activePriceTargets.Count > 8) preview += $"\n외 {activePriceTargets.Count - 8}건";
-            var siteChoice = MessageBox.Show(window,
+            if (MessageBox.Show(window,
                 $"선택 {activePriceTargets.Count}건을 {price:N0}원으로 변경합니다.\n\n{preview}\n\n" +
-                "[예] 프로그램 저장 + 각 글의 다음 자동등록 순번에 변경 예약\n" +
-                "[아니오] 프로그램 설정에만 저장 (사이트 변경 없음)\n" +
-                "[취소] 아무것도 변경하지 않음\n\n" +
-                "지금 사이트에는 제출하지 않으며, 원래 자동등록의 시간당 제한과 순번을 사용합니다. " +
+                "기존 본인 구매글은 다음 자동등록 순번에 사이트 가격을 반영합니다.\n" +
+                "신규 판매·구매글은 첫 등록 가격으로 저장합니다.\n" +
+                "지금 사이트에는 제출하지 않으며 원래 시간당 제한과 순번을 사용합니다. " +
                 "각 글의 수정 결과가 불분명하면 그 글만 확인 대기로 전환합니다.",
-                "가격 일괄수정 방식 선택", MessageBoxButtons.YesNoCancel,
-                MessageBoxIcon.Warning, MessageBoxDefaultButton.Button3);
-            if (siteChoice == DialogResult.Cancel) return;
-            if (siteChoice == DialogResult.Yes)
+                "가격 일괄수정", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (ApplyField("가격", x => x.Price, (x, v) => x.Price = v,
+                price.ToString(), confirmLocalSave: false,
+                pendingForJob: job => pendingByJob[job]))
             {
-                if (activePriceTargets.Count > 20 || activePriceTargets.Any(j =>
-                    !j.ImportedFromSite || j.OriginalTradeSide != "구매" || j.RequiresReview ||
-                    !ListingIdentity.HasNumber(j.ListingNumber) ||
-                    !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j))))
-                { Error("사이트 반영은 등록번호가 확인된 본인 구매글 20건 이하만 가능합니다. 확인 대기·판매글을 제외하고 다시 선택해 주세요."); return; }
-                string accountId = ItemManiaAccountStore.Load(_system).UserId;
-                if (activePriceTargets.Select(j => j.SiteId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 1 ||
-                    (!string.IsNullOrWhiteSpace(accountId) && activePriceTargets.Any(j =>
-                        !string.Equals(j.SiteId, accountId, StringComparison.OrdinalIgnoreCase))) ||
-                    activePriceTargets.GroupBy(j => (j.SiteId, j.ListingNumber)).Any(g => g.Count() > 1))
-                { Error("사이트 계정이 서로 다르거나 등록번호가 중복됩니다. 같은 아이디의 고유한 구매글만 선택해 주세요."); return; }
-            }
-            if (ApplyField("가격", x => x.Price, (x, v) =>
-                {
-                    x.Price = v;
-                    // When this is the currently submitting job, ApplyField
-                    // defers BOTH values until the in-flight result concludes.
-                    x.PendingSitePriceTarget = siteChoice == DialogResult.Yes ? v : "";
-                }, price.ToString(), confirmLocalSave: false,
-                newPendingPrice: siteChoice == DialogResult.Yes ? price.ToString() : ""))
-            {
-                changedPriceTargets = activePriceTargets;
-                siteApply.Enabled = true;
-                result.Text = $"✓ {changedPriceTargets.Count}건 금액 저장 · " +
-                    (siteChoice == DialogResult.Yes ? "다음 자동등록 순번에 가격 변경 예약" : "사이트는 아직 변경되지 않음");
-                if (siteChoice == DialogResult.Yes)
-                {
-                    AppendLog($"가격 변경 예약: {changedPriceTargets.Count}개 · 각 물품의 다음 자동등록 순번에 반영");
-                    window.Close();
-                }
+                int existingCount = activePriceTargets.Count(job =>
+                    !IsUnsubmittedNewListing(job) && pendingByJob[job] == price.ToString());
+                result.Text = $"✓ {activePriceTargets.Count}건 저장 · 기존 구매글 {existingCount}건 다음 순번 반영";
+                AppendLog($"가격 적용: {activePriceTargets.Count}건 · 기존 구매글 다음 자동등록 순번에 반영, 신규글은 첫 등록에 사용");
             }
         });
         var quantityBox = Input("예: 3");
@@ -365,7 +331,6 @@ internal sealed partial class AutomationForm
         window.Controls.Add(footer);
         window.Controls.Add(header);
         UiTheme.ApplyControlStyles(window);
-        if (window.ShowDialog(this) == DialogResult.OK)
-            _ = ApplySelectedSitePricesAsync(changedPriceTargets);
+        window.ShowDialog(this);
     }
 }

@@ -1070,7 +1070,6 @@ internal sealed partial class AutomationForm : Form
         primary.Controls.Add(ActionButton("+ 새 물품", 107, AddListing));
         primary.Controls.Add(ActionButton("같은 가격 선택", 122, SelectSamePriceListings));
         primary.Controls.Add(ActionButton("일괄수정", 105, BulkEditSelected, true));
-        primary.Controls.Add(ActionButton("가격 반영 예약", 138, () => _ = ApplySelectedSitePricesAsync()));
         var selectionTools = new ContextMenuStrip();
         selectionTools.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
         selectionTools.Items.Add("선택 해제", null, (_, _) => SetVisibleBatchSelection(false));
@@ -1078,7 +1077,6 @@ internal sealed partial class AutomationForm : Form
         selectionTools.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
         selectionTools.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
         selectionTools.Items.Add(new ToolStripSeparator());
-        selectionTools.Items.Add("선택 물품 가격 변경 예약 (1건)", null, (_, _) => _ = ApplySelectedSitePriceAsync());
         selectionTools.Items.Add("마지막 일괄수정 되돌리기", null, (_, _) => UndoRecentBatchEdit());
         selectionTools.Items.Add("표 넓게 보기/복원", null, (_, _) => ToggleWideGrid());
         selectionTools.Items.Add("열 너비 초기화", null, (_, _) => ResetGridColumns());
@@ -1187,7 +1185,6 @@ internal sealed partial class AutomationForm : Form
             return b;
         }
         FooterButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
-        FooterButton("가격 변경 예약", 131, () => _ = ApplySelectedSitePriceAsync());
         var extraActions = new ContextMenuStrip();
         extraActions.Items.Add("서버별 복제", null, (_, _) => CopySelectedToOtherServers());
         extraActions.Items.Add("완료 표시 초기화", null, (_, _) =>
@@ -1787,32 +1784,49 @@ internal sealed partial class AutomationForm : Form
             TrySitePrice(_selected.Price, out var originalPrice)
                 ? desiredPrice != originalPrice
                 : !string.Equals(proposedPrice, _selected.Price, StringComparison.Ordinal);
-        if (priceReallyChanged &&
-            !string.IsNullOrWhiteSpace(_selected.PendingSitePriceTarget))
+        if (priceReallyChanged)
         {
-            if (notify && MessageBox.Show(this,
-                $"기존 사이트 가격 예약({_selected.PendingSitePriceTarget}원)을 취소하고 " +
-                $"새 로컬 가격({proposedPrice}원)을 저장할까요?\n\n" +
-                "새 가격을 사이트에 반영하려면 다시 '가격 변경 예약'을 선택해야 합니다.",
-                "가격 예약 변경 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
-                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            if (!TryPlanAutomaticPriceApply(new[] { _selected }, proposedPrice,
+                out var pendingByJob, out var problem))
             {
                 _price.Text = _selected.Price;
+                if (notify) MessageBox.Show(this, problem, "가격 변경 확인",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             else
             {
-                _selected.PendingSitePriceTarget = "";
-                AppendLog($"가격 예약 즉시 취소: {_selected.Server} · {_selected.ListingNumber} · 로컬 가격 변경");
+                var item = _selected;
+                string pending = pendingByJob[item];
+                if (ReferenceEquals(item, _currentlyExecutingJob))
+                {
+                    // Do not change an active site's form inputs mid-submit.
+                    // The same ordinary scheduler applies the price on a later turn.
+                    string deferredPrice = proposedPrice;
+                    _deferredExecutingJobEdits.Add(() =>
+                    {
+                        item.Price = deferredPrice;
+                        item.PendingSitePriceTarget = pending;
+                    });
+                    _price.Text = item.Price;
+                    if (notify) AppendLog($"가격 수정: {item.Server} · 진행 중 작업 종료 후 저장 및 다음 순번 반영");
+                }
+                else
+                {
+                    item.Price = proposedPrice;
+                    item.PendingSitePriceTarget = pending;
+                    if (notify) AppendLog($"가격 수정: {item.Server} · " +
+                        (IsUnsubmittedNewListing(item) ? "신규글 첫 등록 금액으로 저장" : "다음 자동등록 순번 사이트 반영"));
+                }
             }
         }
-        _selected.Price = KeepExistingWhenEmpty(_price.Text, _selected.Price);
         _selected.Character = KeepExistingWhenEmpty(_character.Text, _selected.Character);
         _selected.Description = KeepExistingWhenEmpty(_description.Text, _selected.Description);
         _selected.EntryUrl = KeepExistingWhenEmpty(_entry.Text, _selected.EntryUrl);
         _selected.IntervalMinutes = (int)_interval.Value;
         _selected.AutoRepost = _autoRepost.Checked;
         _selected.Enabled = _jobEnabled.Checked && !_selected.RequiresReview;
-        _config.Jobs = _jobs.ToList(); _config.Save(); _jobsGrid.Refresh();
+        _config.Jobs = _jobs.ToList(); _config.Save();
+        _jobsGrid.Refresh(); _autoGrid.Refresh(); RefreshAutoSummary();
         if (notify) AppendLog("물품 설정 저장: " + _selected.Title);
     }
 

@@ -17,11 +17,11 @@ assert.match(detail, /!string\.Equals\(proposedTitle, _selected\.Title, StringCo
 assert.match(batch, /field == "물품 제목" && active\.Any\(j => ListingIdentity\.HasNumber\(j\.ListingNumber\)\)/);
 assert.match(integrated, /command\.Field == IntegratedEditField\.Title &&/);
 
-// Local detail changes invalidate stale approved price reservations immediately.
-assert.match(detail, /_selected\.PendingSitePriceTarget = "";/);
-assert.match(detail, /기존 사이트 가격 예약/);
+// A revised price replaces the prior reservation automatically on Save.
+assert.match(detail, /TryPlanAutomaticPriceApply\(new\[\] \{ _selected \}, proposedPrice/);
+assert.match(detail, /item\.PendingSitePriceTarget = pending;/);
 assert.match(model, /가격 \{target\}원 · 다음 순번/);
-assert.match(batch, /newPendingPrice: siteChoice == DialogResult\.Yes \? price\.ToString\(\) : ""/);
+assert.match(batch, /pendingForJob: job => pendingByJob\[job\]/);
 
 // Undo is a one-step, local-only receipt for both the single-system and ABC editors.
 assert.match(batch, /dialogUndo = RememberBatchUndo\(field, changes\)/);
@@ -37,4 +37,4 @@ assert.match(undo, /change\.MatchesBefore\(\) : !change\.MatchesAfter\(\)/);
 assert.match(undo, /_deferredExecutingJobEdits\.Remove\(change\.DeferredAction!\)/);
 assert.match(undo, /if \(newPendingPrice is not null\) job\.PendingSitePriceTarget =/);
 assert.doesNotMatch(undo, /CoreWebView2|ExecuteStepAsync|Navigate\(/);
-console.log('PASS title safety across editors, immediate price reservation cancellation and local-only batch undo guards');
+console.log('PASS title safety, automatic price reservation renewal, local-only batch undo guards');

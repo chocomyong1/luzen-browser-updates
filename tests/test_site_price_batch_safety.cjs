@@ -44,11 +44,12 @@ assert.match(submit, /HourlyServerQuota\.MarkAttempt/);
 assert.match(submit, /job\.RequiresReview = true/);
 
 assert.match(models, /public string PendingSitePriceTarget \{ get; set; \} = "";/);
-assert.match(editor, /x\.PendingSitePriceTarget = siteChoice == DialogResult\.Yes \? v : ""/);
+assert.match(editor, /TryPlanAutomaticPriceApply\(activePriceTargets, price\.ToString\(\)/);
+assert.match(editor, /pendingForJob: job => pendingByJob\[job\]/);
 assert.match(editor, /Action afterSubmission = \(\) => ApplyBatchUndoChange\(change\)/);
 assert.match(editor, /_deferredExecutingJobEdits\.Add\(afterSubmission\)/);
-assert.match(editor, /Text = "다음 순번에 예약"/);
-assert.match(editor, /MessageBoxButtons\.YesNoCancel/);
+assert.doesNotMatch(editor, /Text = "다음 순번에 예약"|MessageBoxButtons\.YesNoCancel/);
+assert.match(editor, /MessageBoxButtons\.YesNo/);
 assert.match(importCode, /string\.IsNullOrWhiteSpace\(Target\.PendingSitePriceTarget\)/);
 assert.match(importCode, /sameOwnedListing && string\.IsNullOrWhiteSpace\(target\.PendingSitePriceTarget\)/);
 console.log('PASS safe deferred site price changes on ordinary repost slots');
