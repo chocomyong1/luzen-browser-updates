@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.72",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.72/LuzenBrowser_22.2.72_BinaryUpdate.zip",
-  "sha256": "ba8a88f539786c4bdc6a2ccc227dd1710412329012ec4af29fba66412d9a80db",
+  "version": "22.2.73",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.73/LuzenBrowser_22.2.73_BinaryUpdate.zip",
+  "sha256": "fe8c71c478b362eb7b77d857dfaa74037478a192c0d5991a25531f8f7fc1cf58",
   "format": "binary",
-  "releaseNotes": "v22.2.72 Windows 사용자 로그인 시 Luzen 자동 실행과 A/B 자동등록을 지원합니다. Windows 시작 프로그램 등록은 현재 사용자에게만 적용되며 관리 메뉴에서 끌 수 있습니다. 프로그램 실행 시 업데이트 확인을 먼저 마친 뒤 저장된 자동 시작 대상(A/B)에 따라 등록을 실행합니다. B VPN이 부팅 직후 준비되지 않았다면 A는 독립 실행하고 B는 60초 간격으로 독립 IP를 확인한 후에만 시작합니다. 프로그램 중복 실행을 차단하며 C는 기존처럼 직접 선택해 시작합니다. 사이트 등록번호 검증·시간당 제한·결과 불확실 시 재제출 금지는 유지합니다."
+  "releaseNotes": "v22.2.73 가격 수정 후 저장 또는 적용만 누르면 별도 예약 없이 다음 기존 자동등록 순번에 사이트 가격 반영을 예약합니다. 신규 판매/구매 물품은 첫 등록 가격으로만 저장됩니다. 단건·시스템별 일괄수정·A/B/C 통합 편집에 동일하게 적용하고 중복 예약 버튼을 제거했습니다. 등록번호·계정·원본 관리목록 검증, 시스템당 20건 제한, 시간당 자동등록 횟수와 제출 결과 불확실 시 자동 재시도 금지는 유지합니다."
 }
