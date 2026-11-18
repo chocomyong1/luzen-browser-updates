@@ -496,6 +496,14 @@ internal sealed partial class AutomationForm
         public OwnedListLoginPendingException(string message) : base(message) { }
     }
 
+    // A management page that cannot be reached is a pre-submit network
+    // condition, not evidence that the listing ID/title is wrong. B gets a
+    // circuit-breaker and an independent proxy/IP recheck before more jobs.
+    private sealed class OwnedListConnectivityPendingException : Exception
+    {
+        public OwnedListConnectivityPendingException(string message) : base(message) { }
+    }
+
     private async Task NavigateOwnedListAsync(string url, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -504,6 +512,7 @@ internal sealed partial class AutomationForm
         bool expectOwnedList = MyListingsImport.IsOwnedListUrl(url);
         string lastError = "확인되지 않음";
         bool sawOfficialRedirect = false;
+        bool sawTransportFailure = false;
         // A different navigation (for example a login redirect) may finish
         // while the importer is waiting. Match Starting/Completed NavigationId
         // rather than accepting the first completion event from the WebView.
@@ -558,7 +567,13 @@ internal sealed partial class AutomationForm
                     sawOfficialRedirect = true;
                     lastError = "관리목록 대신 로그인·시작 화면으로 이동함 (제출하지 않음)";
                 }
-                else lastError = $"{response.WebErrorStatus} (HTTP {response.HttpStatusCode})";
+                else
+                {
+                    lastError = $"{response.WebErrorStatus} (HTTP {response.HttpStatusCode})";
+                    if (response.HttpStatusCode == 0 ||
+                        response.WebErrorStatus == Microsoft.Web.WebView2.Core.CoreWebView2WebErrorStatus.ErrorHttpInvalidServerResponse)
+                        sawTransportFailure = true;
+                }
             }
             catch (TimeoutException)
             {
@@ -597,6 +612,9 @@ internal sealed partial class AutomationForm
         if (sawOfficialRedirect)
             throw new OwnedListLoginPendingException(
                 "로그인 전환 중 관리목록에 접근하지 못했습니다. 제출하지 않았으며 잠시 후 다시 조회합니다.");
+        if (_system == "B" && sawTransportFailure)
+            throw new OwnedListConnectivityPendingException(
+                "B VPN을 통한 아이템매니아 관리목록 연결에 실패했습니다: " + lastError);
         throw new InvalidOperationException($"관리 페이지 이동을 {maxAttempts}번 시도했지만 실패했습니다. " + lastError);
     }
 }
