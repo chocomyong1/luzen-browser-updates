@@ -223,29 +223,42 @@ internal static class SitePriceEdit
         '가격 입력칸이 여러 개라 수정하지 않았습니다':'현재 사이트 가격과 일치하는 가격 입력칸을 찾지 못했습니다','',matching.length);
       const priceInput=matching[0];
       const form=priceInput.closest('form')||(forms.length===1?forms[0]:null);
-      const root=form||document;
-      const safe=s=>String(s||'').replace(/[\r\n|]/g,' ').replace(/\s+/g,' ').trim().slice(0,38);
+      const safe=s=>String(s||'').replace(/[\r\n|]/g,' ').replace(/\s+/g,' ').trim().slice(0,43);
+      // Read attributes, not e.id: HTMLFormElement.id can be shadowed by
+      // an input named "id", which previously printed [object HTMLInputElement].
       const attr=(e,k)=>safe(e?.getAttribute?.(k));
-      const selector='button,input[type="submit"],input[type="button"],a[onclick],[role="button"]';
-      const controls=[...new Set([...root.querySelectorAll(selector),...document.querySelectorAll(selector)])]
-        .filter(visible);
-      const details=controls.slice(0,18).map((e,i)=>{
-        const label=safe(e.innerText||e.value||attr(e,'aria-label')||attr(e,'title'));
-        const handler=String(e.getAttribute?.('onclick')||'').match(/([\w$]+)\s*\(/)?.[1]||'-';
+      const selector='button,input[type="submit"],input[type="button"],input[type="image"],'+
+        'a[onclick],a[href^="javascript:"],[role="button"],[data-action]';
+      const controls=[...document.querySelectorAll(selector)].filter(visible);
+      const details=controls.map((e,i)=>{
+        const label=safe(e.innerText||e.value||attr(e,'aria-label')||attr(e,'title'))||'-';
+        const handlerSource=String(e.getAttribute?.('onclick')||e.getAttribute?.('href')||'');
+        const handler=handlerSource.match(/([\w$]+)\s*\(/)?.[1]||safe(e.onclick?.name)||'-';
         const row=e.closest?.('tr,[role="row"]');
         const section=safe(row?.querySelector?.('th,[role="rowheader"],td:first-child')?.textContent)||'-';
         const relation=form?(e.closest?.('form')===form?'같은폼':'다른영역'):'폼미확인';
-        return `${i+1}:${label||'-'}/${safe(e.tagName)}:${safe(e.type)}/${relation}/행:${section}/id:${safe(e.id)}/함수:${safe(handler)}`;
+        const ident=attr(e,'id')||attr(e,'name')||'-';
+        const className=attr(e,'class')||'-';
+        return {index:i+1,label,section,relation,ident,className,handler,
+          line:`#${i+1} ${label} [${section}; ${relation}; ${safe(e.tagName)}/${safe(e.type)}; `+
+            `id:${ident}; class:${className}; fn:${safe(handler)}]`};
       });
-      const formName=safe(form?.id||attr(form,'name'))||'-';
+      const keywords=/수정|변경|등록|저장|완료|확인|적용|제출|submit|modify|edit|regist|save|update/i;
+      const candidates=details.filter(d=>keywords.test([d.label,d.ident,d.className,d.handler].join(' ')));
+      // Do not report the first 18 menu buttons again. Show actionable
+      // candidates and the LAST controls, where the price form footer lives.
+      const focus=candidates.slice(-18);
+      const tail=details.slice(-10).filter(d=>!focus.includes(d));
+      const formName=attr(form,'id')||attr(form,'name')||'-';
       const formAction=safe(String(form?.getAttribute?.('action')||'').split('?')[0])||'-';
-      const path=safe(location.pathname);
-      const priceName=safe(priceInput.name||priceInput.id)||'-';
-      const diag=`경로:${path}; 가격칸:${priceName}; 폼:${formName}/${formAction}; `+
-        `버튼 ${controls.length}개: ${details.join(' | ')||'없음'}`;
+      const priceName=attr(priceInput,'name')||attr(priceInput,'id')||safe(priceInput.name)||'-';
+      const diag=`경로:${safe(location.pathname)}; 가격칸:${priceName}; 폼:${formName}/${formAction}; `+
+        `컨트롤:${controls.length}개, 작업 후보:${candidates.length}개\n`+
+        `작업 후보(뒤쪽 우선):\n${focus.map(d=>d.line).join('\n')||'없음'}\n`+
+        `화면 끝부분:\n${tail.map(d=>d.line).join('\n')||'후보에 포함됨'}`;
       // This is a hard safety interlock, not a dry-run branch that can be
       // bypassed by submit=true. Inspect only; do not set a value or click.
-      return result('diagnostic','제출 차단(읽기 전용). '+diag.slice(0,1750),old,controls.length);
+      return result('diagnostic','제출 차단(읽기 전용).\n'+diag.slice(0,4300),old,controls.length);
     })()
     """;
 }
