@@ -53,6 +53,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Site price update safety test failed' }
           node tests/test_site_price_readback_safety.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Pending site price readback safety test failed' }
+          node tests/test_site_price_batch_safety.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Sequential site price batch safety test failed' }
           node tests/test_site_request_trace_safety.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Passive site request recording safety test failed' }
           node tests/test_dual_system_isolation.cjs
@@ -93,15 +95,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.58'
+          $version = '22.2.59'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.58
-          path: LuzenBrowser_22.2.58_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.59
+          path: LuzenBrowser_22.2.59_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -109,7 +111,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.58'
+          $version = '22.2.59'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -121,7 +123,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.58 구매글 실제 가격 변경 요청 방식 개선: 기존 클릭·requestSubmit이 사이트 구매글 수정 POST를 만들지 못해 원본 프로그램과 유사하게 확인된 첫-party buy_re_reg_ok.php 주소로 한 번만 multipart POST하도록 변경했습니다. 정확한 등록번호·기존 단가·구매 frmBuy 폼 및 재등록 컨트롤을 사전 검증하고 현재 사이트 폼에 포함된 숨김 필드를 브라우저 내부 FormData로 그대로 사용합니다. 폼 값·계정 정보는 기록하지 않으며 실제 POST 전송과 관리목록 단가 확인을 별도로 기다립니다. 실패·불확실한 결과는 자동 재제출하지 않고 확인 대기로 보류합니다.'
+            releaseNotes = 'v22.2.59 화면 정리 및 같은 가격 구매글 일괄 반영: 상단 조회시험·요청 기록은 진단 도구 메뉴로, 목록 전체선택·자동 ON/OFF·CSV는 더보기 메뉴로 정리했습니다. 본인 계정의 같은 가격 구매글을 최대 20건씩 골라 일괄수정에서 금액을 저장하고 사이트에 한 건씩 순차 반영할 수 있습니다. 각 건마다 단건 검증 및 실제 POST 후 등록번호·사이트 단가를 확인하고, 서버 등록 간격을 지키며 불확실한 결과가 있거나 중지하면 나머지는 제출하지 않습니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
