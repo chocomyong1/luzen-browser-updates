@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.73",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.73/LuzenBrowser_22.2.73_BinaryUpdate.zip",
-  "sha256": "fe8c71c478b362eb7b77d857dfaa74037478a192c0d5991a25531f8f7fc1cf58",
+  "version": "22.2.74",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.74/LuzenBrowser_22.2.74_BinaryUpdate.zip",
+  "sha256": "79cc9625c41327d3f9e5ac3601b2c7e8e6905dfcb60da277af43c586b53c9b68",
   "format": "binary",
-  "releaseNotes": "v22.2.73 가격 수정 후 저장 또는 적용만 누르면 별도 예약 없이 다음 기존 자동등록 순번에 사이트 가격 반영을 예약합니다. 신규 판매/구매 물품은 첫 등록 가격으로만 저장됩니다. 단건·시스템별 일괄수정·A/B/C 통합 편집에 동일하게 적용하고 중복 예약 버튼을 제거했습니다. 등록번호·계정·원본 관리목록 검증, 시스템당 20건 제한, 시간당 자동등록 횟수와 제출 결과 불확실 시 자동 재시도 금지는 유지합니다."
+  "releaseNotes": "v22.2.74 신규 구매글을 Luzen에서 등록하고 등록번호까지 확인한 경우, 재불러오기 없이 가격 수정 후 적용하면 다음 자동등록 순번에 연결됩니다. 가격 변경 전 실제 본인 관리목록의 등록번호·제목·계정·거래 방향은 재검증합니다. 신규글 복제 시 이전 예약·제출 이력을 초기화하고, 재시작 시 미제출 오류/서버 간격의 대기 시간을 유지합니다. 신규 등록 결과에 기존 등록번호가 재사용되면 성공으로 인정하지 않습니다. 기존 시간당 등록 제한과 중복 제출 방지는 유지합니다."
 }
