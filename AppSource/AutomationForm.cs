@@ -135,6 +135,7 @@ internal sealed partial class AutomationForm : Form
         Padding = new Padding(19, 4, 0, 0), BackColor = UiTheme.Canvas,
         ForeColor = UiTheme.Muted
     };
+    private Control? _segmentedNavigation;
 
 
     public AutomationForm(string defaultSubId = "", string system = "A")
@@ -313,7 +314,8 @@ internal sealed partial class AutomationForm : Form
         BuildAutoRegistrationTab();
         BuildJobTab();
         BuildWorkflowTab();
-        contentSplit.Panel1.Controls.Add(BuildSegmentedNavigation());
+        _segmentedNavigation = BuildSegmentedNavigation();
+        contentSplit.Panel1.Controls.Add(_segmentedNavigation);
         ConfigureJobsGrid();
         ConfigureAutoGrid();
         InstallListingHeaderSorting();
@@ -959,6 +961,7 @@ internal sealed partial class AutomationForm : Form
             MessageBox.Show(this, "편집할 물품을 먼저 선택하세요.", "물품 선택");
             return;
         }
+        if (_splitStatusMode) RequestSingleViewFromSplit?.Invoke(_system);
         ShowItemRegistrationView();
         RestoreEditorPanel();
         foreach (DataGridViewRow row in _jobsGrid.Rows)
