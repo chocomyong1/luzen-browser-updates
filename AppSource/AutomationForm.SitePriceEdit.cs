@@ -240,8 +240,28 @@ internal sealed partial class AutomationForm
                 if (form.Status is "ready" or "diagnostic") break;
             }
             if (form.Status == "diagnostic")
-                throw new InvalidOperationException("사이트 가격 제출은 안전 점검이 끝날 때까지 잠겨 있습니다. 가격이나 캐릭터명은 건드리지 않았습니다.\n\n" +
-                    "버튼 진단 결과 (오류 기록에서 복사 가능):\n" + form.Message);
+            {
+                var diagnosis = $"[사이트 가격 버튼 진단]\n등록번호: {job.ListingNumber}\n" + form.Message;
+                AppendLog("사이트 가격 버튼 진단 완료 (제출 없음): " + job.ListingNumber + "\n" + form.Message);
+                _lastSitePriceEditFailure = "읽기 전용 가격 버튼 진단 완료 (가격 미제출)";
+                if (!bulkApproval && MessageBox.Show(this,
+                    $"읽기 전용 진단을 완료했습니다. 버튼 {form.Candidates}개를 조사했으며 " +
+                    "가격·캐릭터명은 변경하지 않았습니다.\n\n" +
+                    "가격 수정 기능은 안전 점검이 끝날 때까지 잠겨 있습니다.\n\n" +
+                    "진단 내용을 클립보드에 복사할까요?",
+                    "사이트 가격 버튼 진단 완료", MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information, MessageBoxDefaultButton.Button1) == DialogResult.Yes)
+                {
+                    try { Clipboard.SetText(diagnosis); }
+                    catch (Exception ex)
+                    {
+                        AppendLog("사이트 가격 버튼 진단 복사 실패: " + ex.GetType().Name);
+                        MessageBox.Show(this, "클립보드에 복사하지 못했습니다. 오류 기록 복사 기능을 사용해 주세요.",
+                            "진단 복사 실패");
+                    }
+                }
+                return false;
+            }
             if (form.Status != "ready")
                 throw new InvalidOperationException("수정 페이지를 안전하게 확인하지 못했습니다: " + form.Message);
             // Defense in depth: even an older page script reporting "ready"
