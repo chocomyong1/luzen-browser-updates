@@ -394,6 +394,36 @@ internal sealed partial class AutomationForm : Form
     public void PauseAutomationFromHeader() => PauseScheduler();
     public void StopAutomationFromHeader() => StopScheduler();
     public Task ProbeSelectedRepostFromHeaderAsync() => ProbeSelectedRepostReadOnlyAsync();
+    public Task TestSelectedNewRegistrationFromHeaderAsync()
+    {
+        if (_schedulerRunning || _busy || _myListingsImportRunning)
+        {
+            MessageBox.Show(this, "자동등록·등록글 조회가 끝난 후 신규글 입력시험을 실행하세요. 시험 중에는 사이트에 제출하지 않습니다.",
+                "신규글 입력시험 대기", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return Task.CompletedTask;
+        }
+        if (_selected is null || _selected.Operation is not ("판매등록" or "구매등록") ||
+            _selected.InitialCompleted || _selected.ImportedFromSite)
+        {
+            MessageBox.Show(this, "물품 편집에서 아직 등록하지 않은 신규 판매글 또는 구매글 1개를 선택해 주세요.",
+                "신규글 입력시험 대상", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return Task.CompletedTask;
+        }
+        if (_selected.PaidRegistration || _selected.InstantTransaction)
+        {
+            MessageBox.Show(this, "입력시험은 일반등록만 지원합니다. 유료등록·즉시구매 설정을 해제한 물품을 선택하세요.",
+                "신규글 입력시험 제한", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return Task.CompletedTask;
+        }
+        if (!_config.WorkflowFor(_selected.Operation).Steps.Any(s =>
+            s.Action == "제출" && !string.IsNullOrWhiteSpace(s.Selector)))
+        {
+            MessageBox.Show(this, "신규 등록 작업에 최종 제출 버튼 단계가 없습니다. 관리 → 고급 설정에서 확인하세요.",
+                "신규글 입력시험 설정", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return Task.CompletedTask;
+        }
+        return RunSelectedAsync(dryRun: true);
+    }
     public Task ToggleSiteTraceFromHeaderAsync(ToolStripItem menuItem) => ToggleSiteRequestTraceAsync(menuItem);
     public bool SiteTraceIsActive => _siteRequestTraceActive;
 
@@ -2476,6 +2506,19 @@ internal sealed partial class AutomationForm : Form
                                 else AppendLog("[시험] 실제 제출 없이 상세 등록번호 확인: " + job.ListingNumber);
                             }
                         }
+                        else
+                        {
+                            // A new-listing dry run must test the final button
+                            // too, but it must never invoke that button.
+                            string submitSelector = step.Selector;
+                            if (submitSelector.StartsWith("@auto:", StringComparison.OrdinalIgnoreCase))
+                                submitSelector = await ResolveAutoSelectorAsync(submitSelector[6..],
+                                    Math.Max(1, step.TimeoutSeconds), token);
+                            if (!await WaitForElementAsync(submitSelector, Math.Max(1, step.TimeoutSeconds), token))
+                                throw new InvalidOperationException("[시험] 신규글 최종 등록 버튼을 찾지 못했습니다: " + step.Selector);
+                            AppendLog("[시험] " + (flow.Operation == "판매등록" ? "판매" : "구매") +
+                                "글 입력칸과 최종 등록 버튼 확인 완료 · 실제 제출 없음");
+                        }
                         AppendLog("[시험] 최종 제출 버튼은 누르지 않음: " + (i + 1));
                         break;
                     }
@@ -3163,9 +3206,16 @@ internal sealed partial class AutomationForm : Form
           const norm=x=>String(x||'').replace(/[\s:*：]/g,'').trim();
           let out=[];
           if(key==='submit'||key==='submitSell'||key==='submitBuy'||key==='repost'){
+            // A generic '등록하기' button is safe to consider only on the
+            // corresponding new-listing editor, not on an account or list page.
+            if(key==='submitSell'||key==='submitBuy'){
+              const side=key==='submitSell'?'sell':'buy';
+              if(!new RegExp('^/(?:trade/)?'+side+'(?:/|$)','i').test(location.pathname||''))
+                return JSON.stringify({error:'신규 '+side+' 등록 화면이 아닙니다'});
+            }
             const words=key==='repost'?['재등록','다시등록']:
-              key==='submitSell'?['판매등록']:
-              key==='submitBuy'?['구매등록']:
+              key==='submitSell'?['판매등록','물품등록하기','등록하기','등록']:
+              key==='submitBuy'?['구매등록','물품등록하기','등록하기','등록']:
               ['판매등록','구매등록','물품등록하기','등록하기'];
             // Repost is commonly a normal anchor, not necessarily an a[role=button].
             // The caller has already verified the exact existing listing ID.
