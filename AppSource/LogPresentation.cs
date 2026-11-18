@@ -17,7 +17,7 @@ internal static class LogPresentation
         "선택 물품", "서버별 복제 완료:", "표 상단", "물품 목록 열 너비",
         "선택한 기존 등록글", "일괄수정", "물품 설정 저장:", "사이트 진단 파일 저장",
         "주의: 결과 확인 대기", "보류 사유:", "보류 자동 확인:", "보류 자동 해제:",
-        "결과 확인이 필요한 물품", "[미제출 조회시험", "처리 시간 요약:"
+        "결과 확인이 필요한 물품", "[미제출 조회시험"
     };
 
     public static LogPresentationResult Format(string? message)
