@@ -17,7 +17,8 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   buttonDesc = '수정', buttonHandler = `modifyItem('${number}')`, count = 1 } = {}) {
   let clicked = 0;
   const titleLink = { textContent: displayedTitle, isConnected: true, disabled: false,
-    getClientRects: () => [1], click: () => clicked++ };
+    getClientRects: () => [1], matches: () => true, parentElement: null,
+    click: () => clicked++ };
   const actions = Array.from({ length: count }, () => ({
     innerText: buttonText, value: '', className: 'list_icon edit', isConnected: true,
     disabled: false, getClientRects: () => [1],
