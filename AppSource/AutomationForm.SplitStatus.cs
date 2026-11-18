@@ -21,7 +21,11 @@ internal sealed partial class AutomationForm
         {
             int enabled = _jobs.Count(job => job.Enabled);
             int pending = _jobs.Count(job => job.RequiresReview);
-            string state = _schedulerRunning ? "실행 중" : _busy ? "작업 중" : "중지/대기";
+            string state = _system == "B" && _schedulerRunning && _bConnectionRecheckRunning
+                ? "VPN 연결 재확인 중" :
+                _system == "B" && _schedulerRunning && _bConnectionRecoveryUtc > DateTime.UtcNow
+                ? "VPN 연결 대기" :
+                _schedulerRunning ? "실행 중" : _busy ? "작업 중" : "중지/대기";
             return $"{state}   ·   전체 {_jobs.Count}   ·   자동 {enabled}   ·   확인 필요 {pending}";
         }
     }
