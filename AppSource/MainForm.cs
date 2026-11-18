@@ -18,9 +18,7 @@ internal sealed partial class MainForm : Form
         "B" => _moduleB, "C" => _moduleC, _ => _moduleA
     };
     private string _activeSystem = "A";
-    private Button? _systemAButton;
-    private Button? _systemBButton;
-    private Button? _systemCButton;
+    private Button? _systemPicker;
     private bool _checkingProxyConnection;
     private int _systemSelectionSequence;
     private readonly Label _accountInfo = new() { Dock = DockStyle.Right, Width = 340, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
@@ -43,7 +41,7 @@ internal sealed partial class MainForm : Form
 
     public MainForm(ServerInfo server, string username)
     {
-        Text = "Luzen Browser | 물품 · 재등록 관리 - V22";
+        Text = "Luzen Browser | 물품 · 자동등록 관리";
         Icon = new Icon(Settings.Asset("iBook1.ico"));
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1040, 640);
@@ -128,12 +126,8 @@ internal sealed partial class MainForm : Form
 
     private void RefreshSystemLabel()
     {
-        if (_systemAButton is not null)
-            UiTheme.StyleButton(_systemAButton, _activeSystem == "A" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
-        if (_systemBButton is not null)
-            UiTheme.StyleButton(_systemBButton, _activeSystem == "B" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
-        if (_systemCButton is not null)
-            UiTheme.StyleButton(_systemCButton, _activeSystem == "C" ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Dark);
+        if (_systemPicker is not null)
+            _systemPicker.Text = _activeSystem == "A" ? "A 기본 ▾" : $"{_activeSystem} VPN ▾";
         _accountInfo.Text = $"아이템매니아  |  시스템 {_activeSystem}  |  설정·목록 분리   ";
     }
 
@@ -152,8 +146,6 @@ internal sealed partial class MainForm : Form
             else
             {
                 _checkingProxyConnection = true;
-                Button? selectedButton = system == "B" ? _systemBButton : _systemCButton;
-                if (selectedButton is not null) selectedButton.Enabled = false;
                 _status.Text = $"  시스템 {system} 연결 자동 확인 중 · 기존 A 인터넷은 유지됩니다.";
                 try
                 {
@@ -174,8 +166,6 @@ internal sealed partial class MainForm : Form
                 finally
                 {
                     _checkingProxyConnection = false;
-                    if (selectedButton is not null && !selectedButton.IsDisposed)
-                        selectedButton.Enabled = true;
                 }
             }
             if (selection != _systemSelectionSequence || IsDisposed || Disposing) return;
@@ -203,44 +193,58 @@ internal sealed partial class MainForm : Form
     {
         var bar = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 56, AutoScroll = true, WrapContents = false,
-            BackColor = UiTheme.Navy, Padding = new Padding(11, 7, 7, 5)
+            Dock = DockStyle.Top, Height = 49, AutoScroll = true, WrapContents = false,
+            BackColor = UiTheme.Navy, Padding = new Padding(11, 4, 7, 3)
         };
         var logo = new PictureBox
         {
             Image = Image.FromFile(Settings.Asset("09_536c8.png")),
-            Size = new Size(38, 38), SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 0, 5, 0)
+            Size = new Size(35, 35), SizeMode = PictureBoxSizeMode.Zoom,
+            Margin = new Padding(0, 2, 5, 0)
         };
         bar.Controls.Add(logo);
         bar.Controls.Add(new Label
         {
-            Text = "LUZEN\nLISTING MANAGER",
-            ForeColor = Color.White, Size = new Size(137, 38),
-            Font = new Font("맑은 고딕", 9F, FontStyle.Bold),
-            Padding = new Padding(2, 2, 0, 0), Margin = new Padding(0, 0, 11, 0)
+            Text = "LUZEN",
+            ForeColor = Color.White, Size = new Size(82, 36),
+            Font = new Font("맑은 고딕", 10F, FontStyle.Bold),
+            Padding = new Padding(2, 8, 0, 0), Margin = new Padding(0, 0, 10, 0)
         });
-        _systemAButton = AddToolButton(bar, "A 기본", () => _ = SelectSystemAsync("A"), 74);
-        _systemBButton = AddToolButton(bar, "B VPN", () => _ = SelectSystemAsync("B"), 74);
-        _systemCButton = AddToolButton(bar, "C VPN", () => _ = SelectSystemAsync("C"), 74);
+        var systemMenu = new ContextMenuStrip();
+        systemMenu.Items.Add("A 기본", null, (_, _) => _ = SelectSystemAsync("A"));
+        systemMenu.Items.Add("B VPN", null, (_, _) => _ = SelectSystemAsync("B"));
+        systemMenu.Items.Add("C VPN", null, (_, _) => _ = SelectSystemAsync("C"));
+        _systemPicker = AddToolButton(bar, "A 기본 ▾",
+            () => systemMenu.Show(_systemPicker!, 0, _systemPicker!.Height), 105);
         AddToolbarDivider(bar);
-        AddToolButton(bar, "목록 조회", () => _module.RefreshListings(), 88);
-        var addMenu = new ContextMenuStrip();
-        addMenu.Items.Add("판매글 추가", null, (_, _) => AddNewListing("판매등록"));
-        addMenu.Items.Add("구매글 추가", null, (_, _) => AddNewListing("구매등록"));
-        addMenu.Items.Add("재등록 추가", null, (_, _) => AddNewListing("재등록"));
-        Button? addButton = null;
-        addButton = AddToolButton(bar, "+ 새 물품 ▾", () => addMenu.Show(addButton!, 0, addButton!.Height), 110);
-        AddToolButton(bar, "복제", () => _module.DuplicateListing());
-        AddToolButton(bar, "삭제", () => _module.RemoveListing());
-        AddToolButton(bar, "저장", () => _module.SaveListings());
-        AddToolbarDivider(bar);
-        AddToolButton(bar, "매니아 계정", () => _module.OpenAccountSettings(), 112);
+        AddToolButton(bar, "내 등록글 불러오기", () => _ = _module.ImportMyRegisteredListingsFromHeaderAsync(),
+            153, UiTheme.ButtonTone.Primary);
+        AddToolButton(bar, "자동 시작", () => _module.StartAutomationFromHeader(), 92, UiTheme.ButtonTone.Success);
+        AddToolButton(bar, "일시정지", () => _module.PauseAutomationFromHeader(), 85);
+        AddToolButton(bar, "즉시 중지", () => _module.StopAutomationFromHeader(), 93, UiTheme.ButtonTone.Danger);
         var moreMenu = new ContextMenuStrip();
+        var addSubmenu = new ToolStripMenuItem("새 물품 추가");
+        addSubmenu.DropDownItems.Add("판매글 추가", null, (_, _) => AddNewListing("판매등록"));
+        addSubmenu.DropDownItems.Add("구매글 추가", null, (_, _) => AddNewListing("구매등록"));
+        addSubmenu.DropDownItems.Add("재등록 추가", null, (_, _) => AddNewListing("재등록"));
+        moreMenu.Items.Add(addSubmenu);
+        moreMenu.Items.Add("물품 복제", null, (_, _) => _module.DuplicateListing());
+        moreMenu.Items.Add("선택 물품 삭제", null, (_, _) => _module.RemoveListing());
+        moreMenu.Items.Add("설정 저장", null, (_, _) => _module.SaveListings());
+        moreMenu.Items.Add("로컬 목록 새로고침", null, (_, _) => _module.RefreshListings());
+        moreMenu.Items.Add(new ToolStripSeparator());
+        moreMenu.Items.Add("아이템매니아 계정", null, (_, _) => _module.OpenAccountSettings());
+        moreMenu.Items.Add("시간당 등록 횟수 설정", null, (_, _) => _module.OpenHourlyLimitSettings());
         moreMenu.Items.Add("고급 설정 · 사이트 연동", null, (_, _) => _module.ShowWorkflowSettings());
         moreMenu.Items.Add("텔레그램 알림 설정", null, (_, _) => _module.OpenTelegramSettings());
         moreMenu.Items.Add("B VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("B"));
         moreMenu.Items.Add("C VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("C"));
+        moreMenu.Items.Add(new ToolStripSeparator());
+        moreMenu.Items.Add("선택 1건 조회시험", null, async (_, _) => await _module.ProbeSelectedRepostFromHeaderAsync());
+        var traceMenuItem = new ToolStripMenuItem("수정 요청 기록");
+        traceMenuItem.Click += async (_, _) => await _module.ToggleSiteTraceFromHeaderAsync(traceMenuItem);
+        moreMenu.Items.Add(traceMenuItem);
+        moreMenu.Opening += (_, _) => traceMenuItem.Text = _module.SiteTraceIsActive ? "기록 종료·복사" : "수정 요청 기록";
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("업데이트 확인 · 설치", null,
             (_, _) => _ = CheckForUpdateAsync(automatic: false, installImmediately: true));
@@ -254,7 +258,7 @@ internal sealed partial class MainForm : Form
             "실제 사이트 등록 성공 여부는 Windows에서 별도 검증이 필요합니다.", "사용 안내"));
         moreMenu.Items.Add("프로그램 닫기", null, (_, _) => Close());
         Button? moreButton = null;
-        moreButton = AddToolButton(bar, "더보기 ▾", () => moreMenu.Show(moreButton!, 0, moreButton!.Height), 88);
+        moreButton = AddToolButton(bar, "관리 ▾", () => moreMenu.Show(moreButton!, 0, moreButton!.Height), 85);
         RefreshSystemLabel();
         return bar;
     }
@@ -433,14 +437,14 @@ internal sealed partial class MainForm : Form
         finally { _installingUpdate = false; }
     }
 
-    private static Button AddToolButton(FlowLayoutPanel parent, string label, Action action, int width = 72)
+    private static Button AddToolButton(FlowLayoutPanel parent, string label, Action action, int width = 72,
+        UiTheme.ButtonTone tone = UiTheme.ButtonTone.Dark)
     {
         var button = new Button
         {
-            Text = label, Size = new Size(width, 36), Margin = new Padding(2, 3, 4, 2)
+            Text = label, Size = new Size(width, 34), Margin = new Padding(2, 3, 4, 2)
         };
-        UiTheme.StyleButton(button, label.StartsWith("+ 새 물품", StringComparison.Ordinal) ? UiTheme.ButtonTone.Primary :
-            label == "삭제" ? UiTheme.ButtonTone.Danger : UiTheme.ButtonTone.Dark);
+        UiTheme.StyleButton(button, tone);
         button.Click += (_, _) => action();
         parent.Controls.Add(button);
         return button;
