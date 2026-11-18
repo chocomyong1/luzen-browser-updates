@@ -117,6 +117,9 @@ internal static class Program
         Check(!diagnostic.Contains("pretendSecret"), "redact password");
         Check(!diagnostic.Contains("sampleSecret"), "redact named secret");
         Check(diagnostic.Contains("22.2.26"), "include version");
+        string bDiagnostic = ErrorLogCopy.Build(new[] { "[23:20:26] B VPN 접속 실패" },
+            "22.2.67", DateTime.Now, "B");
+        Check(bDiagnostic.Contains("시스템: B VPN"), "include affected A/B system in diagnostic copy");
         var routine = LogPresentation.Format("본인 물품 재등록 명령 전달 (native): 2026070610747586");
         Check(!routine.Visible && !routine.IsError, "hide verbose repost steps in compact log");
         Check(!LogPresentation.Format("처리 시간 요약: 카단 · 총 19.2초").Visible,
