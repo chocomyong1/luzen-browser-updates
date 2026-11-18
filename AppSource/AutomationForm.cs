@@ -1045,7 +1045,7 @@ internal sealed partial class AutomationForm : Form
             if (bottom.Height != height) bottom.Height = height;
         }
         bottom.SizeChanged += (_, _) => FitBottomHeight();
-        Button ActionButton(string text, int width, Action action, bool primaryAction = false)
+        Button FooterButton(string text, int width, Action action, bool primaryAction = false)
         {
             var b = new Button { Text = text, Width = width, Height = 33,
                 TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(3) };
@@ -1061,8 +1061,8 @@ internal sealed partial class AutomationForm : Form
             FitText();
             return b;
         }
-        ActionButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
-        ActionButton("가격 변경 예약", 131, () => _ = ApplySelectedSitePriceAsync());
+        FooterButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
+        FooterButton("가격 변경 예약", 131, () => _ = ApplySelectedSitePriceAsync());
         var extraActions = new ContextMenuStrip();
         extraActions.Items.Add("서버별 복제", null, (_, _) => CopySelectedToOtherServers());
         extraActions.Items.Add("완료 표시 초기화", null, (_, _) =>
@@ -1095,7 +1095,7 @@ internal sealed partial class AutomationForm : Form
             SaveAll(); _jobsGrid.Refresh(); RefreshAutoSummary();
         });
         Button? extraButton = null;
-        extraButton = ActionButton("추가 작업  ▾", 112,
+        extraButton = FooterButton("추가 작업  ▾", 112,
             () => extraActions.Show(extraButton!, 0, extraButton!.Height));
         right.SizeChanged += (_, _) => FitBottomHeight();
         bottom.HandleCreated += (_, _) => FitBottomHeight();
