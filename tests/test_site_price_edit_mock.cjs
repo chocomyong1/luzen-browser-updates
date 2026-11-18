@@ -143,18 +143,30 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const allButtons = [...buttons, ...nativeSubmits];
   const hidden = { value: id, getAttribute: () => null };
   const formAttrs = {id: formId, action: formAction, method: formMethod};
-  let submitHandler = null;
-  const form = { tagName: 'FORM', getAttribute: key => formAttrs[key] || null,
-    setAttribute: (key, value) => { formAttrs[key] = value; },
-    addEventListener: (name, fn) => { if (name === 'submit') submitHandler = fn; },
-    removeEventListener: (name, fn) => { if (name === 'submit' && submitHandler === fn) submitHandler = null; },
-    requestSubmit: submitter => {
-      assert.ok(nativeSubmits.includes(submitter));
-      clicked++; clickedLabels.push('REAL_NATIVE_POST');
-      submitHandler?.({defaultPrevented: false, submitter});
-    },
+  const form = { tagName: 'FORM', dataset: {}, getAttribute: key => formAttrs[key] || null,
+    requestSubmit: () => assert.fail('Native form submission must not be used in this transport'),
     querySelectorAll: key => key === 'input[type="hidden"]' ? (includeFormId ? [hidden] : []) :
       key === 'button[type="submit"]' ? nativeSubmits : key.startsWith('button,') ? allButtons : [] };
+  class FormData {
+    constructor(target) {
+      assert.equal(target, form);
+      this.fields = new Map([['user_division_price', prices[0].value],
+        ['registration_id', id], ['other_hidden_field', 'private value']]);
+    }
+    has(name) { return this.fields.has(name); }
+    get(name) { return this.fields.get(name); }
+    getAll(name) { return this.fields.has(name) ? [this.fields.get(name)] : []; }
+    append(name, value) { this.fields.set(name, value); }
+    keys() { return this.fields.keys(); }
+    values() { return this.fields.values(); }
+  }
+  const fetchCalls = [];
+  const networkFetch = (url, options) => {
+    assert.ok(options.body instanceof FormData);
+    fetchCalls.push({url, options});
+    clicked++; clickedLabels.push('REAL_MULTIPART_POST');
+    return Promise.resolve({status:200});
+  };
   const headingCell = { textContent: heading };
   const tr = { querySelector: key => key.startsWith('th,') ? headingCell : null,
     querySelectorAll: key => key === 'input' ? [quantity, ...prices] : [] };
@@ -167,12 +179,12 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     vm.runInNewContext(script('EditFormScript').replace('__ARG__', JSON.stringify({
       number: expected, oldPrice: expectedOld, newPrice: '35100', submit
     })), {
-      document, HTMLInputElement, Event: class { constructor() {} },
+      document, HTMLInputElement, FormData, fetch: networkFetch, Event: class { constructor() {} },
       location: { protocol: 'https:', hostname: host, pathname, search: '' },
       getComputedStyle: () => ({ visibility: 'visible' })
     }, { timeout: 1000 });
   return { evaluate, get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
-    clickedLabels, prices, formAttrs };
+    clickedLabels, prices, formAttrs, fetchCalls };
 }
 
 {
@@ -183,11 +195,17 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(audited.evaluate(true).status, 'submitted');
   assert.equal(audited.prices[0].value, '35100');
   assert.equal(audited.inputEvents, 2);
-  assert.deepEqual(audited.clickedLabels, ['REAL_NATIVE_POST']);
-  assert.equal(audited.formAttrs.action, '/myroom/buy/buy_re_reg_ok.php');
-  assert.equal(audited.formAttrs.method, 'post');
-  assert.equal(audited.formAttrs.enctype, 'multipart/form-data');
-  console.log('PASS audited frmBuy uses native validated multipart POST to the manually confirmed URL');
+  assert.deepEqual(audited.clickedLabels, ['REAL_MULTIPART_POST']);
+  assert.equal(audited.fetchCalls.length, 1, 'Exactly one first-party POST per approved submission');
+  assert.equal(audited.fetchCalls[0].url, '/myroom/buy/buy_re_reg_ok.php');
+  assert.equal(audited.fetchCalls[0].options.method, 'POST');
+  assert.equal(audited.fetchCalls[0].options.credentials, 'same-origin');
+  assert.equal(audited.fetchCalls[0].options.body.get('user_division_price'), '35100');
+  assert.doesNotMatch(audited.evaluate(false).message, /private value/);
+  assert.equal(audited.evaluate(true, number, '35100').status, 'error',
+    'Second attempt against the same form is blocked');
+  assert.equal(audited.fetchCalls.length, 1);
+  console.log('PASS approved frmBuy constructs exactly one authenticated multipart POST');
 }
 
 {
