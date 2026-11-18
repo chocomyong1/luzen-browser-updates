@@ -273,6 +273,7 @@ internal sealed partial class AutomationForm : Form
         BuildWorkflowTab();
         ConfigureJobsGrid();
         ConfigureAutoGrid();
+        InstallListingHeaderSorting();
         InitializeBatchContextMenus();
         ConfigureStepsGrid();
         _jobsGrid.EnableHeadersVisualStyles = false;
@@ -591,7 +592,7 @@ internal sealed partial class AutomationForm : Form
         if (!_filterReady || _filterChanging) return;
         if (!_selectingJob) SaveSelectedJob(false);
         focusId ??= _selected?.Id;
-        _filteredJobs = _jobs.Where(MatchesFilter).ToList();
+        _filteredJobs = SortFilteredListingJobs(_jobs.Where(MatchesFilter));
         _selectingJob = true;
         try
         {
@@ -614,6 +615,7 @@ internal sealed partial class AutomationForm : Form
         RefreshBatchSummary();
         RefreshAutoSummary();
         RefreshSelectAllHeaderVisuals();
+        RefreshListingSortGlyphs();
     }
 
     private void RefreshBatchSummary()
