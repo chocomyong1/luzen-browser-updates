@@ -68,7 +68,8 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   assert.equal(wrong.clicked, 0);
 }
 
-function detailCase({ pageId = number, pageTitle = title, buttonCount = 1 } = {}) {
+function detailCase({ pageId = number, pageTitle = title, buttonCount = 1,
+  pathname = '/myroom/buy/buy_regist_view.html' } = {}) {
   let clicked = 0;
   const buttons = Array.from({length: buttonCount}, () => ({
     innerText: '수정하기', value: '', isConnected: true, disabled: false,
@@ -80,7 +81,7 @@ function detailCase({ pageId = number, pageTitle = title, buttonCount = 1 } = {}
   const evaluate = click => vm.runInNewContext(
     script('DetailEditScript').replace('__ARG__', JSON.stringify({number, title, click})),
     { document, location: {protocol: 'https:', hostname: 'www.itemmania.com',
-      pathname: '/buy/detail.html', search: `?id=${pageId}`},
+      pathname, search: ''},
     getComputedStyle: () => ({visibility: 'visible'}) }, {timeout: 1000});
   return {evaluate, get clicked() {return clicked;}};
 }
@@ -96,6 +97,9 @@ function detailCase({ pageId = number, pageTitle = title, buttonCount = 1 } = {}
   const ambiguous = detailCase({buttonCount: 2});
   assert.equal(ambiguous.evaluate(true).status, 'error');
   assert.equal(ambiguous.clicked, 0);
+  const list = detailCase({pathname: '/myroom/buy/buy_regist.html'});
+  assert.equal(list.evaluate(true).status, 'error');
+  assert.equal(list.clicked, 0);
 }
 
 function editFormCase({ id = number, old = '10,000', priceFields = 1,
