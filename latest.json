@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.66",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.66/LuzenBrowser_22.2.66_BinaryUpdate.zip",
-  "sha256": "6c3c937d90b58535840eb92fb8964c936a54d81490eb92280ff099eb3cab361e",
+  "version": "22.2.67",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.67/LuzenBrowser_22.2.67_BinaryUpdate.zip",
+  "sha256": "8b3d6bbe23415da9d8d3f759cda5b0f40a48204db496f5c08f462018e1113866",
   "format": "binary",
-  "releaseNotes": "v22.2.66 A+B 동시 자동 시작 및 스플릿 현황: 자동 시작 한 번으로 A/B 작업을 함께 실행하고, 관리 메뉴에서 시작 대상을 개별 선택할 수 있습니다. B는 A와 다른 외부 IP가 확인된 경우에만 시작합니다. 스플릿 버튼으로 기존 A/B 등록 현황을 좌우 동시에 확인하고 편집 또는 단일 보기로 돌아갈 수 있습니다. 처리 시간 요약은 일반 실행 기록에서 숨기되 진단용 원본 로그에는 남습니다. 실제 두 계정 자동등록은 Windows 환경에서 로그인 및 VPN 상태를 별도로 확인하세요."
+  "releaseNotes": "v22.2.67 B VPN 관리목록 연결 오류 복구: B에서 HTTP 0 또는 잘못된 응답으로 내 등록글 관리목록을 확인하지 못하면 다른 B 물품에 연속으로 실패하지 않고 90초 동안 대기합니다. 이후 B 전용 프록시의 독립 외부 IP를 다시 확인하고 성공 시 다음 순번에서 재시도하며, 실패 시 2분 간격으로 재확인합니다. A 작업 및 시간당 등록 제한은 그대로 유지됩니다. 오류 로그 복사에는 A/B 시스템 구분을 표시하고 스플릿에도 VPN 대기 상태가 표시됩니다. 재등록은 실제 본인 글의 등록번호와 제목 확인 전에는 제출하지 않습니다."
 }
