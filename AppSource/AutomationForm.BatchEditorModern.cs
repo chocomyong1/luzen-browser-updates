@@ -12,7 +12,7 @@ internal sealed partial class AutomationForm
     // Every application affects ONLY checked rows in the currently filtered list.
     private void ShowModernBatchEditor()
     {
-        if (_myListingsImportRunning || (_busy && _currentlyExecutingJob is null))
+        if (_sitePriceBatchRunning || _myListingsImportRunning || (_busy && _currentlyExecutingJob is null))
         {
             MessageBox.Show(this, "등록글을 불러오는 중에는 물품 목록이 바뀔 수 있습니다. 조회가 끝난 뒤 일괄수정하세요.",
                 "일괄수정 대기", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -62,7 +62,9 @@ internal sealed partial class AutomationForm
         };
         var close = new Button { Text = "닫기", Dock = DockStyle.Right, Width = 107, Margin = new Padding(8) };
         close.Click += (_, _) => window.Close();
-        var siteApply = new Button { Text = "일괄 가격 변경 중단", Dock = DockStyle.Right, Width = 198, Margin = new Padding(8) };
+        var changedPriceTargets = new List<ListingJob>();
+        var siteApply = new Button { Text = "사이트에 순차 반영", Dock = DockStyle.Right,
+            Width = 185, Margin = new Padding(8), Enabled = false };
         siteApply.Click += (_, _) =>
         {
             window.DialogResult = DialogResult.OK;
@@ -129,7 +131,7 @@ internal sealed partial class AutomationForm
             return c;
         }
 
-        void ApplyField<T>(string field, Func<ListingJob, T> read, Action<ListingJob, T> write, T value)
+        bool ApplyField<T>(string field, Func<ListingJob, T> read, Action<ListingJob, T> write, T value)
         {
             // If an earlier edit changed the current search results (e.g. title),
             // don't silently modify jobs that are now hidden by the active query.
@@ -137,12 +139,12 @@ internal sealed partial class AutomationForm
             if (active.Count == 0)
             {
                 Error("현재 조회 조건에서 선택된 물품이 없습니다. 창을 닫고 조회 조건과 체크 상태를 확인하세요.");
-                return;
+                return false;
             }
             if (MessageBox.Show(window,
                 $"체크한 {active.Count}건의 '{field}'만 바꿀까요?\n\n이 작업은 프로그램의 물품 설정을 변경하며 사이트에 등록된 원본 글은 즉시 수정하지 않습니다.",
                 "일괄수정 적용", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
-                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
             var previous = active.Select(item => (Item: item, OldValue: read(item))).ToList();
             var immediate = previous.Where(x => !ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
             var deferred = previous.Where(x => ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
@@ -163,7 +165,7 @@ internal sealed partial class AutomationForm
                 _config.Jobs = _jobs.ToList();
                 MessageBox.Show(window, "설정 저장에 실패했습니다. 이 항목의 변경은 되돌렸습니다.\n" + ex.Message,
                     "저장 실패", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
+                return false;
             }
             // Reset selection to prevent stale editor controls from overwriting the
             // newly updated item when the focus is moved to another row.
@@ -174,6 +176,7 @@ internal sealed partial class AutomationForm
                 : $"✓ {field}: 선택한 {active.Count}건에 적용 완료";
             AppendLog($"일괄수정 {field}: {immediate.Count}건 즉시 저장" +
                 (deferred.Count > 0 ? $" · {deferred.Count}건 작업 종료 후 적용 예약" : ""));
+            return true;
         }
         void Error(string message) => MessageBox.Show(window, message, "입력 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
@@ -182,8 +185,15 @@ internal sealed partial class AutomationForm
         Row("개당 가격 (원)", priceBox, () =>
         {
             string s = priceBox.Text.Trim().Replace(",", "").Replace("원", "");
-            if (!long.TryParse(s, out long price) || price < 1) { Error("가격은 1원 이상의 숫자로 입력하세요."); return; }
-            ApplyField("가격", x => x.Price, (x, v) => x.Price = v, price.ToString());
+            if (!long.TryParse(s, out long price) || price < 1000 || price % 10 != 0)
+            { Error("사이트 구매글 가격은 1,000원 이상, 10원 단위로 입력하세요."); return; }
+            var activePriceTargets = _filteredJobs.Where(j => j.SelectedForBulk && items.Contains(j)).ToList();
+            if (ApplyField("가격", x => x.Price, (x, v) => x.Price = v, price.ToString()))
+            {
+                changedPriceTargets = activePriceTargets;
+                siteApply.Enabled = !_busy && !_sitePriceBatchRunning;
+                result.Text = $"✓ {changedPriceTargets.Count}건 금액 저장 완료 · [사이트에 순차 반영]으로 안전 확인 후 순서대로 제출";
+            }
         });
         var quantityBox = Input("예: 3");
         Row("수량", quantityBox, () =>
@@ -270,6 +280,6 @@ internal sealed partial class AutomationForm
         window.Controls.Add(header);
         UiTheme.ApplyControlStyles(window);
         if (window.ShowDialog(this) == DialogResult.OK)
-            _ = ApplySelectedSitePricesAsync();
+            _ = ApplySelectedSitePricesAsync(changedPriceTargets);
     }
 }
