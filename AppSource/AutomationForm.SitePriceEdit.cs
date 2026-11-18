@@ -14,9 +14,6 @@ internal sealed partial class AutomationForm
     private string _sitePriceEditDialogWarning = "";
     private string _lastSitePriceEditFailure = "";
     private string _sitePriceReadbackNote = "";
-    // Intentionally false until the real site request/response protocol is
-    // audited. No UI, config or saved job can enable it.
-    private bool _sitePriceSubmissionVerifiedFromNetwork;
 
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
@@ -31,8 +28,8 @@ internal sealed partial class AutomationForm
     private async Task ApplySelectedSitePricesAsync()
     {
         MessageBox.Show(this,
-            "실제 사이트의 '수정하기'가 캐릭터명 저장 버튼과 혼동될 수 있어 일괄 가격 변경을 일시 중단했습니다.\n\n" +
-            "현재 글의 '사이트 가격 버튼 진단'만 사용할 수 있으며 가격 입력·제출은 전혀 하지 않습니다.",
+            "안전을 위해 여러 등록글의 가격을 한꺼번에 제출하는 기능은 아직 잠겨 있습니다.\n\n" +
+            "먼저 '사이트 가격 반영'에서 구매글 1건만 검증해 주세요. 서버 결과가 불확실하면 재제출하지 않습니다.",
             "사이트 일괄 가격 변경 안전 중단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         return;
 #pragma warning disable CS0162 // Keep the batch workflow for re-enabling only after control verification.
@@ -104,6 +101,14 @@ internal sealed partial class AutomationForm
             if (!bulkApproval) MessageBox.Show(this, "등록글 조회·재등록 작업이 끝난 뒤 사이트 가격을 수정할 수 있습니다.", "사이트 가격 변경 대기");
             return false;
         }
+        if (_siteRequestTraceActive)
+        {
+            _lastSitePriceEditFailure = "사이트 수정 요청을 기록하는 중입니다";
+            if (!bulkApproval) MessageBox.Show(this,
+                "수정 요청 기록을 종료한 뒤 가격을 적용하세요. 수동 사이트 작업과 자동 제출을 동시에 실행하지 않습니다.",
+                "사이트 작업 중복 방지", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
         if (!bulkApproval) SaveSelectedJob(false);
         var job = explicitJob ?? _selected;
         if (job is null || !job.ImportedFromSite || !ListingIdentity.HasNumber(job.ListingNumber) ||
@@ -136,20 +141,10 @@ internal sealed partial class AutomationForm
             _lastSitePriceEditFailure = "확인 대기 물품: 사이트 가격 재제출 차단";
             return false;
         }
-        // The observed 22.2.52 trial did not change the site's registered
-        // price. Do not spend further registration attempts by guessing which
-        // hidden site validation/HTTP request was missing. A passive request
-        // recorder is available in the toolbar for one manual site action.
-        if (!_sitePriceSubmissionVerifiedFromNetwork)
-        {
-            _lastSitePriceEditFailure = "실제 사이트 수정 요청 검증 전까지 자동 가격 제출 중단";
-            if (!bulkApproval) MessageBox.Show(this,
-                "사이트의 실제 수정 요청을 확인하기 전까지 자동 가격 제출을 일시 중단했습니다.\n\n" +
-                "상단의 '수정 요청 기록'에서 사이트 브라우저를 열고 한 건을 직접 수정하면 " +
-                "주소·요청 필드 이름·응답 상태만 확인할 수 있습니다. 계정 정보는 복사하지 않습니다.",
-                "자동 가격 제출 안전 중단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return false;
-        }
+        // The user has now captured an actual manual edit: the site's own
+        // POST goes to /myroom/buy/buy_re_reg_ok.php. We can observe that
+        // *exact* first-party submission before navigating to the readback
+        // list; the previous trial could cancel the POST by navigating early.
         if (_schedulerRunning) PauseScheduler();
         _busy = true;
         _state.Text = "사이트 가격 수정 대상 확인 중";
@@ -303,6 +298,12 @@ internal sealed partial class AutomationForm
             if (form.Status != "ready")
                 throw new InvalidOperationException("수정 페이지를 안전하게 확인하지 못했습니다: " + form.Message);
 
+            // Subscribe BEFORE the click. Previously the first readback
+            // navigation could interrupt the POST that the site initiated.
+            // No automatic fallback or duplicate POST is ever attempted.
+            using var submissionObserver = new SitePriceSubmitObserver(_web.CoreWebView2);
+            await submissionObserver.StartAsync();
+
             // Commit a crash-safe review checkpoint BEFORE touching the site.
             // A navigation can abort ExecuteScriptAsync after the site accepts;
             // never retry a submission when its result is uncertain.
@@ -331,6 +332,18 @@ internal sealed partial class AutomationForm
             {
                 AppendLog("구매글 가격 수정 뒤 화면 전환: " + ex.GetType().Name + " (중복 제출 금지)");
             }
+
+            var observed = await submissionObserver.WaitAsync(token);
+            AppendLog("구매글 실제 사이트 수정 POST 확인: " +
+                (observed.RequestObserved ? SitePriceSubmitObserver.BuyReRegistrationPostPath : "요청 없음") +
+                " · HTTP " + (observed.HttpStatus?.ToString() ?? "미확인") + " · " + observed.Detail);
+            if (!observed.RequestObserved)
+                throw new InvalidOperationException("실제 사이트 구매글 수정 POST 요청을 확인하지 못했습니다. " +
+                    "사이트 폼 검증 또는 제출 버튼 처리에 실패했을 수 있습니다. 이미 확인 대기 상태로 저장되어 자동 재제출하지 않습니다.");
+            // Network completion is NOT the success condition. Even if a
+            // redirect or response event was missed, read the actual OWN list
+            // before deciding whether this one registered price changed.
+            if (observed.NetworkFinished) await Task.Delay(950, token);
 
             _state.Text = "구매글 가격 변경 결과 확인 중";
             if (!await ConfirmChangedSitePriceAsync(job, desired, token))
