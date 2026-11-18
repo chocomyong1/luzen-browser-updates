@@ -46,4 +46,13 @@ assert(automation.includes('Btn("내 등록글 불러오기"'),
 assert(!autoTab.includes('MakeButton("설정 저장"'),
   '안쪽 목록의 중복 저장 버튼이 남아 있음');
 
+// Narrow right-hand editors and high-DPI Windows font scaling must not
+// truncate action labels or hide later wrapped lines.
+assert.match(automation, /TextRenderer\.MeasureText\(text, b\.Font\)/,
+  '상세 편집 버튼 글자 폭 자동 계산이 사라짐');
+assert.match(automation, /bottom\.SizeChanged \+=.*FitBottomHeight\(\)/,
+  '상세 편집 버튼 줄바꿈 높이 조절이 사라짐');
+assert.match(automation, /AutoScroll = false, WrapContents = true/,
+  '상세 편집 버튼이 고정 높이에서 잘릴 위험');
+
 console.log('PASS: navigation, single run control, grouped batch actions and preserved routes');
