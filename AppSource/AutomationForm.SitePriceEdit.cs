@@ -21,11 +21,22 @@ internal sealed partial class AutomationForm
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
 
     // A newly drafted listing uses its edited price on its first ordinary post.
-    // Only an imported, verified owned BUY post can queue an on-site price edit.
+    // Imported BUY posts and BUY posts successfully created by Luzen can queue a price edit.
+    // A saved local draft alone never becomes an owned listing.
     private static bool IsUnsubmittedNewListing(ListingJob job) =>
         !job.ImportedFromSite && !ListingIdentity.HasNumber(job.ListingNumber) &&
         !job.InitialCompleted && !job.LastSucceededUtc.HasValue &&
         !job.PendingRepostAttemptUtc.HasValue && job.Operation is "구매등록" or "판매등록";
+
+    // Luzen-created posts receive a confirmed number only after the site
+    // success + listing identity checks. Do not require a redundant import.
+    // The actual edit still re-reads the signed-in OWN list and matches ID/title.
+    private static bool IsRegisteredOwnedBuyPriceTarget(ListingJob job) =>
+        (job.ImportedFromSite ||
+         (job.Operation == "구매등록" && job.InitialCompleted && job.LastSucceededUtc.HasValue)) &&
+        job.OriginalTradeSide == "구매" &&
+        ListingIdentity.HasNumber(job.ListingNumber) &&
+        MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job));
 
     // Plan first, mutate only after EVERY selected job passes validation. The
     // pending value is bound to the verified listing, never an independent task.
@@ -49,7 +60,7 @@ internal sealed partial class AutomationForm
             !TrySitePrice(job.Price, out long oldPrice) || oldPrice != amountValue).ToList();
         var existing = changed.Where(job => !IsUnsubmittedNewListing(job)).ToList();
         if (existing.Count > 20 || existing.Any(job =>
-            !job.ImportedFromSite || job.OriginalTradeSide != "구매" || job.RequiresReview ||
+            !IsRegisteredOwnedBuyPriceTarget(job) || job.RequiresReview ||
             (job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
              (job.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
               job.LastStatus.Contains("결과 확인 필요", StringComparison.Ordinal))) ||
@@ -116,7 +127,7 @@ internal sealed partial class AutomationForm
             return;
         }
         var invalid = targets.Where(j => !_jobs.Contains(j) ||
-            !j.ImportedFromSite || j.OriginalTradeSide != "구매" || j.RequiresReview ||
+            !IsRegisteredOwnedBuyPriceTarget(j) || j.RequiresReview ||
             (j.LastStatus.Contains("가격", StringComparison.Ordinal) &&
              (j.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
               j.LastStatus.Contains("결과 확인 필요", StringComparison.Ordinal))) ||
@@ -195,12 +206,19 @@ internal sealed partial class AutomationForm
         }
         if (!bulkApproval) SaveSelectedJob(false);
         var job = explicitJob ?? _selected;
-        if (job is null || !job.ImportedFromSite || !ListingIdentity.HasNumber(job.ListingNumber) ||
-            !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job)))
+        if (job is null || !IsRegisteredOwnedBuyPriceTarget(job))
         {
             _lastSitePriceEditFailure = "본인 등록글의 등록번호·거래 방향을 확인할 수 없습니다";
-            if (!bulkApproval) MessageBox.Show(this, "내 등록글 불러오기로 정확한 등록번호와 구매/판매 방향이 연결된 기존 물품만 사이트 가격을 변경할 수 있습니다.",
+            if (!bulkApproval) MessageBox.Show(this, "본인 구매글의 등록번호와 거래 방향이 확인되어야 사이트 가격을 변경할 수 있습니다.",
                 "수정 대상 확인");
+            return false;
+        }
+        string activeAccount = ItemManiaAccountStore.Load(_system).UserId;
+        if (!string.IsNullOrWhiteSpace(activeAccount) &&
+            !string.Equals(job.SiteId, activeAccount, StringComparison.OrdinalIgnoreCase))
+        {
+            _lastSitePriceEditFailure = "현재 로그인 계정과 저장된 물품 계정이 일치하지 않습니다";
+            if (!bulkApproval) MessageBox.Show(this, _lastSitePriceEditFailure, "가격 변경 계정 확인");
             return false;
         }
         if (!TrySitePrice(job.Price, out var desired) || desired % 10 != 0)

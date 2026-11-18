@@ -15,7 +15,7 @@ const importCode = read('MyListingsImport.cs');
 const reservation = price.slice(price.indexOf('private async Task ApplySelectedSitePricesAsync('),
   price.indexOf('private async Task<bool> ApplySitePriceAsync('));
 assert.match(reservation, /if \(targets\.Count > 20\)/);
-assert.match(reservation, /!j\.ImportedFromSite \|\| j\.OriginalTradeSide != "구매" \|\| j\.RequiresReview/);
+assert.match(reservation, /!IsRegisteredOwnedBuyPriceTarget\(j\) \|\| j\.RequiresReview/);
 assert.match(reservation, /!ListingIdentity\.HasNumber\(j\.ListingNumber\)/);
 assert.match(reservation, /MyListingsImport\.IsOwnedListUrl\(OwnedListUrlFor\(j\)\)/);
 assert.match(reservation, /duplicateIds/);

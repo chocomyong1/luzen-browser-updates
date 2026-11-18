@@ -1500,6 +1500,7 @@ internal sealed partial class AutomationForm : Form
             // Site-specific deep links must not be reused for another server.
             copy.EntryUrl = ""; copy.SourceListUrl = ""; copy.ListingNumber = ""; copy.OriginalTradeSide = "";
             copy.ImportedFromSite = false; copy.ImportedUtc = null;
+            copy.PendingSitePriceTarget = ""; copy.PendingRepostBeforeStamp = ""; copy.PendingRepostAttemptUtc = null;
             copy.Enabled = false; copy.InitialCompleted = false; copy.RequiresReview = false;
             copy.NextDueUtc = DateTime.MinValue; copy.LastSucceededUtc = null;
             copy.LastStatus = "복제됨 (자동 꺼짐)";
@@ -1528,9 +1529,14 @@ internal sealed partial class AutomationForm : Form
         if (_selected is null) return;
         var job = JsonSerializer.Deserialize<ListingJob>(JsonSerializer.Serialize(_selected))!;
         job.Id = Guid.NewGuid().ToString("N"); job.Title += " (복사)";
+        // A verified repost template cloned as a new job must use its original
+        // buy/sell operation rather than a repost without a registration ID.
+        if (job.Operation == "재등록" && job.OriginalTradeSide is "구매" or "판매")
+            job.Operation = job.OriginalTradeSide == "구매" ? "구매등록" : "판매등록";
         // Cloning an existing account listing must NEVER re-use its listing ID or URL.
         job.ListingNumber = ""; job.SourceListUrl = ""; job.OriginalTradeSide = ""; job.ImportedFromSite = false;
         job.ImportedUtc = null; job.EntryUrl = "";
+        job.PendingSitePriceTarget = ""; job.PendingRepostBeforeStamp = ""; job.PendingRepostAttemptUtc = null;
         job.InitialCompleted = false; job.RequiresReview = false;
         job.NextDueUtc = DateTime.MinValue; job.LastSucceededUtc = null; job.LastStatus = "대기"; job.Enabled = false;
         _jobs.Add(job); _config.Jobs = _jobs.ToList(); _config.Save();
@@ -1678,7 +1684,9 @@ internal sealed partial class AutomationForm : Form
             _character.Text = job.Character; _description.Text = job.Description; _entry.Text = job.EntryUrl;
             _importedListingInfo.Text = job.ImportedFromSite
                 ? $"기존글 {job.ListingNumber} · {job.OriginalTradeSide} · 확인 전 자동 OFF"
-                : "신규 등록 물품";
+                : job.InitialCompleted && ListingIdentity.HasNumber(job.ListingNumber)
+                    ? $"등록 완료 {job.ListingNumber} · {job.OriginalTradeSide}"
+                    : "신규 등록 물품";
             _interval.Value = Math.Clamp(job.IntervalMinutes, 1, 10080); _autoRepost.Checked = job.AutoRepost;
             _jobEnabled.Checked = job.Enabled;
             UpdateContextFields();
@@ -2349,8 +2357,19 @@ internal sealed partial class AutomationForm : Form
         _nextPendingReviewUtc = DateTime.UtcNow.AddSeconds(15);
         // Old builds scheduled each item at a fixed 30-minute interval. Hourly
         // per-server allocation now controls the pace; remove old future times.
+        var schedulerStartUtc = DateTime.UtcNow;
         foreach (var job in enabled)
-            if (job.NextDueUtc != DateTime.MaxValue) job.NextDueUtc = DateTime.UtcNow;
+        {
+            if (job.NextDueUtc == DateTime.MaxValue) continue;
+            // Restart must not erase a pre-submit error / server cooldown.
+            // Ordinary eligible posts still enter the hourly paced queue immediately.
+            bool pendingCooldown = job.NextDueUtc > schedulerStartUtc && job.LastStatus is
+                ("오류 (미제출)" or "로그인 전환 대기 (미제출)" or
+                 "관리목록 표시 복구 대기 (미제출)" or
+                 "B VPN·관리목록 연결 재확인 대기 (미제출)" or
+                 "사이트 서버 재등록 간격 대기");
+            if (!pendingCooldown) job.NextDueUtc = schedulerStartUtc;
+        }
         _config.Save();
         _state.Text = "자동 실행 중"; _state.ForeColor = Color.ForestGreen; RefreshAutoSummary();
         AppendLog("스케줄러 시작: " + enabled.Count + "건, ID·서버별 시간당 " + _config.MaxSubmissionsPerHour + "회 제한" +
@@ -2869,6 +2888,9 @@ internal sealed partial class AutomationForm : Form
                 if (!identityOk)
                     throw new InvalidOperationException("등록 완료 표시를 찾았지만 해당 글의 등록번호를 확정하지 못했습니다. " +
                         identity.Error + " / 중복 등록을 막기 위해 사이트 확인 전까지 자동 실행을 보류합니다.");
+                if (flow.Operation != "재등록" && ListingIdentity.HasNumber(preSubmitListingNumber) &&
+                    string.Equals(identity.Number, preSubmitListingNumber, StringComparison.Ordinal))
+                    throw new InvalidOperationException("신규 등록 후 등록번호가 제출 전과 같습니다. 새 물품으로 확인할 수 없어 중복 제출 없이 보류합니다.");
                 if (flow.Operation != "재등록") job.ListingNumber = identity.Number;
                 job.InitialCompleted = true; job.RequiresReview = false;
                 job.PendingRepostBeforeStamp = "";

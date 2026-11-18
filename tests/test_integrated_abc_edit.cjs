@@ -49,7 +49,7 @@ assert.match(edits, /_currentlyExecutingJob is null/);
 const pricePlan = read('AutomationForm.SitePriceEdit.cs');
 assert.match(edits, /TryPlanAutomaticPriceApply\(items, value, out _, out problem\)/);
 assert.match(pricePlan, /existing\.Count > 20/);
-assert.match(pricePlan, /!job\.ImportedFromSite \|\| job\.OriginalTradeSide != "구매" \|\| job\.RequiresReview/);
+assert.match(pricePlan, /!IsRegisteredOwnedBuyPriceTarget\(job\) \|\| job\.RequiresReview/);
 assert.match(pricePlan, /MyListingsImport\.IsOwnedListUrl\(OwnedListUrlFor\(job\)\)/);
 assert.match(pricePlan, /existing\.Select\(job => job\.SiteId\)\.Distinct/);
 assert.match(edits, /command\.Field == IntegratedEditField\.Title/);

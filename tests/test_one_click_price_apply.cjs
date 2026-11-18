@@ -33,7 +33,7 @@ for (const required of ['!job.ImportedFromSite', '!ListingIdentity.HasNumber(job
 assert.match(draft, /var changed = selected\.Where\(job =>/);
 assert.match(draft, /var existing = changed\.Where\(job => !IsUnsubmittedNewListing\(job\)\)/);
 assert.match(draft, /existing\.Count > 20/);
-assert.match(draft, /!job\.ImportedFromSite \|\| job\.OriginalTradeSide != "구매" \|\| job\.RequiresReview/);
+assert.match(draft, /!IsRegisteredOwnedBuyPriceTarget\(job\) \|\| job\.RequiresReview/);
 assert.match(draft, /MyListingsImport\.IsOwnedListUrl\(OwnedListUrlFor\(job\)\)/);
 assert.match(draft, /ItemManiaAccountStore\.Load\(_system\)\.UserId/);
 assert.match(draft, /_jobs\.Any\(other => !ReferenceEquals\(other, job\)/);
