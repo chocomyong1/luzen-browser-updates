@@ -107,6 +107,9 @@ internal sealed partial class AutomationForm : Form
     // A signed-out B/C profile can redirect every managed-list request to
     // login. Do not make dozens of jobs race the same background sign-in.
     private DateTime _loginRecoveryPauseUntilUtc = DateTime.MinValue;
+    private DateTime _ownedListRecoveryUtc = DateTime.MinValue;
+    private bool _ownedListRecoveryRecheckRunning;
+    private CancellationTokenSource? _ownedListRecoveryRun;
     private DateTime _bConnectionRecoveryUtc = DateTime.MinValue;
     private bool _bConnectionRecheckRunning;
     // Once a live submit begins, do not cancel its independent result probe.
@@ -2289,6 +2292,7 @@ internal sealed partial class AutomationForm : Form
     private void PauseScheduler()
     {
         _schedulerRunning = false; _timer.Stop();
+        _ownedListRecoveryRun?.Cancel();
         _pendingReviewRun?.Cancel();
         _state.Text = "일시정지"; _state.ForeColor = Color.DarkGoldenrod; RefreshAutoSummary();
         AppendLog(_myListingsImportRunning ? "자동등록은 일시정지했습니다. '내 등록글 불러오기'는 계속 조회 중입니다. 중단하려면 [즉시 중지]를 누르세요."
@@ -2300,6 +2304,7 @@ internal sealed partial class AutomationForm : Form
     {
         _sitePriceBatchCancellation?.Cancel();
         _schedulerRunning = false; _timer.Stop();
+        _ownedListRecoveryRun?.Cancel();
         _pendingReviewRun?.Cancel();
         if (!_submissionVerificationPending) _currentRun?.Cancel();
         _pendingMyListingsImport = false;
@@ -2341,26 +2346,70 @@ internal sealed partial class AutomationForm : Form
     private async Task SchedulerTickAsync()
     {
         if (_busy || !_schedulerRunning) return;
+        if (_myListingsImportRunning || _pendingMyListingsImport) return;
         if (DateTime.UtcNow < _loginRecoveryPauseUntilUtc) return;
         if (_system == "B" && _bConnectionRecoveryUtc != DateTime.MinValue)
         {
             if (_bConnectionRecheckRunning || DateTime.UtcNow < _bConnectionRecoveryUtc) return;
             _bConnectionRecheckRunning = true;
-            // Hold B while an external IP check is in flight. A is independent.
+            // IP verification alone is not evidence that the authenticated
+            // management list can be read via B's *existing* WebView2 route.
             _bConnectionRecoveryUtc = DateTime.UtcNow.AddMinutes(2);
+            using var check = new CancellationTokenSource(TimeSpan.FromSeconds(65));
+            _ownedListRecoveryRun = check;
             try
             {
-                await DualSystemNetwork.VerifyBRouteAsync();
-                _bConnectionRecoveryUtc = DateTime.MinValue;
-                AppendLog("B VPN 독립 외부 IP 재확인 완료. 관리목록 재접속은 다음 작업 순번에 재시도합니다.");
+                await DualSystemNetwork.VerifyBRouteAsync(check.Token);
+                if (await VerifyOwnedListReadableAsync(check.Token) && _schedulerRunning)
+                {
+                    _bConnectionRecoveryUtc = DateTime.MinValue;
+                    AppendLog("B VPN 독립 IP와 본인 관리목록 표시를 모두 확인했습니다. 다음 정상 순번부터 재개합니다.");
+                }
+                else if (_schedulerRunning)
+                    AppendLog("B VPN IP는 확인됐지만 관리목록이 표시되지 않아 2분 더 대기합니다. 제출 없음.");
             }
+            catch (OperationCanceledException) when (check.IsCancellationRequested) { }
             catch (Exception ex)
             {
                 AppendLog("B VPN 연결 재확인 실패: " + ex.GetType().Name +
                     ". B 작업은 2분간 대기하며 A 작업에는 영향을 주지 않습니다.");
-                NotifyAutomationIssue("B VPN 연결 장애", "독립 IP 재확인 실패: " + ex.GetType().Name);
+                if (_schedulerRunning) NotifyAutomationIssue("B VPN 연결 장애", ex.Message);
             }
-            finally { _bConnectionRecheckRunning = false; }
+            finally
+            {
+                if (ReferenceEquals(_ownedListRecoveryRun, check)) _ownedListRecoveryRun = null;
+                _bConnectionRecheckRunning = false;
+            }
+            return;
+        }
+        if (_system != "B" && _ownedListRecoveryUtc != DateTime.MinValue)
+        {
+            if (_ownedListRecoveryRecheckRunning || DateTime.UtcNow < _ownedListRecoveryUtc) return;
+            _ownedListRecoveryRecheckRunning = true;
+            _ownedListRecoveryUtc = DateTime.UtcNow.AddMinutes(2);
+            using var check = new CancellationTokenSource(TimeSpan.FromSeconds(65));
+            _ownedListRecoveryRun = check;
+            try
+            {
+                if (await VerifyOwnedListReadableAsync(check.Token) && _schedulerRunning)
+                {
+                    _ownedListRecoveryUtc = DateTime.MinValue;
+                    AppendLog($"{_system} 본인 관리목록 복구 확인 완료. 다음 정상 순번부터 재개합니다.");
+                }
+                else if (_schedulerRunning)
+                    AppendLog($"{_system} 관리목록이 아직 표시되지 않아 2분 더 대기합니다. 제출 없음.");
+            }
+            catch (OperationCanceledException) when (check.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                AppendLog($"{_system} 관리목록 복구 재확인 실패: " + ex.GetType().Name + ". 2분 뒤 다시 확인합니다.");
+                if (_schedulerRunning) NotifyAutomationIssue("관리목록 복구 대기", ex.Message);
+            }
+            finally
+            {
+                if (ReferenceEquals(_ownedListRecoveryRun, check)) _ownedListRecoveryRun = null;
+                _ownedListRecoveryRecheckRunning = false;
+            }
             return;
         }
         // Normal posts take priority. A pending read-only check must never
@@ -2436,6 +2485,53 @@ internal sealed partial class AutomationForm : Form
             }
         }
         _jobsGrid.Refresh();
+    }
+
+    // Recovery is READ ONLY. Never use an HTTP success or a verified VPN IP as
+    // permission to submit; wait until an official OWN-list page actually
+    // renders recognizable listing rows. An explicit empty list must NOT
+    // release reposts for an account that still has saved listing numbers.
+    private async Task<bool> VerifyOwnedListReadableAsync(CancellationToken token)
+    {
+        var candidate = _jobs.Where(WantsWork)
+            .FirstOrDefault(job => MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job))) ??
+            _jobs.FirstOrDefault(job => MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job)));
+        if (candidate is null)
+        {
+            AppendLog($"{_system} 관리목록 복구 검사 대상 없음: 자동 재등록을 보류합니다.");
+            return false;
+        }
+        // A stored page=8 link may become empty as listings move. Probe the
+        // official first page for this verified buy/sell side instead.
+        string url = MyListingsImport.IsSellListUrl(OwnedListUrlFor(candidate))
+            ? MyListingsImport.SellListingsUrl : MyListingsImport.BuyListingsUrl;
+        await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
+        if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(token);
+        await NavigateOwnedListAsync(url, token);
+        for (int attempt = 1; attempt <= 5; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+            await Task.Delay(attempt == 1 ? 900 : 1200, token);
+            var raw = await _web.CoreWebView2.ExecuteScriptAsync(MyListingsImport.ExtractPageScript);
+            var page = MyListingsImport.DecodePage(raw);
+            if (page.LoginRequired)
+                throw new OwnedListLoginPendingException("재확인 도중 로그인 화면이 나타났습니다. 제출하지 않았습니다.");
+            if (MyListingsImport.IsOwnedListUrl(page.PageUrl) &&
+                MyListingsImport.IsSellListUrl(page.PageUrl) == MyListingsImport.IsSellListUrl(url) &&
+                page.IsEmptyList)
+            {
+                AppendLog($"{_system} 관리목록에 등록된 물품이 없다고 표시됩니다. 저장된 등록번호를 확인할 수 없어 자동 재개하지 않습니다.");
+                return false;
+            }
+            if (MyListingsImport.IsOwnedListUrl(page.PageUrl) &&
+                MyListingsImport.IsSellListUrl(page.PageUrl) == MyListingsImport.IsSellListUrl(url) &&
+                page.Listings.Count > 0)
+            {
+                AppendLog($"{_system} 관리목록 읽기 확인: {page.Listings.Count}건 표시");
+                return true;
+            }
+        }
+        return false;
     }
 
     private async Task VerifyOneHeldListingInBackgroundAsync(ListingJob candidate)
@@ -2780,6 +2876,18 @@ internal sealed partial class AutomationForm : Form
             AppendLog("안내: 사이트 로그인이 완료되지 않으면 내 계정의 로그인 상태를 확인하세요. " + ex.Message);
             if (_schedulerRunning) NotifyAutomationIssue("사이트 로그인 복구 대기", ex.Message, job);
         }
+        catch (OwnedListConnectivityPendingException ex) when (!submitted && _system != "B")
+        {
+            // A/C must not turn one unrendered OWN list into dozens of
+            // failures across otherwise unrelated servers. Do not mark a
+            // submission attempt, disable the job, or change its identity.
+            _ownedListRecoveryUtc = DateTime.UtcNow.AddSeconds(90);
+            job.NextDueUtc = _ownedListRecoveryUtc;
+            job.LastStatus = "관리목록 표시 복구 대기 (미제출)";
+            AppendLog($"{_system} 관리목록 복구 대기: {job.Server} · {job.ListingNumber} · " + ex.Message);
+            AppendLog($"{_system} 자동등록 전체를 90초 기다렸다가 본인 관리목록이 표시되는지 읽기 전용으로 검사합니다. 제출 없음.");
+            if (_schedulerRunning) NotifyAutomationIssue("관리목록 표시 복구 대기", ex.Message, job);
+        }
         catch (OwnedListConnectivityPendingException ex) when (!submitted && _system == "B")
         {
             // HTTP 0 or an unrendered own-list is not a failed submission.
@@ -2850,8 +2958,11 @@ internal sealed partial class AutomationForm : Form
             _config.Save();
             if (appliedDeferredEdits > 0)
                 AppendLog($"진행 중이던 물품의 일괄수정 {appliedDeferredEdits}개 항목을 작업 종료 후 적용했습니다.");
-            _state.Text = _schedulerRunning ? "자동 실행 중" : "중지/대기";
-            _state.ForeColor = _schedulerRunning ? Color.ForestGreen : Color.Maroon;
+            _state.Text = !_schedulerRunning ? "중지/대기" :
+                _system == "B" && _bConnectionRecoveryUtc > DateTime.UtcNow ? "VPN·관리목록 복구 대기" :
+                _ownedListRecoveryUtc > DateTime.UtcNow ? "관리목록 복구 대기" : "자동 실행 중";
+            _state.ForeColor = !_schedulerRunning ? Color.Maroon :
+                (_state.Text.Contains("복구 대기", StringComparison.Ordinal) ? Color.DarkGoldenrod : Color.ForestGreen);
             // A paused scheduler must not block a requested read-only import.
             // Keep the current submission flow intact; import after it releases WebView2.
             DispatchQueuedMyListingsImport();
@@ -2943,9 +3054,11 @@ internal sealed partial class AutomationForm : Form
             {
                 AppendLog($"재등록 검색 진단: 관리 목록 {visited.Count}페이지 검사 중 등록번호 해당 행 발견 " +
                     $"{row.NumberRows}건, 제목 일치 행 {row.TitleRows}건. {row.Message}");
-                if (_system == "B" && IsTransientOwnedListPageError(row))
+                if (row.Message.Contains("관리 목록에 로그인해야 합니다", StringComparison.Ordinal))
+                    throw new OwnedListLoginPendingException("관리 목록이 로그인 화면을 표시합니다. 사이트 로그인을 재확인합니다.");
+                if (IsTransientOwnedListPageError(row))
                     throw new OwnedListConnectivityPendingException(
-                        "내 등록글 관리목록이 열리지 않았습니다. 로그인 또는 B VPN 연결 상태를 재확인합니다. " + row.Message);
+                        "내 등록글 관리목록이 정상 표시되지 않았습니다. 연결과 화면 로딩을 재확인합니다. " + row.Message);
                 return row; // Never click on an unverified or mismatched row.
             }
             if (page.Listings.Count > 0 || page.IsEmptyList) loadedPages++;
@@ -2994,7 +3107,8 @@ internal sealed partial class AutomationForm : Form
     private static bool IsTransientOwnedListPageError(OwnedListRepostResult result) =>
         result.Status == "error" &&
         (result.Message.Contains("현재 화면이 내 판매·구매 등록글 목록이 아닙니다", StringComparison.Ordinal) ||
-         result.Message.Contains("내 등록글 목록 화면이 아닙니다", StringComparison.Ordinal));
+         result.Message.Contains("내 등록글 목록 화면이 아닙니다", StringComparison.Ordinal) ||
+         result.Message.Contains("관리 목록의 물품 행이 끝내 표시되지 않았습니다", StringComparison.Ordinal));
 
     // The site renders its management rows asynchronously. A navigation-complete
     // event alone does not prove the listing table is ready to inspect.
