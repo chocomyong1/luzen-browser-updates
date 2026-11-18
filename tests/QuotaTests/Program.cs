@@ -119,6 +119,8 @@ internal static class Program
         Check(diagnostic.Contains("22.2.26"), "include version");
         var routine = LogPresentation.Format("본인 물품 재등록 명령 전달 (native): 2026070610747586");
         Check(!routine.Visible && !routine.IsError, "hide verbose repost steps in compact log");
+        Check(!LogPresentation.Format("처리 시간 요약: 카단 · 총 19.2초").Visible,
+            "hide processing-duration summary from daily log while retaining raw diagnostics");
         var done = LogPresentation.Format("재등록 완료 요약: 카제로스 · 2026070610747586 · 사이트 잔여 24회");
         Check(done.Visible && !done.IsError && done.Text.Contains("카제로스") &&
             done.Text.Contains("24회"), "one line per verified repost");
