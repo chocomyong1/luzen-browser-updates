@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.55",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.55/LuzenBrowser_22.2.55_BinaryUpdate.zip",
-  "sha256": "fcd0892d710f71677e08e12c142f17f46fa4faf74152790c201da2c39b6a5bbe",
+  "version": "22.2.56",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.56/LuzenBrowser_22.2.56_BinaryUpdate.zip",
+  "sha256": "dd7c5d9c13dfcbbcf44a125a6eb3accb72f56eb430c2a8e11552b4a6f67b43ed",
   "format": "binary",
-  "releaseNotes": "v22.2.55 구매·판매 등록글 제목 수정: 사이트가 제목 앞에 표시하는 [1개~9,995개] 같은 분할 수량 범위를 실제 제목에서 분리합니다. 새로 불러오는 글과 기존에 저장된 사이트 등록글 모두 수정하며 별도 최소·최대수량은 유지합니다. 이전 버전의 안전한 수정 요청 기록 기능은 그대로 제공하고, 사이트 실제 수정 요청이 확인되기 전까지 자동 가격 제출은 중단 상태입니다."
+  "releaseNotes": "v22.2.56 실제 구매글 가격 재등록 POST 경로 확인: 사용자가 직접 수정한 기록에서 확인된 buy_re_reg_ok.php 제출 요청을 앱에서도 감시합니다. 등록 버튼을 누른 뒤 해당 사이트 요청이 끝나기 전 관리목록으로 이동하던 문제를 차단하고, 완료 후 기존 등록번호의 실제 사이트 단가를 재검증합니다. 한 건만 실행·제출 전 안전검증·중복 제출 방지·확인 대기 잠금을 유지합니다. 사이트 요청 진단은 멀티파트 전송 필드의 이름만 출력하며 값은 기록하지 않습니다. 실제 변경 성공 여부는 사이트 재조회로 판단합니다."
 }
