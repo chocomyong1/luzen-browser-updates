@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.54",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.54/LuzenBrowser_22.2.54_BinaryUpdate.zip",
-  "sha256": "d510203104d8efb17945a0619e9958c536bd54d8e19da8ed900bbe3579b6ded9",
+  "version": "22.2.55",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.55/LuzenBrowser_22.2.55_BinaryUpdate.zip",
+  "sha256": "fcd0892d710f71677e08e12c142f17f46fa4faf74152790c201da2c39b6a5bbe",
   "format": "binary",
-  "releaseNotes": "v22.2.54 실제 수정 요청 진단 추가: 상단 수정 요청 기록 버튼으로 앱 안에서 사이트를 열고 직접 물품 1건을 수정하면 공식 사이트의 요청 경로·HTTP 상태·전송 필드 이름만 복사합니다. 요청값·쿠키·토큰은 기록하지 않습니다. 이전 가격 변경 시험은 사이트 반영이 확인되지 않았으므로 새 자동 가격 제출을 잠그고 확인 대기 물품은 읽기 전용으로 점검합니다."
+  "releaseNotes": "v22.2.55 구매·판매 등록글 제목 수정: 사이트가 제목 앞에 표시하는 [1개~9,995개] 같은 분할 수량 범위를 실제 제목에서 분리합니다. 새로 불러오는 글과 기존에 저장된 사이트 등록글 모두 수정하며 별도 최소·최대수량은 유지합니다. 이전 버전의 안전한 수정 요청 기록 기능은 그대로 제공하고, 사이트 실제 수정 요청이 확인되기 전까지 자동 가격 제출은 중단 상태입니다."
 }
