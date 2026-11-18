@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.65",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.65/LuzenBrowser_22.2.65_BinaryUpdate.zip",
-  "sha256": "6195f0635731f115151a134320847cbeb0782179c97dfe641bd05615acc8ad88",
+  "version": "22.2.66",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.66/LuzenBrowser_22.2.66_BinaryUpdate.zip",
+  "sha256": "6c3c937d90b58535840eb92fb8964c936a54d81490eb92280ff099eb3cab361e",
   "format": "binary",
-  "releaseNotes": "v22.2.65 세 가지 자동등록 검증 강화: 아브렐슈드 구매글 6건 가격 변경 예약이 기존 시간당 횟수와 서버 간격을 공유하는 오프라인 회귀 테스트를 추가했습니다. 신규 판매글·구매글은 해당 거래 화면에서 유일한 등록하기 버튼을 찾도록 보완하고, 관리 메뉴에서 신규글 입력시험(미제출)을 실행해 입력칸과 최종 버튼을 실제 게시 없이 확인할 수 있습니다. 사이트에 실제 새 글을 제출하거나 6건을 자동 변경한 실사용 검증은 별도로 필요합니다."
+  "releaseNotes": "v22.2.66 A+B 동시 자동 시작 및 스플릿 현황: 자동 시작 한 번으로 A/B 작업을 함께 실행하고, 관리 메뉴에서 시작 대상을 개별 선택할 수 있습니다. B는 A와 다른 외부 IP가 확인된 경우에만 시작합니다. 스플릿 버튼으로 기존 A/B 등록 현황을 좌우 동시에 확인하고 편집 또는 단일 보기로 돌아갈 수 있습니다. 처리 시간 요약은 일반 실행 기록에서 숨기되 진단용 원본 로그에는 남습니다. 실제 두 계정 자동등록은 Windows 환경에서 로그인 및 VPN 상태를 별도로 확인하세요."
 }
