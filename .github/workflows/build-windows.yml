@@ -54,8 +54,9 @@ jobs:
           node tests/test_site_price_readback_safety.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Pending site price readback safety test failed' }
           node tests/test_site_price_batch_safety.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Deferred site price scheduling guard failed' }
           node tests/test_apple_style_layout.cjs
-          if ($LASTEXITCODE -ne 0) { throw 'Sequential site price batch safety test failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Apple-inspired layout regression test failed' }
           node tests/test_listing_grid_sort.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Server and numeric-price header sort test failed' }
           node tests/test_site_request_trace_safety.cjs
