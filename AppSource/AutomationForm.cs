@@ -794,11 +794,13 @@ internal sealed partial class AutomationForm : Form
         nav.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = UiTheme.Border });
         var choices = new FlowLayoutPanel
         {
-            Dock = DockStyle.Left, Width = 477, Height = 59, WrapContents = false,
+            Dock = DockStyle.Left, Width = 328, Height = 59, WrapContents = false,
             Padding = new Padding(19, 12, 0, 5), BackColor = UiTheme.Canvas
         };
-        var pages = new[] { _autoTab, _itemTab, _workflowTab };
-        var labels = new[] { "등록 현황", "물품 편집", "고급 설정" };
+        // Advanced settings still exist and remain accessible from [관리].
+        // They are intentionally absent from the everyday two-tab navigation.
+        var pages = new[] { _autoTab, _itemTab };
+        var labels = new[] { "등록 현황", "물품 편집" };
         var buttons = new List<Button>();
         for (int i = 0; i < pages.Length; i++)
         {
@@ -842,55 +844,10 @@ internal sealed partial class AutomationForm : Form
     private void BuildAutoRegistrationTab()
     {
         _editorTabs.TabPages.Add(_autoTab);
-        var buttons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top, Height = 57, WrapContents = false, AutoScroll = true,
-            BackColor = UiTheme.Surface, Padding = new Padding(17, 12, 0, 8)
-        };
-        Button MakeButton(string name, int width, Action click)
-        {
-            var b = new Button
-            {
-                Text = name,
-                Height = 33, Margin = new Padding(2, 0, 8, 1),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Cursor = Cursors.Hand
-            };
-            UiTheme.StyleButton(b, name == "일괄수정" ?
-                UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
-            b.Width = Math.Max(width, TextRenderer.MeasureText(name, b.Font).Width + b.Padding.Horizontal + 22);
-            b.Click += (_, _) => click();
-            buttons.Controls.Add(b);
-            return b;
-        }
-        MakeButton("+ 새 물품", 102, AddListing);
-        MakeButton("같은 가격 선택", 125, SelectSamePriceListings);
-        MakeButton("일괄수정", 108, BulkEditSelected);
-        MakeButton("가격 변경 예약", 133, () => _ = ApplySelectedSitePricesAsync());
-        var batchMenu = new ContextMenuStrip();
-        batchMenu.Items.Add("선택 물품 편집", null, (_, _) => EditAutoSelectedJob());
-        batchMenu.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
-        batchMenu.Items.Add("선택 해제", null, (_, _) => SetVisibleBatchSelection(false));
-        batchMenu.Items.Add(new ToolStripSeparator());
-        batchMenu.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
-        batchMenu.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
-        batchMenu.Items.Add(new ToolStripSeparator());
-        var extraColumns = new ToolStripMenuItem("최소·최대·주기 열 표시");
-        extraColumns.Click += (_, _) =>
-        {
-            bool show = !extraColumns.Checked;
-            extraColumns.Checked = show;
-            foreach (DataGridViewColumn column in _autoGrid.Columns)
-                if (column.DataPropertyName is "MinQuantity" or "MaxQuantity" or "IntervalMinutes")
-                    column.Visible = show;
-        };
-        batchMenu.Items.Add(extraColumns);
-        Button? batchButton = null;
-        batchButton = MakeButton("더보기 ▾", 95,
-            () => batchMenu.Show(batchButton!, 0, batchButton!.Height));
+        // This page is for monitoring. Creation and bulk editing belong to
+        // the product-editing page; a double-click still opens that editor.
         _autoGrid.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) EditAutoSelectedJob(); };
         _autoTab.Controls.Add(_autoGrid);
-        _autoTab.Controls.Add(buttons);
     }
 
     private void ConfigureAutoGrid()
@@ -1047,6 +1004,7 @@ internal sealed partial class AutomationForm : Form
             button.Click += (_, _) => run();
             return button;
         }
+        primary.Controls.Add(ActionButton("+ 새 물품", 107, AddListing));
         primary.Controls.Add(ActionButton("같은 가격 선택", 122, SelectSamePriceListings));
         primary.Controls.Add(ActionButton("일괄수정", 105, BulkEditSelected, true));
         primary.Controls.Add(ActionButton("가격 반영 예약", 138, () => _ = ApplySelectedSitePricesAsync()));
