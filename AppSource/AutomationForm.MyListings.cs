@@ -465,6 +465,13 @@ internal sealed partial class AutomationForm
                 "나머지 등록글은 재등록 전에 직접 확인하세요.");
     }
 
+    // A site-controlled redirect to a login/home screen means the target was
+    // never opened and, crucially, no repost action has been submitted.
+    private sealed class OwnedListLoginPendingException : Exception
+    {
+        public OwnedListLoginPendingException(string message) : base(message) { }
+    }
+
     private async Task NavigateOwnedListAsync(string url, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -472,6 +479,7 @@ internal sealed partial class AutomationForm
             throw new InvalidOperationException("공식 아이템매니아 주소가 아닙니다.");
         bool expectOwnedList = MyListingsImport.IsOwnedListUrl(url);
         string lastError = "확인되지 않음";
+        bool sawOfficialRedirect = false;
         // A different navigation (for example a login redirect) may finish
         // while the importer is waiting. Match Starting/Completed NavigationId
         // rather than accepting the first completion event from the WebView.
@@ -523,7 +531,8 @@ internal sealed partial class AutomationForm
                         string.Equals(arrivedUri.Query, requestedUri.Query, StringComparison.Ordinal)) return;
                     // A successful redirect to a login/home page is not a
                     // successful navigation to the management list.
-                    lastError = "요청한 관리 목록/상세 화면 대신 로그인 또는 다른 화면으로 이동함";
+                    sawOfficialRedirect = true;
+                    lastError = "관리목록 대신 로그인·시작 화면으로 이동함 (제출하지 않음)";
                 }
                 else lastError = $"{response.WebErrorStatus} (HTTP {response.HttpStatusCode})";
             }
@@ -538,8 +547,32 @@ internal sealed partial class AutomationForm
             }
             AppendLog($"관리 페이지 이동 {attempt}/{maxAttempts} 실패: {lastError}" +
                 (attempt < maxAttempts ? " / 로그인·페이지 이동 완료 후 재시도" : ""));
-            if (attempt < maxAttempts) await Task.Delay(attempt == 1 ? 1200 : 2200, token);
+            if (attempt < maxAttempts)
+            {
+                if (sawOfficialRedirect && _autoLogin is not null)
+                {
+                    // On slower B/C profiles the automatic login can start
+                    // *after* the first owned-list request was redirected.
+                    // Let it submit and settle before navigating this WebView
+                    // again; each retry stays strictly read-only.
+                    AppendLog($"{_system} 로그인 전환 안정화 대기 (재등록 미제출)");
+                    await _autoLogin.TryLoginAsync();
+                    await Task.Delay(TimeSpan.FromSeconds(4), token);
+                    try { await _autoLogin.WaitForLoginNavigationAsync(token); }
+                    catch (InvalidOperationException)
+                    {
+                        // An unfinished login remains a transient pre-submit
+                        // condition; the job runner will reschedule it safely.
+                        lastError = "아이템매니아 로그인 전환이 아직 진행 중";
+                        break;
+                    }
+                }
+                await Task.Delay(attempt == 1 ? 1200 : 2200, token);
+            }
         }
+        if (sawOfficialRedirect)
+            throw new OwnedListLoginPendingException(
+                "로그인 전환 중 관리목록에 접근하지 못했습니다. 제출하지 않았으며 잠시 후 다시 조회합니다.");
         throw new InvalidOperationException($"관리 페이지 이동을 {maxAttempts}번 시도했지만 실패했습니다. " + lastError);
     }
 }

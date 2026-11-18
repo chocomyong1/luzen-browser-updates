@@ -104,6 +104,9 @@ internal sealed partial class AutomationForm : Form
     private CancellationTokenSource? _pendingReviewRun;
     private DateTime _nextPendingReviewUtc = DateTime.MaxValue;
     private int _pendingReviewCursor;
+    // A signed-out B/C profile can redirect every managed-list request to
+    // login. Do not make dozens of jobs race the same background sign-in.
+    private DateTime _loginRecoveryPauseUntilUtc = DateTime.MinValue;
     // Once a live submit begins, do not cancel its independent result probe.
     // The scheduler stops immediately; the one in-flight result is verified.
     private bool _submissionVerificationPending;
@@ -2095,6 +2098,7 @@ internal sealed partial class AutomationForm : Form
     private async Task SchedulerTickAsync()
     {
         if (_busy || !_schedulerRunning) return;
+        if (DateTime.UtcNow < _loginRecoveryPauseUntilUtc) return;
         // Normal posts take priority. A pending read-only check must never
         // delay a different server that is already eligible to register.
         var jobs = _jobs.Where(x => WantsWork(x) && x.NextDueUtc <= DateTime.UtcNow)
@@ -2205,7 +2209,14 @@ internal sealed partial class AutomationForm : Form
             // otherwise the first repost's management-page navigation may be
             // canceled by that unrelated login redirect.
             if (_autoLogin is not null)
-                await _autoLogin.WaitForLoginNavigationAsync(token);
+            {
+                try { await _autoLogin.WaitForLoginNavigationAsync(token); }
+                catch (InvalidOperationException ex)
+                {
+                    throw new OwnedListLoginPendingException(
+                        "로그인 전환 중에는 등록 작업을 시작하지 않습니다. " + ex.Message);
+                }
+            }
             if (!IsAllowedUrl(Expand("{EntryUrl}", job, flow))) throw new InvalidOperationException("허용 사이트가 아닙니다.");
             for (int i = 0; i < flow.Steps.Count; i++)
             {
@@ -2428,6 +2439,18 @@ internal sealed partial class AutomationForm : Form
                     $"{job.Server} · {job.ListingNumber}{remaining}" +
                     (job.RequiresReview ? " · 추가 확인 필요" : ""));
             }
+        }
+        catch (OwnedListLoginPendingException ex) when (!submitted)
+        {
+            // This failure happened during read-only navigation, before any
+            // submit click. It is neither a posting failure nor an ambiguous
+            // result requiring review; retry after login has time to settle.
+            _loginRecoveryPauseUntilUtc = DateTime.UtcNow.AddSeconds(30);
+            job.LastStatus = "로그인 전환 대기 (미제출)";
+            job.NextDueUtc = _loginRecoveryPauseUntilUtc;
+            AppendLog($"{_system} 로그인 복구 대기: {job.Server} · {job.ListingNumber} · " +
+                "등록 작업은 제출되지 않았습니다. 30초 후 자동 재시도합니다.");
+            AppendLog("안내: 사이트 로그인이 완료되지 않으면 내 계정의 로그인 상태를 확인하세요. " + ex.Message);
         }
         catch (OperationCanceledException)
         {

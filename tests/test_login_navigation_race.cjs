@@ -27,6 +27,9 @@ assert.match(managedNav, /e\.NavigationId == targetId\.Value/);
 assert.match(managedNav, /expectOwnedList && MyListingsImport\.IsOwnedListUrl\(arrived\)/);
 assert.match(managedNav, /MyListingsImport\.IsSellListUrl\(arrived\) == MyListingsImport\.IsSellListUrl\(url\)/);
 assert.match(managedNav, /await Task\.Delay\(attempt == 1 \? 1200 : 2200, token\)/);
+assert.match(managedNav, /await _autoLogin\.TryLoginAsync\(\)/);
+assert.match(managedNav, /await _autoLogin\.WaitForLoginNavigationAsync\(token\)/);
+assert.match(managedNav, /throw new OwnedListLoginPendingException/);
 assert.doesNotMatch(managedNav, /@auto:repost|\.click\(|Invoke\(/);
 
 assert.match(login, /public bool IsLoginNavigationBusy/);
@@ -34,5 +37,10 @@ assert.match(login, /public async Task WaitForLoginNavigationAsync\(Cancellation
 assert.match(login, /_lastLoginNavigationUtc = DateTime\.UtcNow/);
 assert.match(automation, /await _autoLogin\.WaitForLoginNavigationAsync\(token\)/);
 assert.match(automation, /_autoLogin = new ItemManiaAutoLogin\(/);
+assert.match(automation, /if \(DateTime\.UtcNow < _loginRecoveryPauseUntilUtc\) return/);
+const transient = automation.split('catch (OwnedListLoginPendingException ex) when (!submitted)')[1]?.split('catch (OperationCanceledException)')[0] || '';
+assert.match(transient, /job\.LastStatus = "로그인 전환 대기 \(미제출\)"/);
+assert.match(transient, /job\.NextDueUtc = _loginRecoveryPauseUntilUtc/);
+assert.doesNotMatch(transient, /RequiresReview = true|제출 결과 확인 필요|재등록 실패 요약/);
 
 console.log('PASS login/repost navigation race isolation and safe read-only retries');
