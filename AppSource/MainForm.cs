@@ -21,7 +21,7 @@ internal sealed partial class MainForm : Form
     private Button? _systemPicker;
     private bool _checkingProxyConnection;
     private int _systemSelectionSequence;
-    private readonly Label _accountInfo = new() { Dock = DockStyle.Right, Width = 340, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
+    private readonly Label _accountInfo = new() { Dock = DockStyle.Right, Width = 184, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
     private bool _systemBShown;
     private bool _systemCShown;
     private AppUpdateSettings _updateSettings = AppUpdateService.LoadSettings();
@@ -51,7 +51,7 @@ internal sealed partial class MainForm : Form
         MinimizeBox = true;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = UiTheme.Canvas;
-        Font = new Font("맑은 고딕", 9.5F);
+        Font = new Font("Segoe UI", 9.5F);
 
         _moduleA = new AutomationForm(username, "A")
         {
@@ -85,7 +85,7 @@ internal sealed partial class MainForm : Form
         body.Controls.Add(_moduleA);
         body.Controls.Add(_moduleB);
         body.Controls.Add(_moduleC);
-        var footer = new Panel { Dock = DockStyle.Bottom, Height = 27, BackColor = UiTheme.SurfaceAlt };
+        var footer = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = UiTheme.SurfaceAlt };
         footer.Controls.Add(_status);
         footer.Controls.Add(_accountInfo);
         Controls.Add(body);
@@ -128,7 +128,7 @@ internal sealed partial class MainForm : Form
     {
         if (_systemPicker is not null)
             _systemPicker.Text = _activeSystem == "A" ? "A 기본 ▾" : $"{_activeSystem} VPN ▾";
-        _accountInfo.Text = $"아이템매니아  |  시스템 {_activeSystem}  |  설정·목록 분리   ";
+        _accountInfo.Text = $"시스템 {_activeSystem} · 계정별 분리   ";
     }
 
     private async Task SelectSystemAsync(string system)
@@ -193,22 +193,22 @@ internal sealed partial class MainForm : Form
     {
         var bar = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 49, AutoScroll = true, WrapContents = false,
-            BackColor = UiTheme.Navy, Padding = new Padding(11, 4, 7, 3)
+            Dock = DockStyle.Top, Height = 62, AutoScroll = true, WrapContents = false,
+            BackColor = UiTheme.Surface, Padding = new Padding(15, 11, 9, 8)
         };
         var logo = new PictureBox
         {
             Image = Image.FromFile(Settings.Asset("09_536c8.png")),
-            Size = new Size(35, 35), SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 2, 5, 0)
+            Size = new Size(31, 31), SizeMode = PictureBoxSizeMode.Zoom,
+            Margin = new Padding(0, 3, 8, 0)
         };
         bar.Controls.Add(logo);
         bar.Controls.Add(new Label
         {
-            Text = "LUZEN",
-            ForeColor = Color.White, Size = new Size(82, 36),
-            Font = new Font("맑은 고딕", 10F, FontStyle.Bold),
-            Padding = new Padding(2, 8, 0, 0), Margin = new Padding(0, 0, 10, 0)
+            Text = "Luzen",
+            ForeColor = UiTheme.Text, Size = new Size(79, 36),
+            Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+            Padding = new Padding(1, 6, 0, 0), Margin = new Padding(0, 0, 6, 0)
         });
         var systemMenu = new ContextMenuStrip();
         systemMenu.Items.Add("A 기본", null, (_, _) => _ = SelectSystemAsync("A"));
@@ -272,8 +272,8 @@ internal sealed partial class MainForm : Form
 
     private static void AddToolbarDivider(FlowLayoutPanel bar) => bar.Controls.Add(new Panel
     {
-        Width = 1, Height = 25, BackColor = Color.FromArgb(88, 105, 128),
-        Margin = new Padding(9, 8, 9, 0)
+        Width = 1, Height = 25, BackColor = UiTheme.Border,
+        Margin = new Padding(11, 6, 11, 0)
     });
 
     private void OpenUpdateSettingsDialog()
@@ -438,7 +438,7 @@ internal sealed partial class MainForm : Form
     }
 
     private static Button AddToolButton(FlowLayoutPanel parent, string label, Action action, int width = 72,
-        UiTheme.ButtonTone tone = UiTheme.ButtonTone.Dark)
+        UiTheme.ButtonTone tone = UiTheme.ButtonTone.Neutral)
     {
         var button = new Button
         {
