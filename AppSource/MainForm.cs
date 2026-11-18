@@ -122,7 +122,7 @@ internal sealed partial class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
+        FormClosing += (_, _) => { _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
     private bool CanInstallUpdateAcrossSystems =>
@@ -132,7 +132,8 @@ internal sealed partial class MainForm : Form
     {
         if (_systemPicker is not null)
             _systemPicker.Text = _activeSystem == "A" ? "A 기본 ▾" : $"{_activeSystem} VPN ▾";
-        _accountInfo.Text = _splitActive ? $"A+B 동시 현황 · 선택 {_activeSystem}   " :
+        _accountInfo.Text = _integratedVisible ? "A/B/C 통합 물품 편집   " :
+            _splitActive ? $"A+B 동시 현황 · 선택 {_activeSystem}   " :
             $"시스템 {_activeSystem} · 계정별 분리   ";
     }
 
@@ -188,6 +189,7 @@ internal sealed partial class MainForm : Form
             _moduleC.ShowAutomationView();
             _systemCShown = true;
         }
+        if (_integratedVisible) DisableIntegratedEditor();
         if (_splitActive && system is ("A" or "B"))
         {
             SelectSplitSystem(system);
@@ -239,6 +241,7 @@ internal sealed partial class MainForm : Form
         AddToolButton(bar, "일시정지", PauseSelectedSystems, 85);
         AddToolButton(bar, "즉시 중지", StopSelectedSystems, 93, UiTheme.ButtonTone.Danger);
         _splitButton = AddToolButton(bar, "스플릿", () => _ = ToggleSplitViewAsync(), 88);
+        _integratedButton = AddToolButton(bar, "통합 편집", ToggleIntegratedEditor, 105);
         var moreMenu = new ContextMenuStrip();
         moreMenu.Items.Add(BuildAutoStartTargetsMenu());
         moreMenu.Items.Add(new ToolStripSeparator());
