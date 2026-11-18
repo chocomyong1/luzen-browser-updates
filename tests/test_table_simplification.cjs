@@ -3,19 +3,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const form = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.cs'), 'utf8');
+const main = fs.readFileSync(path.join(__dirname, '../AppSource/MainForm.cs'), 'utf8');
 const modern = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.ModernTables.cs'), 'utf8');
 const models = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationModels.cs'), 'utf8');
 
 // Production UI has one clear Start/Pause/Stop path: no test/manual-run
 // buttons or redundant live-posting checkbox/confirmation gate.
-const toolbar = form.slice(form.indexOf('private Control BuildToolbar()'), form.indexOf('private static void AddInline('));
+const toolbar = main.slice(main.indexOf('private Control BuildToolbar()'), main.indexOf('private void AddNewListing('));
 const startScheduler = form.slice(form.indexOf('private void StartScheduler()'), form.indexOf('private void PauseScheduler()'));
 assert.doesNotMatch(toolbar, /1건 실제 실행|시험 실행|실제 제출 허용/);
 assert.doesNotMatch(form, /_livePosting/);
 assert.doesNotMatch(startScheduler, /MessageBoxButtons\.YesNo/);
-assert.match(toolbar, /Btn\("자동 시작"/);
-assert.match(toolbar, /Btn\("일시정지"/);
-assert.match(toolbar, /Btn\("즉시 중지"/);
+assert.match(toolbar, /AddToolButton\(bar, "자동 시작"/);
+assert.match(toolbar, /AddToolButton\(bar, "일시정지"/);
+assert.match(toolbar, /AddToolButton\(bar, "즉시 중지"/);
 
 const listColumns = form.slice(form.indexOf('private void ConfigureJobsGrid()'), form.indexOf('private void ConfigureStepsGrid()'));
 assert.match(listColumns, /HeaderText = "수량", DataPropertyName = "QuantityDisplay"/);
