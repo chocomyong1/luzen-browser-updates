@@ -153,27 +153,43 @@ internal sealed partial class AutomationForm
     {
         if (string.IsNullOrEmpty(raw)) return "전송 필드 정보 없음";
         var fields = new List<string>();
-        try
+        // The real buy_re_reg_ok.php submission uses multipart/form-data.
+        // Its boundaries must NEVER be interpreted as URL-encoded field names.
+        // Read Content-Disposition NAMES only, not any part values or files.
+        bool multipart = raw.StartsWith("--", StringComparison.Ordinal) &&
+            raw.Contains("Content-Disposition:", StringComparison.OrdinalIgnoreCase);
+        if (multipart)
         {
-            using var json = JsonDocument.Parse(raw);
-            if (json.RootElement.ValueKind == JsonValueKind.Object)
-                fields.AddRange(json.RootElement.EnumerateObject().Select(p => p.Name));
+            foreach (Match match in Regex.Matches(raw,
+                @"(?im)^Content-Disposition:[^\r\n]*\bname\s*=\s*""([^""\r\n]+)""").Cast<Match>().Take(75))
+                fields.Add(match.Groups[1].Value);
         }
-        catch (JsonException)
+        else
         {
-            foreach (var pair in raw.Split('&', StringSplitOptions.RemoveEmptyEntries).Take(75))
+            try
             {
-                var equal = pair.IndexOf('=');
-                if (equal < 1) continue;
-                try { fields.Add(Uri.UnescapeDataString(pair[..equal].Replace('+', ' '))); }
-                catch (UriFormatException) { /* malformed input name: skip */ }
+                using var json = JsonDocument.Parse(raw);
+                if (json.RootElement.ValueKind == JsonValueKind.Object)
+                    fields.AddRange(json.RootElement.EnumerateObject().Select(p => p.Name));
+            }
+            catch (JsonException)
+            {
+                foreach (var pair in raw.Split('&', StringSplitOptions.RemoveEmptyEntries).Take(75))
+                {
+                    var equal = pair.IndexOf('=');
+                    if (equal < 1) continue;
+                    try { fields.Add(Uri.UnescapeDataString(pair[..equal].Replace('+', ' '))); }
+                    catch (UriFormatException) { /* malformed input name: skip */ }
+                }
             }
         }
         var safeNames = fields.Where(x => x.Length is > 0 and < 90)
             .Select(x => Regex.IsMatch(x, "pass|cookie|token|secret|auth|csrf|session", RegexOptions.IgnoreCase)
                 ? "[보안필드]" : SafeTraceText(x, 50))
             .Distinct(StringComparer.Ordinal).Take(45).ToList();
-        return safeNames.Count == 0 ? "인코딩된 필드 이름 미확인" : string.Join(", ", safeNames);
+        return safeNames.Count == 0
+            ? (multipart ? "멀티파트 필드 이름 미확인" : "인코딩된 필드 이름 미확인")
+            : string.Join(", ", safeNames);
     }
 
     private static string GetTraceString(JsonElement node, string property) =>
