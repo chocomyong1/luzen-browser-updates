@@ -11,6 +11,30 @@ internal sealed partial class MainForm
     private bool _bootBRetryAttached;
     private bool _bootBRetryChecking;
     private bool _bootCancelledByUser;
+    private DateTime _nextBootBWarpConnectUtc = DateTime.MinValue;
+
+    private async Task TryBootBLocalProxyConnectAsync()
+    {
+        if (!_windowsBoot.Enabled || _bootCancelledByUser || !_startTargets.B ||
+            IsDisposed || Disposing || _nextBootBWarpConnectUtc > DateTime.UtcNow) return;
+        // Throttle CLI checks across the 60-second B retry loop. A remains
+        // active, while only B's proxy and external IP are revalidated.
+        _nextBootBWarpConnectUtc = DateTime.UtcNow.AddMinutes(2);
+        try
+        {
+            using var deadline = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var outcome = await CloudflareWarpBoot.EnsureLocalProxyConnectedAsync(
+                DualSystemNetwork.Load("B").ProxyUrl, deadline.Token);
+            if (!IsDisposed && !Disposing && outcome.Attempted)
+                _status.Text = "  B WARP 로컬 프록시 연결 요청 · 독립 IP 확인 후에만 B 자동등록 시작";
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (!IsDisposed && !Disposing)
+                _status.Text = "  B WARP 준비 지연 (" + ex.GetType().Name +
+                    ") · A는 계속 실행하고 B는 60초 뒤 재확인";
+        }
+    }
 
     private ToolStripMenuItem BuildWindowsStartupMenu()
     {

@@ -99,7 +99,17 @@ internal sealed partial class MainForm
             }
             _checkingProxyConnection = true;
             _status.Text = "  B VPN의 A와 다른 외부 IP 확인 중…";
-            try { await DualSystemNetwork.VerifyBRouteAsync(); }
+            try
+            {
+                // Windows login: A has already started independently. Only
+                // prepare Cloudflare's LOCAL proxy when B is requested and
+                // its actual CLI settings match this port. Never enable a
+                // full-device WARP tunnel, which could reroute A as well.
+                if (silentStartup && _windowsBoot.Enabled && !_bootCancelledByUser && _startTargets.B)
+                    await TryBootBLocalProxyConnectAsync();
+                if (_bootCancelledByUser) return false;
+                await DualSystemNetwork.VerifyBRouteAsync();
+            }
             catch (Exception ex)
             {
                 _status.Text = "  B VPN 연결 확인 실패 · B 자동등록을 시작하지 않았습니다.";

@@ -87,6 +87,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Combined A/B/C editing safety test failed' }
           node tests/test_batch_edit_undo_safety.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Title, price reservation and local undo safety test failed' }
+          node tests/test_warp_boot_guard.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'B Cloudflare local-proxy boot safety test failed' }
           node tests/test_windows_boot_autoreg.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows login autostart and A/B scheduler safety test failed' }
           node tests/test_telegram_unexpected_stop.cjs
@@ -129,15 +131,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.74'
+          $version = '22.2.75'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.74
-          path: LuzenBrowser_22.2.74_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.75
+          path: LuzenBrowser_22.2.75_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -145,7 +147,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.74'
+          $version = '22.2.75'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -157,7 +159,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.74 신규 구매글을 Luzen에서 등록하고 등록번호까지 확인한 경우, 재불러오기 없이 가격 수정 후 적용하면 다음 자동등록 순번에 연결됩니다. 가격 변경 전 실제 본인 관리목록의 등록번호·제목·계정·거래 방향은 재검증합니다. 신규글 복제 시 이전 예약·제출 이력을 초기화하고, 재시작 시 미제출 오류/서버 간격의 대기 시간을 유지합니다. 신규 등록 결과에 기존 등록번호가 재사용되면 성공으로 인정하지 않습니다. 기존 시간당 등록 제한과 중복 제출 방지는 유지합니다.'
+            releaseNotes = 'v22.2.75 Windows 로그인 시 B 자동 시작 대상으로 지정되어 있고 Cloudflare WARP가 B의 로컬 프록시 포트로 설정되어 있으면, 설치된 공식 warp-cli에서 모드를 읽기 전용으로 확인한 뒤 필요할 때만 연결을 시도합니다. WARP 일반 VPN 모드/DNS 모드는 변경하지 않고, 다른 프록시 서비스는 건드리지 않습니다. A는 독립적으로 먼저 시작하고 B는 독립 외부 IP 검증 성공 후에만 등록하며 60초 재확인은 유지합니다. 추가로 프로그램 핵심 신규등록·재등록·가격수정과 시간당 제한은 그대로 유지합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
