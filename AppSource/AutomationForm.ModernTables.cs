@@ -199,7 +199,9 @@ internal sealed partial class AutomationForm
             foreach (DataGridViewColumn col in _jobsGrid.Columns)
                 values.Jobs[ColumnIdentity(col)] = col.Width;
             foreach (DataGridViewColumn col in _autoGrid.Columns)
-                values.Auto[ColumnIdentity(col)] = col.Width;
+                values.Auto[ColumnIdentity(col)] = _splitStatusMode &&
+                    _preSplitAutoColumns.TryGetValue(ColumnIdentity(col), out var original)
+                    ? original.Width : col.Width;
             Directory.CreateDirectory(Settings.AutomationDirectory(_system));
             string path = Path.Combine(Settings.AutomationDirectory(_system), "grid-columns-v17.json");
             string temp = path + ".tmp";
