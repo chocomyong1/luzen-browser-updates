@@ -142,42 +142,74 @@ internal sealed partial class AutomationForm
                 return true;
             }
             if (!CanRunNow(job, out var quotaReason))
-                throw new InvalidOperationException("가격 변경 시 사이트 재등록이 필요합니다. " + quotaReason);
+                throw new InvalidOperationException("가격 변경 시 등록 작업 간격을 확인해야 합니다. " + quotaReason);
             var ask = $"아이템매니아의 실제 등록글 가격을 수정할까요?\n\n" +
                 $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n제목: {job.Title}\n\n" +
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
-                "사이트의 '재등록' 버튼을 사용하므로 등록 횟수·서버별 간격 제한에 포함됩니다.\n" +
+                "상세 화면의 '수정하기'로 이동해 가격을 변경하며 작업 횟수·서버별 간격 제한에 포함됩니다.\n" +
                 "확인된 이 글 하나에만 반영합니다.";
             if (!bulkApproval && MessageBox.Show(this, ask, "실제 사이트 가격 수정", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
 
             var record = records[0];
-            var edit = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                SitePriceEdit.BuildOwnedRowScript(job.ListingNumber, job.Title, false)));
-            if (edit.Status == "ready")
+            bool hasDetailUrl = MyListingsImport.IsSafeDetailUrl(record.ListingUrl, job.ListingNumber);
+            bool hasEditUrl = MyListingsImport.IsSafeDetailUrl(record.EditUrl, job.ListingNumber);
+            if (hasDetailUrl || !hasEditUrl)
             {
-                AppendLog("실제 수정화면 열기: 검증된 본인 물품 행 · " + job.ListingNumber);
+                AppendLog("실제 수정 화면 경로: 검증된 본인 등록글 상세 페이지 이동 · " + job.ListingNumber);
+                if (hasDetailUrl)
+                    await NavigateOwnedListAsync(record.ListingUrl, token);
+                else
+                {
+                    // My Room may render clickable titles without an href.
+                    // Resolve the exact row by ID+title and click only its title.
+                    var titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                        SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, false)));
+                    if (titleLink.Status != "ready")
+                        throw new InvalidOperationException("목록의 물품 제목 링크를 확인하지 못했습니다: " + titleLink.Message);
+                    try
+                    {
+                        titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                            SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, true)));
+                        if (titleLink.Status != "opened") throw new InvalidOperationException(titleLink.Message);
+                    }
+                    catch (Exception ex) when (IsAllowedCurrentPage() &&
+                        !MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri))
+                    {
+                        AppendLog("제목 클릭 후 상세 페이지 이동 중 응답 종료: " + ex.GetType().Name);
+                    }
+                }
+                SitePriceEditResult detail = new();
+                for (int attempt = 0; attempt < 8; attempt++)
+                {
+                    await Task.Delay(attempt == 0 ? 900 : 500, token);
+                    if (!IsAllowedCurrentPage())
+                        throw new InvalidOperationException("상세 화면이 아이템매니아 공식 사이트를 벗어났습니다");
+                    detail = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                        SitePriceEdit.BuildDetailEditScript(job.ListingNumber, job.Title, false)));
+                    if (detail.Status == "ready") break;
+                }
+                if (detail.Status != "ready")
+                    throw new InvalidOperationException("등록글 상세 화면에서 수정하기를 확인하지 못했습니다: " + detail.Message);
                 try
                 {
-                    edit = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                        SitePriceEdit.BuildOwnedRowScript(job.ListingNumber, job.Title, true)));
-                    if (edit.Status != "opened")
-                        throw new InvalidOperationException(edit.Message);
+                    detail = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                        SitePriceEdit.BuildDetailEditScript(job.ListingNumber, job.Title, true)));
+                    if (detail.Status != "opened") throw new InvalidOperationException(detail.Message);
                 }
                 catch (Exception ex) when (IsAllowedCurrentPage() &&
+                    !string.Equals(_web.Source?.AbsoluteUri, record.ListingUrl, StringComparison.OrdinalIgnoreCase) &&
                     !MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri))
                 {
-                    // WebView2 may cancel ExecuteScriptAsync as the verified
-                    // row's edit button navigates. The form is checked below.
-                    AppendLog("수정 페이지 이동 중 응답 종료: " + ex.GetType().Name + " (페이지 등록번호 재검증 예정)");
+                    AppendLog("상세 화면 수정하기 전환 중 응답 종료: " + ex.GetType().Name + " (수정 폼 별도 검증)");
                 }
             }
-            else if (MyListingsImport.IsSafeDetailUrl(record.EditUrl, job.ListingNumber))
+            else if (hasEditUrl)
             {
                 AppendLog("정확한 등록번호가 포함된 사이트 수정 링크 열기: " + job.ListingNumber);
                 await NavigateOwnedListAsync(record.EditUrl, token);
             }
-            else throw new InvalidOperationException("이 물품에 연결된 '수정' 버튼이나 정확한 수정 URL이 없습니다: " + edit.Message);
+            else throw new InvalidOperationException("본인 등록글 제목에 연결된 정확한 상세 URL이 없습니다. 안전한 경로를 확인하지 못해 수정하지 않았습니다.");
 
             SitePriceEditResult form = new();
             for (int attempt = 0; attempt < 9; attempt++)
@@ -303,7 +335,8 @@ internal sealed partial class AutomationForm
             .Any(x => message.Contains(x, StringComparison.OrdinalIgnoreCase));
         bool priceRepost = message.Contains("재등록", StringComparison.Ordinal) ||
             message.Contains("가격 수정", StringComparison.Ordinal) ||
-            message.Contains("물품 수정", StringComparison.Ordinal);
+            message.Contains("물품 수정", StringComparison.Ordinal) ||
+            message.Contains("수정", StringComparison.Ordinal);
         if (!official || unsafeMessage || !priceRepost)
         {
             _sitePriceEditDialogWarning = "확인할 수 없는 사이트 안내: " + message[..Math.Min(80, message.Length)];
