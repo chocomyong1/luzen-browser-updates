@@ -14,6 +14,8 @@ internal sealed partial class AutomationForm
     private string _sitePriceEditDialogWarning = "";
     private string _lastSitePriceEditFailure = "";
     private string _sitePriceReadbackNote = "";
+    private bool _sitePriceBatchRunning;
+    private CancellationTokenSource? _sitePriceBatchCancellation;
 
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
@@ -25,23 +27,19 @@ internal sealed partial class AutomationForm
 
     // A batch uses the same independently verified single-listing transaction.
     // Never parallelize submissions: the WebView2 and server quota are shared.
-    private async Task ApplySelectedSitePricesAsync()
+    private async Task ApplySelectedSitePricesAsync(IReadOnlyList<ListingJob>? explicitTargets = null)
     {
-        MessageBox.Show(this,
-            "안전을 위해 여러 등록글의 가격을 한꺼번에 제출하는 기능은 아직 잠겨 있습니다.\n\n" +
-            "먼저 '사이트 가격 반영'에서 구매글 1건만 검증해 주세요. 서버 결과가 불확실하면 재제출하지 않습니다.",
-            "사이트 일괄 가격 변경 안전 중단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        return;
-#pragma warning disable CS0162 // Keep the batch workflow for re-enabling only after control verification.
-        if (_myListingsImportRunning || _busy)
+        if (_myListingsImportRunning || _busy || _sitePriceBatchRunning || _siteRequestTraceActive)
         {
-            MessageBox.Show(this, "진행 중인 조회·등록 작업이 끝난 뒤 실행하세요.", "사이트 일괄 가격 반영");
+            MessageBox.Show(this, "진행 중인 조회·등록·기록 작업이 끝난 뒤 실행하세요.", "사이트 일괄 가격 반영");
             return;
         }
         _jobsGrid.EndEdit();
         _autoGrid.EndEdit();
-        SaveSelectedJob(false);
-        var targets = _filteredJobs.Where(j => j.SelectedForBulk).ToList();
+        if (explicitTargets is null) SaveSelectedJob(false);
+        // A batch editor may have changed the active search filter. Its frozen
+        // targets are still the exact originally checked objects, never new matches.
+        var targets = (explicitTargets ?? _filteredJobs.Where(j => j.SelectedForBulk).ToList()).ToList();
         if (targets.Count == 0)
         {
             MessageBox.Show(this, "사이트 가격을 변경할 물품의 왼쪽 체크박스를 선택해 주세요.", "선택한 물품 없음");
@@ -53,15 +51,29 @@ internal sealed partial class AutomationForm
                 "일괄 수정 수량 제한");
             return;
         }
-        var invalid = targets.Where(j => !j.ImportedFromSite || !ListingIdentity.HasNumber(j.ListingNumber) ||
+        var invalid = targets.Where(j => !_jobs.Contains(j) || !j.SelectedForBulk ||
+            !j.ImportedFromSite || j.OriginalTradeSide != "구매" || j.RequiresReview ||
+            (j.LastStatus.Contains("가격", StringComparison.Ordinal) &&
+             (j.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
+              j.LastStatus.Contains("결과 확인 필요", StringComparison.Ordinal))) ||
+            !ListingIdentity.HasNumber(j.ListingNumber) ||
             !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j)) ||
             !TrySitePrice(j.Price, out var p) || p % 10 != 0).ToList();
-        if (invalid.Count > 0)
+        string currentAccount = ItemManiaAccountStore.Load(_system).UserId;
+        bool accountMismatch = !string.IsNullOrWhiteSpace(currentAccount) &&
+            targets.Any(j => !string.Equals(j.SiteId, currentAccount, StringComparison.OrdinalIgnoreCase));
+        bool mixedAccounts = targets.Select(j => j.SiteId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 1;
+        bool duplicateIds = targets.GroupBy(j => ((j.SiteId ?? "").Trim().ToLowerInvariant(), j.ListingNumber))
+            .Any(group => group.Count() != 1);
+        if (invalid.Count > 0 || duplicateIds || accountMismatch || mixedAccounts)
         {
-            MessageBox.Show(this, $"선택 물품 중 {invalid.Count}건은 본인 등록번호·구매/판매 방향·가격이 확인되지 않았습니다.\n" +
-                "내 등록글 불러오기에서 확인된 물품만 선택한 뒤 다시 시도하세요.", "사이트 일괄 가격 반영 중단");
+            MessageBox.Show(this, $"선택 물품 중 {invalid.Count}건은 본인 구매글·등록번호·가격 또는 확인 대기 상태가 유효하지 않습니다.\n" +
+                (duplicateIds ? "같은 사이트 ID의 등록번호가 중복된 항목도 있습니다.\n" : "") +
+                (accountMismatch || mixedAccounts ? "서로 다른 사이트 아이디가 섞였거나 현재 계정과 일치하지 않습니다.\n" : "") +
+                "안전한 구매글만 다시 선택해 주세요. 확인 대기 물품은 제출하지 않습니다.", "사이트 일괄 가격 반영 중단");
             return;
         }
+        var snapshots = targets.Select(job => (Job: job, job.SiteId, job.ListingNumber, job.Title, job.Price)).ToList();
         var preview = string.Join("\n", targets.Take(12).Select(j =>
             $"{j.Server} · {j.ListingNumber} → {j.Price}원"));
         if (targets.Count > 12) preview += $"\n외 {targets.Count - 12}건";
@@ -72,29 +84,101 @@ internal sealed partial class AutomationForm
             "실제 사이트 가격 일괄 변경", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         if (_schedulerRunning) PauseScheduler();
+        _sitePriceBatchRunning = true;
+        using var cancellation = new CancellationTokenSource();
+        _sitePriceBatchCancellation = cancellation;
         int finished = 0;
         string stoppedAt = "";
-        foreach (var job in targets)
+        try
         {
-            if (!await ApplySitePriceAsync(job, true))
+            foreach (var item in snapshots)
             {
-                stoppedAt = $"\n실패 물품: {job.Server} · {job.ListingNumber}\n" +
-                    (_lastSitePriceEditFailure.Length > 0 ? _lastSitePriceEditFailure : "원인 미확인 (오류 로그 확인)");
-                break;
+                var job = item.Job;
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (!IsUnchangedBatchTarget(item))
+                {
+                    stoppedAt = "\n선택한 물품의 등록번호·제목·가격·선택 상태가 도중에 바뀌어 제출하지 않았습니다.";
+                    break;
+                }
+                if (!await WaitForSitePriceBatchSpacingAsync(job, cancellation.Token))
+                {
+                    stoppedAt = $"\n서버 {job.Server}의 이번 시간 등록 횟수를 모두 사용해 중단했습니다.";
+                    break;
+                }
+                if (!IsUnchangedBatchTarget(item))
+                {
+                    stoppedAt = "\n대기 중 물품 정보가 바뀌어 남은 글을 제출하지 않았습니다.";
+                    break;
+                }
+                // The underlying single-item transaction independently checks
+                // the owned row, site form, current price and actual POST.
+                if (!await ApplySitePriceAsync(job, true))
+                {
+                    stoppedAt = $"\n실패 물품: {job.Server} · {job.ListingNumber}\n" +
+                        (_lastSitePriceEditFailure.Length > 0 ? _lastSitePriceEditFailure : "원인 미확인 (오류 로그 확인)");
+                    break;
+                }
+                finished++;
+                AppendLog($"구매글 일괄 가격 반영: {finished}/{targets.Count}건 확인 완료");
             }
-            finished++;
+        }
+        catch (OperationCanceledException)
+        {
+            stoppedAt = "\n사용자가 [즉시 중지]를 눌러 남은 글의 제출을 취소했습니다.";
+        }
+        finally
+        {
+            _sitePriceBatchRunning = false;
+            _sitePriceBatchCancellation = null;
+            _state.Text = "중지/대기";
+            RefreshAutoSummary();
         }
         MessageBox.Show(this, $"선택 {targets.Count}건 중 {finished}건 확인 완료.\n" +
             (finished == targets.Count ? "모든 물품을 확인했습니다." :
                 "확인하지 못한 물품이 있어 중단했습니다. 남은 글은 제출하지 않았습니다." + stoppedAt),
             "사이트 일괄 가격 반영 결과", MessageBoxButtons.OK,
             finished == targets.Count ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-#pragma warning restore CS0162
+    }
+
+    private bool IsUnchangedBatchTarget((ListingJob Job, string SiteId, string ListingNumber,
+        string Title, string Price) item) =>
+        _jobs.Contains(item.Job) && item.Job.SelectedForBulk &&
+        item.Job.SiteId == item.SiteId && item.Job.ListingNumber == item.ListingNumber &&
+        item.Job.Title == item.Title && item.Job.Price == item.Price &&
+        !item.Job.RequiresReview;
+
+    // Read-only quota check. Never wait past the next Korean hour; the user can
+    // deliberately start a new batch after inspecting fresh site state.
+    private async Task<bool> WaitForSitePriceBatchSpacingAsync(ListingJob job, CancellationToken token)
+    {
+        var now = DateTime.UtcNow;
+        var counter = HourlyServerQuota.Current(_config.ServerHourlyCounters, job, now);
+        if (HourlyServerQuota.Remaining(counter, _config.MaxSubmissionsPerHour) <= 0) return false;
+        string key = HourlyServerQuota.Key(job);
+        DateTime last = _config.LastServerAttemptUtc.TryGetValue(key, out var recent) ? recent :
+            _config.LastServerAttemptUtc.TryGetValue(job.Server, out var legacy) ? legacy : DateTime.MinValue;
+        DateTime allowedAt = HourlyServerQuota.NextAllowedUtc(last, now, counter,
+            _config.MaxSubmissionsPerHour, _config.MinimumServerSeconds);
+        if (allowedAt > now)
+        {
+            var delay = allowedAt - now + TimeSpan.FromMilliseconds(400);
+            if (allowedAt >= HourlyServerQuota.NextHourUtc(now)) return false;
+            _state.Text = $"{job.Server} 서버 간격 대기 · {Math.Ceiling(delay.TotalSeconds)}초";
+            AppendLog($"일괄 가격 반영 서버 간격 대기: {job.Server} · {Math.Ceiling(delay.TotalSeconds)}초 (즉시 중지 가능)");
+            await Task.Delay(delay, token);
+        }
+        token.ThrowIfCancellationRequested();
+        return CanRunNow(job, out _);
     }
 
     private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval)
     {
         _lastSitePriceEditFailure = "";
+        if (_sitePriceBatchRunning && !bulkApproval)
+        {
+            MessageBox.Show(this, "선택 물품의 순차 가격 반영이 끝난 뒤 단건 수정할 수 있습니다.", "가격 변경 진행 중");
+            return false;
+        }
         if (_myListingsImportRunning || _busy)
         {
             _lastSitePriceEditFailure = "다른 등록·조회 작업이 진행 중입니다";
