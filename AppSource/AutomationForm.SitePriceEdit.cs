@@ -321,15 +321,19 @@ internal sealed partial class AutomationForm
             _sitePriceEditDialogWarning = "";
             _submissionVerificationPending = true;
             submitted = true;
+            string submitScriptNote = "제출 스크립트 반환 전 페이지 이동";
             try
             {
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true)));
+                submitScriptNote = result.Message;
                 if (result.Status != "submitted")
                     AppendLog("구매글 가격 수정 제출 결과 불확실 (자동 재시도 금지): " + result.Message);
+                else AppendLog("구매글 가격 수정 폼 전송 시작: " + result.Message);
             }
             catch (Exception ex)
             {
+                submitScriptNote = "페이지 전환 또는 스크립트 중단: " + ex.GetType().Name;
                 AppendLog("구매글 가격 수정 뒤 화면 전환: " + ex.GetType().Name + " (중복 제출 금지)");
             }
 
@@ -339,7 +343,9 @@ internal sealed partial class AutomationForm
                 " · HTTP " + (observed.HttpStatus?.ToString() ?? "미확인") + " · " + observed.Detail);
             if (!observed.RequestObserved)
                 throw new InvalidOperationException("실제 사이트 구매글 수정 POST 요청을 확인하지 못했습니다. " +
-                    "사이트 폼 검증 또는 제출 버튼 처리에 실패했을 수 있습니다. 이미 확인 대기 상태로 저장되어 자동 재제출하지 않습니다.");
+                    "사이트 전송이 차단되었거나 요청을 감지하지 못했습니다. 폼 실행 결과: " +
+                    submitScriptNote[..Math.Min(180, submitScriptNote.Length)] +
+                    "\n이미 확인 대기 상태로 저장되어 자동 재제출하지 않습니다.");
             // Network completion is NOT the success condition. Even if a
             // redirect or response event was missed, read the actual OWN list
             // before deciding whether this one registered price changed.
