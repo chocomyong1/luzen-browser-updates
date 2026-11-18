@@ -91,7 +91,11 @@ internal sealed class ListingJob
             if (LastStatus == "실행 중") return "실행 중";
             if (LastStatus.StartsWith("제출 중", StringComparison.Ordinal)) return "제출 확인 중";
             if (!string.IsNullOrWhiteSpace(PendingSitePriceTarget))
-                return Enabled ? "다음 순번에 가격 변경" : "가격 변경 대기 (자동 꺼짐)";
+            {
+                string target = long.TryParse(PendingSitePriceTarget.Replace(",", ""), out var price)
+                    ? price.ToString("N0") : PendingSitePriceTarget;
+                return Enabled ? $"가격 {target}원 · 다음 순번" : $"가격 {target}원 대기 (자동 꺼짐)";
+            }
             if (LastStatus.Contains("오류", StringComparison.Ordinal) ||
                 LastStatus.Contains("실패", StringComparison.Ordinal)) return "오류";
             if (LastStatus.StartsWith("시험 완료", StringComparison.Ordinal)) return "시험 완료";

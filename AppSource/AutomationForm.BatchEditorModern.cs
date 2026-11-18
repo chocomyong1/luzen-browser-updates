@@ -77,9 +77,26 @@ internal sealed partial class AutomationForm
             window.DialogResult = DialogResult.OK;
             window.Close();
         };
+        BatchUndoToken? dialogUndo = null;
+        var undo = new Button { Text = "마지막 수정 되돌리기", Dock = DockStyle.Right,
+            Width = 163, Margin = new Padding(8), Enabled = false };
+        undo.Click += (_, _) =>
+        {
+            if (!CanUndoBatchEdit(dialogUndo, out var issue)) { Error(issue); return; }
+            if (MessageBox.Show(window,
+                $"마지막 '{dialogUndo!.Label}' 일괄수정을 로컬 설정에서 되돌릴까요?\n사이트 제출은 되돌리지 않습니다.",
+                "일괄수정 되돌리기", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (!TryUndoBatchEdit(dialogUndo, out issue)) { Error(issue); return; }
+            result.Text = "✓ " + issue;
+            undo.Enabled = false;
+            siteApply.Enabled = false;
+            changedPriceTargets.Clear();
+        };
         footer.Controls.Add(result);
         footer.Controls.Add(close);
         footer.Controls.Add(siteApply);
+        footer.Controls.Add(undo);
 
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = UiTheme.Surface };
         var table = new TableLayoutPanel
@@ -139,7 +156,7 @@ internal sealed partial class AutomationForm
         }
 
         bool ApplyField<T>(string field, Func<ListingJob, T> read, Action<ListingJob, T> write,
-            T value, bool confirmLocalSave = true)
+            T value, bool confirmLocalSave = true, string? newPendingPrice = null)
         {
             // If an earlier edit changed the current search results (e.g. title),
             // don't silently modify jobs that are now hidden by the active query.
@@ -147,6 +164,13 @@ internal sealed partial class AutomationForm
             if (active.Count == 0)
             {
                 Error("현재 조회 조건에서 선택된 물품이 없습니다. 창을 닫고 조회 조건과 체크 상태를 확인하세요.");
+                return false;
+            }
+            if (field == "물품 제목" && active.Any(j => ListingIdentity.HasNumber(j.ListingNumber)))
+            {
+                Error("기존 사이트 등록글의 제목은 여기서 변경할 수 없습니다. " +
+                    "사이트의 원본 제목과 달라지면 자동 재등록이 차단됩니다. " +
+                    "등록번호가 없는 신규 물품만 선택해 주세요.");
                 return false;
             }
             if (confirmLocalSave && MessageBox.Show(window,
@@ -157,10 +181,18 @@ internal sealed partial class AutomationForm
             var oldReservations = active.Select(item => (Item: item, item.PendingSitePriceTarget)).ToList();
             var immediate = previous.Where(x => !ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
             var deferred = previous.Where(x => ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
+            var changes = active.Select(item => CaptureBatchUndoChange(item, read, write, value,
+                newPendingPrice)).ToList();
+            var byJob = changes.ToDictionary(change => change.Job);
             int deferredStart = _deferredExecutingJobEdits.Count;
-            foreach (var (item, _) in immediate) write(item, value);
+            foreach (var (item, _) in immediate) ApplyBatchUndoChange(byJob[item]);
             foreach (var (item, _) in deferred)
-                _deferredExecutingJobEdits.Add(() => write(item, value));
+            {
+                var change = byJob[item];
+                Action afterSubmission = () => ApplyBatchUndoChange(change);
+                change.DeferredAction = afterSubmission;
+                _deferredExecutingJobEdits.Add(afterSubmission);
+            }
             try
             {
                 _config.Jobs = _jobs.ToList();
@@ -187,6 +219,8 @@ internal sealed partial class AutomationForm
                 : $"✓ {field}: 선택한 {active.Count}건에 적용 완료";
             AppendLog($"일괄수정 {field}: {immediate.Count}건 즉시 저장" +
                 (deferred.Count > 0 ? $" · {deferred.Count}건 작업 종료 후 적용 예약" : ""));
+            dialogUndo = RememberBatchUndo(field, changes);
+            undo.Enabled = true;
             return true;
         }
         void Error(string message) => MessageBox.Show(window, message, "입력 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -233,7 +267,8 @@ internal sealed partial class AutomationForm
                     // When this is the currently submitting job, ApplyField
                     // defers BOTH values until the in-flight result concludes.
                     x.PendingSitePriceTarget = siteChoice == DialogResult.Yes ? v : "";
-                }, price.ToString(), confirmLocalSave: false))
+                }, price.ToString(), confirmLocalSave: false,
+                newPendingPrice: siteChoice == DialogResult.Yes ? price.ToString() : ""))
             {
                 changedPriceTargets = activePriceTargets;
                 siteApply.Enabled = true;

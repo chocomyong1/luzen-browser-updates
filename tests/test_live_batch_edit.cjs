@@ -14,8 +14,9 @@ assert.match(batch, /await CancelImportForManualRunAsync\("선택 물품 일괄�
   'An active read-only import must be cancelled and awaited before editing');
 assert.match(batch, /if \(!_busy\) SaveSelectedJob\(false\)/);
 assert.match(batch, /ReferenceEquals\(x\.Item, _currentlyExecutingJob\)/);
-assert.match(batch, /foreach \(var \(item, _\) in immediate\) write\(item, value\)/);
-assert.match(batch, /_deferredExecutingJobEdits\.Add\(\(\) => write\(item, value\)\)/);
+assert.match(batch, /foreach \(var \(item, _\) in immediate\) ApplyBatchUndoChange\(byJob\[item\]\)/);
+assert.match(batch, /Action afterSubmission = \(\) => ApplyBatchUndoChange\(change\)/);
+assert.match(batch, /_deferredExecutingJobEdits\.Add\(afterSubmission\)/);
 assert.match(batch, /_deferredExecutingJobEdits\.RemoveRange\(deferredStart/);
 const runnerStart = runner.indexOf('_currentlyExecutingJob = job;');
 const runnerEnd = runner.indexOf('foreach (var deferredEdit in _deferredExecutingJobEdits) deferredEdit();');

@@ -13,7 +13,7 @@ internal enum IntegratedEditField
 internal readonly record struct IntegratedEditCommand(IntegratedEditField Field, string Value,
     bool ReserveSitePrice = false);
 
-internal readonly record struct IntegratedEditResult(int Saved, int Deferred);
+internal readonly record struct IntegratedEditResult(int Saved, int Deferred, BatchUndoToken UndoToken);
 
 internal sealed partial class AutomationForm
 {
@@ -143,12 +143,26 @@ internal sealed partial class AutomationForm
         var snapshots = immediate.Select(job => (Job: job,
             Previous: SnapshotIntegratedField(job, command.Field),
             Pending: job.PendingSitePriceTarget)).ToList();
+        var undoChanges = items.Select(job => CaptureBatchUndoChange(job,
+            current => SnapshotIntegratedField(current, command.Field).Value,
+            (current, edited) => WriteIntegratedField(current,
+                new IntegratedEditCommand(command.Field, edited, command.ReserveSitePrice)),
+            command.Field == IntegratedEditField.Description ? command.Value : command.Value.Trim(),
+            command.Field == IntegratedEditField.Price
+                ? (command.ReserveSitePrice ? command.Value.Trim() : "")
+                : null)).ToList();
+        var byJob = undoChanges.ToDictionary(change => change.Job);
         int queuedBefore = _deferredExecutingJobEdits.Count;
         try
         {
-            foreach (var job in immediate) WriteIntegratedField(job, command);
+            foreach (var job in immediate) ApplyBatchUndoChange(byJob[job]);
             foreach (var job in deferred)
-                _deferredExecutingJobEdits.Add(() => WriteIntegratedField(job, command));
+            {
+                var change = byJob[job];
+                Action afterSubmission = () => ApplyBatchUndoChange(change);
+                change.DeferredAction = afterSubmission;
+                _deferredExecutingJobEdits.Add(afterSubmission);
+            }
             _config.Jobs = _jobs.ToList();
             _config.Save();
         }
@@ -170,7 +184,8 @@ internal sealed partial class AutomationForm
         AppendLog($"통합 일괄수정: {_system} {items.Count}건 · {command.Field} · " +
             (command.ReserveSitePrice ? "사이트 변경은 다음 자동등록 순번에 예약" : "로컬 설정 저장") +
             (deferred.Count > 0 ? $" · 실행 중 {deferred.Count}건 작업 종료 후 적용" : ""));
-        return new IntegratedEditResult(immediate.Count, deferred.Count);
+        var receipt = RememberBatchUndo(command.Field.ToString(), undoChanges);
+        return new IntegratedEditResult(immediate.Count, deferred.Count, receipt);
     }
 
     internal void OpenIntegratedJob(string id)

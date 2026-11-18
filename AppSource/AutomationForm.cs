@@ -1078,6 +1078,7 @@ internal sealed partial class AutomationForm : Form
         selectionTools.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
         selectionTools.Items.Add(new ToolStripSeparator());
         selectionTools.Items.Add("선택 물품 가격 변경 예약 (1건)", null, (_, _) => _ = ApplySelectedSitePriceAsync());
+        selectionTools.Items.Add("마지막 일괄수정 되돌리기", null, (_, _) => UndoRecentBatchEdit());
         selectionTools.Items.Add("표 넓게 보기/복원", null, (_, _) => ToggleWideGrid());
         selectionTools.Items.Add("열 너비 초기화", null, (_, _) => ResetGridColumns());
         selectionTools.Items.Add(new ToolStripSeparator());
@@ -1764,9 +1765,45 @@ internal sealed partial class AutomationForm : Form
         // imported identity or overwrite a valid listing with empty strings.
         _selected.Game = KeepExistingWhenEmpty(_game.SelectedItem?.ToString(), _selected.Game);
         _selected.Server = KeepExistingWhenEmpty(_server.SelectedItem?.ToString(), _selected.Server);
-        _selected.Title = KeepExistingWhenEmpty(_title.Text, _selected.Title);
+        string proposedTitle = KeepExistingWhenEmpty(_title.Text, _selected.Title);
+        if (ListingIdentity.HasNumber(_selected.ListingNumber) &&
+            !string.Equals(proposedTitle, _selected.Title, StringComparison.Ordinal))
+        {
+            // A repost finds its live listing by number AND the original title.
+            // Never make an existing post unfindable through a local-only edit.
+            if (notify) MessageBox.Show(this,
+                "기존 사이트 등록글의 제목은 프로그램에서만 변경할 수 없습니다. " +
+                "사이트 제목과 달라지면 재등록을 찾지 못합니다. 원본 제목을 유지합니다.",
+                "기존 등록글 제목 보호", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _title.Text = _selected.Title;
+            AppendLog($"기존 등록글 제목 변경 차단: {_selected.Server} · {_selected.ListingNumber}");
+        }
+        else _selected.Title = proposedTitle;
         _selected.Quantity = KeepExistingWhenEmpty(_quantity.Text, _selected.Quantity);
         _selected.Unit = KeepExistingWhenEmpty(_unit.Text, _selected.Unit);
+        string proposedPrice = KeepExistingWhenEmpty(_price.Text, _selected.Price);
+        bool priceReallyChanged = TrySitePrice(proposedPrice, out var desiredPrice) &&
+            TrySitePrice(_selected.Price, out var originalPrice)
+                ? desiredPrice != originalPrice
+                : !string.Equals(proposedPrice, _selected.Price, StringComparison.Ordinal);
+        if (priceReallyChanged &&
+            !string.IsNullOrWhiteSpace(_selected.PendingSitePriceTarget))
+        {
+            if (notify && MessageBox.Show(this,
+                $"기존 사이트 가격 예약({_selected.PendingSitePriceTarget}원)을 취소하고 " +
+                $"새 로컬 가격({proposedPrice}원)을 저장할까요?\n\n" +
+                "새 가격을 사이트에 반영하려면 다시 '가격 변경 예약'을 선택해야 합니다.",
+                "가격 예약 변경 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                _price.Text = _selected.Price;
+            }
+            else
+            {
+                _selected.PendingSitePriceTarget = "";
+                AppendLog($"가격 예약 즉시 취소: {_selected.Server} · {_selected.ListingNumber} · 로컬 가격 변경");
+            }
+        }
         _selected.Price = KeepExistingWhenEmpty(_price.Text, _selected.Price);
         _selected.Character = KeepExistingWhenEmpty(_character.Text, _selected.Character);
         _selected.Description = KeepExistingWhenEmpty(_description.Text, _selected.Description);

@@ -45,7 +45,8 @@ assert.match(submit, /job\.RequiresReview = true/);
 
 assert.match(models, /public string PendingSitePriceTarget \{ get; set; \} = "";/);
 assert.match(editor, /x\.PendingSitePriceTarget = siteChoice == DialogResult\.Yes \? v : ""/);
-assert.match(editor, /_deferredExecutingJobEdits\.Add\(\(\) => write\(item, value\)\)/);
+assert.match(editor, /Action afterSubmission = \(\) => ApplyBatchUndoChange\(change\)/);
+assert.match(editor, /_deferredExecutingJobEdits\.Add\(afterSubmission\)/);
 assert.match(editor, /Text = "다음 순번에 예약"/);
 assert.match(editor, /MessageBoxButtons\.YesNoCancel/);
 assert.match(importCode, /string\.IsNullOrWhiteSpace\(Target\.PendingSitePriceTarget\)/);

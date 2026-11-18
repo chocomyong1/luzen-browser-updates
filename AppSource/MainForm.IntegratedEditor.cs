@@ -53,6 +53,8 @@ internal sealed partial class MainForm
     private string _integratedTradeSide = "전체";
     private bool _integratedServerFilterUpdating;
     private readonly Dictionary<string, Button> _integratedTradeTabs = new();
+    private Button? _integratedUndoButton;
+    private List<(AutomationForm Form, BatchUndoToken Receipt)> _integratedLastUndo = new();
 
     private AutomationForm IntegratedOwner(string system) => system switch
     {
@@ -193,6 +195,9 @@ internal sealed partial class MainForm
         actions.Controls.Add(IntegratedButton("같은 가격 선택", 126, SelectIntegratedSamePrice));
         actions.Controls.Add(IntegratedButton("선택 해제", 95, () => MarkIntegratedVisible(false)));
         actions.Controls.Add(IntegratedButton("선택 일괄수정", 134, ShowIntegratedBulkDialog, primary: true));
+        _integratedUndoButton = IntegratedButton("마지막 수정 되돌리기", 161, UndoIntegratedBatchEdit);
+        _integratedUndoButton.Visible = _integratedLastUndo.Count > 0;
+        actions.Controls.Add(_integratedUndoButton);
         actions.Controls.Add(new Label
         {
             Text = "※ 자동등록 중에도 설정 변경 가능 · 사이트 가격은 다음 순번에 반영 · 행 더블클릭 시 상세 편집",
@@ -303,6 +308,7 @@ internal sealed partial class MainForm
         _integratedServerFilter = null;
         _integratedSearch = null;
         _integratedSummary = null;
+        _integratedUndoButton = null;
         _integratedTradeTabs.Clear();
         _integratedTradeSide = "전체";
         if (_integratedButton is not null) _integratedButton.Text = "통합 편집";
@@ -517,6 +523,7 @@ internal sealed partial class MainForm
                 "통합 일괄수정", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
             var saved = new List<string>();
+            var receipts = new List<(AutomationForm Form, BatchUndoToken Receipt)>();
             int immediate = 0, deferred = 0;
             foreach (var group in groups)
             {
@@ -526,9 +533,13 @@ internal sealed partial class MainForm
                     immediate += result.Saved;
                     deferred += result.Deferred;
                     saved.Add(group.System);
+                    receipts.Add((group.Form, result.UndoToken));
                 }
                 catch (Exception ex)
                 {
+                    _integratedLastUndo = receipts;
+                    if (_integratedUndoButton is not null)
+                        _integratedUndoButton.Visible = receipts.Count > 0;
                     MessageBox.Show(dialog, $"{group.System} 설정 저장 실패: {ex.Message}\n" +
                         (saved.Count > 0 ? "이미 저장된 시스템: " + string.Join(", ", saved) : "변경 완료된 시스템 없음") +
                         "\n다른 시스템에는 더 이상 적용하지 않았습니다.",
@@ -537,6 +548,8 @@ internal sealed partial class MainForm
                     return;
                 }
             }
+            _integratedLastUndo = receipts;
+            if (_integratedUndoButton is not null) _integratedUndoButton.Visible = true;
             RebuildIntegratedRows();
             _status.Text = $"  A/B/C 통합 수정 완료 · {immediate}건 저장" +
                 (deferred > 0 ? $" · 실행 중 {deferred}건은 작업 종료 후 적용" : "") +
@@ -550,6 +563,36 @@ internal sealed partial class MainForm
         dialog.Controls.Add(cancel); dialog.Controls.Add(apply);
         UiTheme.ApplyControlStyles(dialog);
         dialog.ShowDialog(this);
+    }
+
+    private void UndoIntegratedBatchEdit()
+    {
+        if (_integratedLastUndo.Count == 0) return;
+        foreach (var (form, receipt) in _integratedLastUndo)
+        {
+            if (form.CanUndoBatchEdit(receipt, out var reason)) continue;
+            MessageBox.Show(this, reason + "\nA/B/C의 다른 변경을 보호하기 위해 어느 시스템도 되돌리지 않았습니다.",
+                "통합 수정 되돌리기", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        int count = _integratedLastUndo.Sum(pair => pair.Receipt.Changes.Count);
+        if (MessageBox.Show(this,
+            $"마지막 통합 일괄수정 {count}건의 로컬 변경을 되돌릴까요?\n\n" +
+            "사이트에 이미 제출된 변경은 복구하지 않습니다.",
+            "통합 수정 되돌리기", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        foreach (var (form, receipt) in _integratedLastUndo)
+        {
+            if (form.TryUndoBatchEdit(receipt, out var reason)) continue;
+            MessageBox.Show(this, reason + "\n다른 시스템의 변경 상태도 확인하세요.",
+                "통합 수정 일부 복구 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            RebuildIntegratedRows();
+            return;
+        }
+        _integratedLastUndo.Clear();
+        if (_integratedUndoButton is not null) _integratedUndoButton.Visible = false;
+        RebuildIntegratedRows();
+        _status.Text = $"  마지막 통합 일괄수정 {count}건의 로컬 값 복구 완료 · 사이트 제출은 변경하지 않음";
     }
 
     private async Task OpenIntegratedJobAsync(IntegratedRow row)
