@@ -29,7 +29,7 @@ internal sealed class AppUpdateManifest
 
 internal static class AppUpdateService
 {
-    public const string CurrentVersion = "22.2.54";
+    public const string CurrentVersion = "22.2.55";
     public const string DefaultFeedUrl =
         "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/latest.json";
     public static string InstallRoot => Path.Combine(
