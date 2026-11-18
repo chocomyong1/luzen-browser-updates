@@ -105,6 +105,7 @@ function detailCase({ pageId = number, pageTitle = title, buttonCount = 1,
 function editFormCase({ id = number, old = '10,000', priceFields = 1,
   heading = '구매금액', finalText = '재등록', host = 'www.itemmania.com' } = {}) {
   let clicked = 0;
+  const clickedLabels = [];
   class HTMLInputElement {
     constructor(value) { this.value = value; this.type = 'text'; this.tagName = 'INPUT'; this.disabled = false; this.readOnly = false; this.isConnected = true; }
     set value(v) { this._value = v; }
@@ -115,9 +116,11 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   }
   const quantity = new HTMLInputElement('1');
   const prices = Array.from({ length: priceFields }, () => new HTMLInputElement(old));
-  const button = { innerText: finalText, value: '', isConnected: true,
-    getClientRects: () => [1], click: () => clicked++ };
-  const form = { querySelectorAll: key => key.startsWith('button,') ? [button] : [] };
+  const buttons = (Array.isArray(finalText) ? finalText : [finalText]).map(label => ({
+    innerText: label, value: '', isConnected: true,
+    getClientRects: () => [1], click: () => {clicked++; clickedLabels.push(label);}
+  }));
+  const form = { querySelectorAll: key => key.startsWith('button,') ? buttons : [] };
   const headingCell = { textContent: heading };
   const tr = { querySelector: key => key.startsWith('th,') ? headingCell : null,
     querySelectorAll: key => key === 'input' ? [quantity, ...prices] : [] };
@@ -134,7 +137,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
       location: { protocol: 'https:', hostname: host, pathname: '/buy/edit.html' },
       getComputedStyle: () => ({ visibility: 'visible' })
     }, { timeout: 1000 });
-  return { evaluate, get clicked() { return clicked; }, prices };
+  return { evaluate, get clicked() { return clicked; }, clickedLabels, prices };
 }
 
 {
@@ -145,6 +148,15 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(safe.prices[0].value, '35100');
   assert.equal(safe.clicked, 1);
   console.log('PASS exact owned listing and old price → submit only once');
+}
+{
+  const mixed = editFormCase({finalText: ['재등록', '수정하기']});
+  assert.equal(mixed.evaluate(false).status, 'ready');
+  assert.equal(mixed.evaluate(true).status, 'submitted');
+  assert.deepEqual(mixed.clickedLabels, ['수정하기']);
+  const duplicate = editFormCase({finalText: ['수정하기', '수정하기']});
+  assert.equal(duplicate.evaluate(true).status, 'error');
+  assert.equal(duplicate.clicked, 0);
 }
 {
   const wrongId = editFormCase({ id: '2026070508129999' });
