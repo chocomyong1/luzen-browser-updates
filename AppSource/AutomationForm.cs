@@ -107,6 +107,8 @@ internal sealed partial class AutomationForm : Form
     // A signed-out B/C profile can redirect every managed-list request to
     // login. Do not make dozens of jobs race the same background sign-in.
     private DateTime _loginRecoveryPauseUntilUtc = DateTime.MinValue;
+    private DateTime _bConnectionRecoveryUtc = DateTime.MinValue;
+    private bool _bConnectionRecheckRunning;
     // Once a live submit begins, do not cancel its independent result probe.
     // The scheduler stops immediately; the one in-flight result is verified.
     private bool _submissionVerificationPending;
@@ -297,7 +299,7 @@ internal sealed partial class AutomationForm : Form
             try
             {
                 Clipboard.SetText(ErrorLogCopy.Build(_rawLogLines,
-                    AppUpdateService.CurrentVersion, DateTime.Now));
+                    AppUpdateService.CurrentVersion, DateTime.Now, _system));
                 copyErrors.Text = "복사 완료 ✓";
             }
             catch (Exception ex)
@@ -949,7 +951,10 @@ internal sealed partial class AutomationForm : Form
         int enabled = _jobs.Count(x => x.Enabled);
         int pending = _jobs.Count(x => x.RequiresReview);
         int scheduledPrices = _jobs.Count(x => !string.IsNullOrWhiteSpace(x.PendingSitePriceTarget));
-        string state = _sitePriceBatchRunning ? _state.Text :
+        string state = _system == "B" && _schedulerRunning && _bConnectionRecheckRunning
+            ? "B VPN 연결 재확인 중" :
+            _system == "B" && _schedulerRunning && _bConnectionRecoveryUtc > DateTime.UtcNow
+            ? "B VPN 연결 대기" : _sitePriceBatchRunning ? _state.Text :
             _schedulerRunning ? "자동 실행 중" : "중지/대기";
         _autoSummary.Text = $"전체 {_jobs.Count}개     ·     자동 사용 {enabled}개     ·     가격 예약 {scheduledPrices}개     ·     확인 필요 {pending}개     ·     {state}";
     }
@@ -2316,6 +2321,26 @@ internal sealed partial class AutomationForm : Form
     {
         if (_busy || !_schedulerRunning) return;
         if (DateTime.UtcNow < _loginRecoveryPauseUntilUtc) return;
+        if (_system == "B" && _bConnectionRecoveryUtc != DateTime.MinValue)
+        {
+            if (_bConnectionRecheckRunning || DateTime.UtcNow < _bConnectionRecoveryUtc) return;
+            _bConnectionRecheckRunning = true;
+            // Hold B while an external IP check is in flight. A is independent.
+            _bConnectionRecoveryUtc = DateTime.UtcNow.AddMinutes(2);
+            try
+            {
+                await DualSystemNetwork.VerifyBRouteAsync();
+                _bConnectionRecoveryUtc = DateTime.MinValue;
+                AppendLog("B VPN 독립 외부 IP 재확인 완료. 관리목록 재접속은 다음 작업 순번에 재시도합니다.");
+            }
+            catch (Exception ex)
+            {
+                AppendLog("B VPN 연결 재확인 실패: " + ex.GetType().Name +
+                    ". B 작업은 2분간 대기하며 A 작업에는 영향을 주지 않습니다.");
+            }
+            finally { _bConnectionRecheckRunning = false; }
+            return;
+        }
         // Normal posts take priority. A pending read-only check must never
         // delay a different server that is already eligible to register.
         var jobs = _jobs.Where(x => WantsWork(x) && x.NextDueUtc <= DateTime.UtcNow)
@@ -2724,6 +2749,17 @@ internal sealed partial class AutomationForm : Form
                 "등록 작업은 제출되지 않았습니다. 30초 후 자동 재시도합니다.");
             AppendLog("안내: 사이트 로그인이 완료되지 않으면 내 계정의 로그인 상태를 확인하세요. " + ex.Message);
         }
+        catch (OwnedListConnectivityPendingException ex) when (!submitted && _system == "B")
+        {
+            // HTTP 0 or an unrendered own-list is not a failed submission.
+            // Pause *all B jobs* before doing a read-only VPN/IP recheck.
+            _bConnectionRecoveryUtc = DateTime.UtcNow.AddSeconds(90);
+            job.NextDueUtc = _bConnectionRecoveryUtc;
+            job.LastStatus = "B VPN·관리목록 연결 재확인 대기 (미제출)";
+            AppendLog($"B VPN 접속 대기: {job.Server} · {job.ListingNumber} · " + ex.Message);
+            AppendLog("B 자동등록 전체를 90초 대기한 뒤 VPN의 독립 IP를 재확인합니다. " +
+                "실제 재등록 요청은 하지 않았으며 A는 계속 실행됩니다.");
+        }
         catch (OperationCanceledException)
         {
             job.LastStatus = submitted ? "중지됨 (사이트 확인 필요)" : "중지됨";
@@ -2874,6 +2910,9 @@ internal sealed partial class AutomationForm : Form
             {
                 AppendLog($"재등록 검색 진단: 관리 목록 {visited.Count}페이지 검사 중 등록번호 해당 행 발견 " +
                     $"{row.NumberRows}건, 제목 일치 행 {row.TitleRows}건. {row.Message}");
+                if (_system == "B" && IsTransientOwnedListPageError(row))
+                    throw new OwnedListConnectivityPendingException(
+                        "내 등록글 관리목록이 열리지 않았습니다. 로그인 또는 B VPN 연결 상태를 재확인합니다. " + row.Message);
                 return row; // Never click on an unverified or mismatched row.
             }
             if (page.Listings.Count > 0 || page.IsEmptyList) loadedPages++;
