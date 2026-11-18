@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Net.Http;
@@ -71,6 +72,66 @@ internal static class TelegramQuotaAlerts
 internal sealed partial class AutomationForm
 {
     private bool _telegramMissingWarned;
+    private readonly Dictionary<string, DateTime> _lastTelegramIssueUtc = new(StringComparer.Ordinal);
+
+    // Only actionable failures should be sent. Normal manual pause/stop and
+    // hourly quotas never use this path; a repeated site outage is throttled.
+    private void NotifyAutomationIssue(string category, string details, ListingJob? job = null)
+    {
+        if (IsDisposed) return;
+        if (InvokeRequired)
+        {
+            if (IsHandleCreated)
+                BeginInvoke(new Action(() => NotifyAutomationIssue(category, details, job)));
+            return;
+        }
+        var now = DateTime.UtcNow;
+        if (_lastTelegramIssueUtc.TryGetValue(category, out var last) && now - last < TimeSpan.FromMinutes(15))
+            return;
+        _lastTelegramIssueUtc[category] = now;
+        string listing = job is null ? "" :
+            $"\n서버: {SafeTelegramIssueText(job.Server, 70)}" +
+            (ListingIdentity.HasNumber(job.ListingNumber) ? $"\n등록번호: {job.ListingNumber}" : "");
+        string message = $"⚠️ [Luzen 자동등록 알림]\n시스템: {_system}\n문제: {category}" + listing +
+            $"\n내용: {SafeTelegramIssueText(details, 220)}\n시간: {DateTime.Now:MM-dd HH:mm:ss}\n" +
+            "등록 결과가 불확실하면 해당 글을 자동 재제출하지 않습니다. 프로그램 실행 기록을 확인하세요.";
+        _ = SendAutomationIssueAsync(message);
+    }
+
+    private static string SafeTelegramIssueText(string value, int maxLength)
+    {
+        string safe = Regex.Replace(value ?? "", @"https?://\S+", "[주소 생략]", RegexOptions.IgnoreCase);
+        safe = Regex.Replace(safe,
+            @"\b(password|token|cookie|authorization|session)\s*[:=]\s*[^\s;,]+",
+            "$1=[비공개]", RegexOptions.IgnoreCase);
+        safe = safe.Replace('\r', ' ').Replace('\n', ' ');
+        return safe.Length > maxLength ? safe[..maxLength] + "…" : safe;
+    }
+
+    private async Task SendAutomationIssueAsync(string message)
+    {
+        try
+        {
+            var (token, chatId) = TelegramQuotaAlerts.Load();
+            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(chatId))
+            {
+                if (!_telegramMissingWarned)
+                {
+                    _telegramMissingWarned = true;
+                    AppendLog("오류 알림 미전송: 관리 → 텔레그램 알림 설정에서 봇을 연결하세요.");
+                }
+                return;
+            }
+            await TelegramQuotaAlerts.SendAsync(token, chatId, message);
+            if (!IsDisposed && IsHandleCreated)
+                BeginInvoke(new Action(() => AppendLog("텔레그램 오류 알림 전송 완료")));
+        }
+        catch (Exception)
+        {
+            if (!IsDisposed && IsHandleCreated)
+                BeginInvoke(new Action(() => AppendLog("텔레그램 오류 알림 전송 실패: 연결 설정과 인터넷 상태를 확인하세요.")));
+        }
+    }
 
     private void ReconcileSiteQuota(ListingJob job, int siteRemaining)
     {
@@ -125,7 +186,7 @@ internal sealed partial class AutomationForm
         };
         form.Controls.Add(new Label
         {
-            Text = "기존 보석 시세 추적기와 동일한 봇 토큰·채팅 ID를 입력하세요.\n토큰은 현재 Windows 사용자 계정으로 암호화해 저장합니다.",
+            Text = "A/B/C 자동등록의 작업 오류·예상 밖 중단을 알려줍니다.\n기존 텔레그램 봇을 사용하며 토큰은 Windows 사용자 계정으로 암호화합니다.",
             Left = 19, Top = 12, Width = 444, Height = 45
         });
         form.Controls.Add(new Label { Text = "봇 토큰", Left = 19, Top = 76, Width = 88, Height = 25 });
