@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.43",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.43/LuzenBrowser_22.2.43_BinaryUpdate.zip",
-  "sha256": "5f0a312e83435faa511fcc7658f545113540de6aa3a3cee5206168ff16ea7bb3",
+  "version": "22.2.44",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.44/LuzenBrowser_22.2.44_BinaryUpdate.zip",
+  "sha256": "74278f134e884e81ef2487457ef61fe2013b61f2d64fd2b9b1ab495e9bedca2d",
   "format": "binary",
-  "releaseNotes": "v22.2.43: 사이트 가격 수정 버튼 탐색을 내부 프레임과 목록 아이콘 속성까지 확장했습니다. 수정 버튼을 찾지 못하면 원인을 확인할 수 있도록 후보 버튼 진단을 오류 기록에 남깁니다. 등록번호·제목·기존 가격 확인과 제출 후 검증은 유지하며 실제 사이트 첫 적용은 확인이 필요합니다."
+  "releaseNotes": "v22.2.44: 원본 프로그램처럼 목록에서 여러 물품의 가격을 일괄 편집한 뒤 [선택 글 사이트 가격 반영]으로 순차 적용할 수 있습니다. 한 번에 최대 20건, 명시적 확인, 등록번호·기존 가격 재검증, 사이트 반영 확인을 요구합니다. 한 건이라도 불확실하면 중단하며 임의로 재시도하지 않습니다. 실제 사이트 수정 경로는 계정에서 검증이 필요합니다."
 }
