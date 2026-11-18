@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.60",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.60/LuzenBrowser_22.2.60_BinaryUpdate.zip",
-  "sha256": "77403a917cd1848ddfeb1dd9dd5782958001b034b54753911cc694080d11c314",
+  "version": "22.2.61",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.61/LuzenBrowser_22.2.61_BinaryUpdate.zip",
+  "sha256": "b31c657760f560482b074883c816fa3c13379eb707292033036aa87b7bba3c74",
   "format": "binary",
-  "releaseNotes": "v22.2.60 화면 대폭 단순화: 중복 실행 버튼 줄을 없애고 A/B/C 계정 전환을 한 개 드롭다운으로 합쳤습니다. 첫 줄은 내 등록글 불러오기·자동 시작·일시정지·즉시 중지·관리만 남기고, 그 아래 등록 현황에서는 물품 추가·같은 가격 선택·일괄수정·선택 가격 반영과 더보기만 표시합니다. 진단·계정·시간당 횟수·복제·삭제·저장·업데이트 기능은 관리 메뉴에서 계속 사용 가능하며, 사이트 가격 순차 변경 중 진행 상태도 현황 줄에서 확인할 수 있습니다."
+  "releaseNotes": "v22.2.61 정렬 및 가격 일괄수정 흐름 개선: 등록 현황과 물품 편집 표에서 서버 머리글을 누르면 가나다순·역순으로, 가격(원) 머리글을 누르면 숫자 기준 오름차순·내림차순으로 정렬됩니다. 체크 선택은 유지됩니다. 가격 일괄수정의 적용 버튼은 프로그램에만 저장할지 사이트에 순차 반영할지 바로 선택하도록 변경했습니다. 사이트 반영을 선택한 경우 별도 버튼을 다시 누를 필요 없이 기존 구매글 1건씩 검증된 POST·사이트 단가 확인을 진행하고 중복·불확실한 전송을 차단합니다. 등록글 조회가 진행 중이면 읽기 전용 조회만 취소하고 완료를 기다린 뒤 일괄수정을 열어 조회 대기 팝업을 줄였습니다."
 }
