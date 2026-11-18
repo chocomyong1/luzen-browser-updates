@@ -204,38 +204,78 @@ internal sealed partial class AutomationForm : Form
             Dock = DockStyle.Fill,
             Orientation = Orientation.Horizontal,
             FixedPanel = FixedPanel.Panel2,
-            SplitterWidth = 8,
+            SplitterWidth = 5,
             BorderStyle = BorderStyle.None,
-            BackColor = UiTheme.Border
+            BackColor = UiTheme.Canvas
         };
+        // The native Windows tab borders gave this screen its dated appearance.
+        // Keep TabControl for existing application logic, but clip its native
+        // headers and supply a separate, accessible segmented navigation.
+        var tabViewport = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
+        _editorTabs.Dock = DockStyle.None;
+        const int hiddenNativeHeader = 47;
+        void FitEditorPages()
+        {
+            if (tabViewport.ClientSize.Width < 1 || tabViewport.ClientSize.Height < 1) return;
+            _editorTabs.Location = new Point(-4, -hiddenNativeHeader);
+            _editorTabs.Size = new Size(tabViewport.ClientSize.Width + 8,
+                tabViewport.ClientSize.Height + hiddenNativeHeader + 4);
+        }
+        tabViewport.Controls.Add(_editorTabs);
+        tabViewport.SizeChanged += (_, _) => FitEditorPages();
         bool logSplitInitialized = false;
+        bool logExpanded = false;
+        int expandedLogHeight = 155;
         contentSplit.SizeChanged += (_, _) =>
         {
             if (logSplitInitialized || contentSplit.Height < 370) return;
-            // Apply minimum sizes only after layout allocated enough space.
-            contentSplit.SplitterDistance = contentSplit.Height - contentSplit.SplitterWidth - 155;
             contentSplit.Panel1MinSize = 200;
-            contentSplit.Panel2MinSize = 70;
+            contentSplit.Panel2MinSize = 39;
+            // Listings are the primary surface. Logs remain a one-click drawer.
+            contentSplit.SplitterDistance = contentSplit.Height - contentSplit.SplitterWidth - 43;
             logSplitInitialized = true;
         };
-        contentSplit.Panel1.Controls.Add(_editorTabs);
+        contentSplit.Panel1.Controls.Add(tabViewport);
         outer.Controls.Add(contentSplit, 0, 0);
         var logPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         logPanel.Controls.Add(_log);
         var logHeader = new TableLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 34, ColumnCount = 3, RowCount = 1,
-            BackColor = UiTheme.SurfaceAlt
+            Dock = DockStyle.Top, Height = 39, ColumnCount = 3, RowCount = 1,
+            BackColor = UiTheme.Surface
         };
         logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
         logHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
-        logHeader.Controls.Add(new Label
+        var logToggle = new Label
         {
-            Text = "실행 기록   ·   위 경계선을 드래그하여 높이 조절",
-            Dock = DockStyle.Fill, Padding = new Padding(12, 8, 0, 0),
-            ForeColor = UiTheme.Muted
-        }, 0, 0);
+            Text = "▸  실행 기록", Cursor = Cursors.Hand,
+            Dock = DockStyle.Fill, Padding = new Padding(18, 9, 0, 0),
+            ForeColor = UiTheme.Text, Font = new Font(Font, FontStyle.Bold)
+        };
+        void SetLogExpanded(bool expanded)
+        {
+            if (contentSplit.Height < 270) return;
+            if (logExpanded && contentSplit.Panel2.Height > 65)
+                expandedLogHeight = contentSplit.Panel2.Height;
+            logExpanded = expanded;
+            _log.Visible = expanded;
+            logToggle.Text = expanded ? "▾  실행 기록" : "▸  실행 기록";
+            int target = expanded ? Math.Max(125, expandedLogHeight) : 43;
+            target = Math.Min(target, contentSplit.Height - contentSplit.Panel1MinSize - contentSplit.SplitterWidth);
+            contentSplit.SplitterDistance = contentSplit.Height - contentSplit.SplitterWidth - target;
+        }
+        logToggle.Click += (_, _) => SetLogExpanded(!logExpanded);
+        contentSplit.SplitterMoved += (_, _) =>
+        {
+            // Dragging the original resize divider still opens/closes the
+            // drawer; the label and log visibility follow the actual height.
+            logExpanded = contentSplit.Panel2.Height > 65;
+            _log.Visible = logExpanded;
+            logToggle.Text = logExpanded ? "▾  실행 기록" : "▸  실행 기록";
+            if (logExpanded) expandedLogHeight = contentSplit.Panel2.Height;
+        };
+        logHeader.Controls.Add(logToggle, 0, 0);
         _logErrors.Click += (_, _) =>
         {
             _showOnlyErrors = !_showOnlyErrors;
@@ -268,10 +308,12 @@ internal sealed partial class AutomationForm : Form
         logHeader.Controls.Add(copyErrors, 2, 0);
         logPanel.Controls.Add(logHeader);
         contentSplit.Panel2.Controls.Add(logPanel);
+        _log.Visible = false;
 
         BuildAutoRegistrationTab();
         BuildJobTab();
         BuildWorkflowTab();
+        contentSplit.Panel1.Controls.Add(BuildSegmentedNavigation());
         ConfigureJobsGrid();
         ConfigureAutoGrid();
         InstallListingHeaderSorting();
@@ -746,6 +788,57 @@ internal sealed partial class AutomationForm : Form
 
     // V12: This is an INDEPENDENT automation view. V11's two top navigation
     // buttons both selected the same tab; therefore they appeared to do nothing.
+    private Control BuildSegmentedNavigation()
+    {
+        var nav = new Panel { Dock = DockStyle.Top, Height = 61, BackColor = UiTheme.Canvas };
+        nav.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 1, BackColor = UiTheme.Border });
+        var choices = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Left, Width = 477, Height = 59, WrapContents = false,
+            Padding = new Padding(19, 12, 0, 5), BackColor = UiTheme.Canvas
+        };
+        var pages = new[] { _autoTab, _itemTab, _workflowTab };
+        var labels = new[] { "등록 현황", "물품 편집", "고급 설정" };
+        var buttons = new List<Button>();
+        for (int i = 0; i < pages.Length; i++)
+        {
+            TabPage page = pages[i];
+            var button = new Button
+            {
+                Text = labels[i], Width = 140, Height = 34,
+                Margin = new Padding(0, 0, 6, 0)
+            };
+            UiTheme.StyleButton(button);
+            button.Click += (_, _) => _editorTabs.SelectedTab = page;
+            choices.Controls.Add(button);
+            buttons.Add(button);
+        }
+        void UpdateSelection()
+        {
+            for (int i = 0; i < buttons.Count; i++)
+            {
+                bool chosen = _editorTabs.SelectedTab == pages[i];
+                var button = buttons[i];
+                button.BackColor = chosen ? UiTheme.Surface : UiTheme.Canvas;
+                button.ForeColor = chosen ? UiTheme.Text : UiTheme.Muted;
+                button.FlatAppearance.BorderSize = chosen ? 1 : 0;
+                button.FlatAppearance.BorderColor = UiTheme.Border;
+                button.Font = new Font("Segoe UI", 9.5F,
+                    chosen ? FontStyle.Bold : FontStyle.Regular);
+            }
+        }
+        _editorTabs.SelectedIndexChanged += (_, _) => UpdateSelection();
+        _autoSummary.Dock = DockStyle.Fill;
+        _autoSummary.BackColor = UiTheme.Canvas;
+        _autoSummary.AutoEllipsis = true;
+        _autoSummary.TextAlign = ContentAlignment.MiddleRight;
+        _autoSummary.Padding = new Padding(2, 0, 20, 0);
+        nav.Controls.Add(_autoSummary);
+        nav.Controls.Add(choices);
+        UpdateSelection();
+        return nav;
+    }
+
     private void BuildAutoRegistrationTab()
     {
         _editorTabs.TabPages.Add(_autoTab);
@@ -763,17 +856,17 @@ internal sealed partial class AutomationForm : Form
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
-            UiTheme.StyleButton(b, name == "선택 물품 일괄수정" ?
+            UiTheme.StyleButton(b, name == "일괄수정" ?
                 UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
             b.Width = Math.Max(width, TextRenderer.MeasureText(name, b.Font).Width + b.Padding.Horizontal + 22);
             b.Click += (_, _) => click();
             buttons.Controls.Add(b);
             return b;
         }
-        MakeButton("+ 물품 추가", 104, AddListing);
+        MakeButton("+ 새 물품", 102, AddListing);
         MakeButton("같은 가격 선택", 125, SelectSamePriceListings);
-        MakeButton("선택 물품 일괄수정", 150, BulkEditSelected);
-        MakeButton("가격 반영 예약", 129, () => _ = ApplySelectedSitePricesAsync());
+        MakeButton("일괄수정", 108, BulkEditSelected);
+        MakeButton("가격 변경 예약", 133, () => _ = ApplySelectedSitePricesAsync());
         var batchMenu = new ContextMenuStrip();
         batchMenu.Items.Add("선택 물품 편집", null, (_, _) => EditAutoSelectedJob());
         batchMenu.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
@@ -781,12 +874,22 @@ internal sealed partial class AutomationForm : Form
         batchMenu.Items.Add(new ToolStripSeparator());
         batchMenu.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
         batchMenu.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
+        batchMenu.Items.Add(new ToolStripSeparator());
+        var extraColumns = new ToolStripMenuItem("최소·최대·주기 열 표시");
+        extraColumns.Click += (_, _) =>
+        {
+            bool show = !extraColumns.Checked;
+            extraColumns.Checked = show;
+            foreach (DataGridViewColumn column in _autoGrid.Columns)
+                if (column.DataPropertyName is "MinQuantity" or "MaxQuantity" or "IntervalMinutes")
+                    column.Visible = show;
+        };
+        batchMenu.Items.Add(extraColumns);
         Button? batchButton = null;
         batchButton = MakeButton("더보기 ▾", 95,
             () => batchMenu.Show(batchButton!, 0, batchButton!.Height));
         _autoGrid.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) EditAutoSelectedJob(); };
         _autoTab.Controls.Add(_autoGrid);
-        _autoTab.Controls.Add(_autoSummary);
         _autoTab.Controls.Add(buttons);
     }
 
