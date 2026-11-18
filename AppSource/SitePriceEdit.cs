@@ -220,17 +220,28 @@ internal static class SitePriceEdit
       const priceInput=matching[0];
       const form=priceInput.closest('form')||(forms.length===1?forms[0]:null);
       const root=form||document;
+      const buttonText=e=>String(e.innerText||e.value||'').replace(/\s+/g,'').trim();
       const submitControls=scope=>[...scope.querySelectorAll('button,input[type="submit"],input[type="button"],a[onclick]')]
         .filter(visible).filter(e=>{
-          const t=String(e.innerText||e.value||'').replace(/\s+/g,'').trim();
-          return /^(재등록|수정|수정하기|변경|변경하기|저장|저장하기)$/.test(t);
+          return /^(재등록|수정|수정하기|변경|변경하기|저장|저장하기)$/.test(buttonText(e));
         });
       let buttons=submitControls(root);
       // Some older templates place the footer outside the <form>. Only a
       // SINGLE site-wide button with the exact submit label is acceptable.
       if(buttons.length===0&&root!==document)buttons=submitControls(document);
+      // The edit form may also contain a separate '재등록' control. Prefer
+      // an unambiguous explicit edit action; never guess between duplicates.
+      const rank=t=>t==='수정하기'?5:t==='수정'?4:t==='변경하기'?3:
+        t==='변경'?2:t==='저장하기'?1:t==='저장'?1:0;
+      if(buttons.length>1){
+        const top=Math.max(...buttons.map(e=>rank(buttonText(e))));
+        buttons=buttons.filter(e=>rank(buttonText(e))===top);
+      }
       if(buttons.length!==1)return result('error',buttons.length?
-        '수정 제출 버튼이 여러 개라 중단했습니다':'재등록/수정 제출 버튼을 확인하지 못했습니다',old,buttons.length);
+        '동일 우선순위의 수정 제출 버튼이 여러 개라 중단했습니다: '+buttons.slice(0,5).map(e=>
+          buttonText(e)+'/'+String(e.tagName||'').toLowerCase()+'/'+String(e.type||'')+'/'+
+          String(e.id||'').slice(0,35)+'/'+String(e.getAttribute?.('onclick')||'').match(/^\s*[\w$]+/)?.[0]).join(' | '):
+        '재등록/수정 제출 버튼을 확인하지 못했습니다',old,buttons.length);
       if(!a.submit)return result('ready','사이트 등록번호·현재 단가·수정 제출 버튼 확인',old,1);
       if(money(priceInput.value)!==old)return result('error','제출 직전 현재 사이트 가격이 변경됐습니다');
       const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
