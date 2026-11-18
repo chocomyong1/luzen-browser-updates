@@ -89,15 +89,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.49'
+          $version = '22.2.50'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.49
-          path: LuzenBrowser_22.2.49_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.50
+          path: LuzenBrowser_22.2.50_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -105,7 +105,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.49'
+          $version = '22.2.50'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -117,7 +117,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.49: 가격 수정 화면에 재등록·수정 등 여러 제출 버튼이 있는 경우 가장 명확한 [수정하기] 버튼을 우선합니다. 같은 우선순위의 버튼이 여러 개면 제출하지 않고 후보 버튼 정보를 오류 메시지로 표시합니다. 등록번호·기존 가격 검증과 제출 후 확인은 유지합니다.'
+            releaseNotes = 'v22.2.50 안전 조치: 사이트의 캐릭터명 저장 버튼이 가격 수정하기로 잘못 인식될 수 있어 실제 가격 입력·수정 제출 및 일괄 가격 변경을 일시 중지했습니다. 현재 글의 가격 버튼 진단은 등록번호·기존 단가를 확인한 뒤 버튼 영역·핸들러를 읽기 전용으로 기록합니다. 기존 확인 대기 항목은 자동 재시도·활성화하지 않습니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
