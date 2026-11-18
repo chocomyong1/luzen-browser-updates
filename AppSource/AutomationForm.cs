@@ -33,7 +33,7 @@ internal sealed partial class AutomationForm : Form
     private readonly ComboBox _fServer = FilterDropdown(139);
     private readonly ComboBox _fCategory = FilterDropdown(110);
     private readonly ComboBox _fPaid = FilterDropdown(99);
-    private readonly TextBox _fName = new() { Width = 210, PlaceholderText = "제목 검색" };
+    private readonly TextBox _fName = new() { Width = 216, PlaceholderText = "물품 제목 검색" };
     private readonly Label _filterSummary = new() { AutoSize = true, ForeColor = UiTheme.Muted };
     // Retained internally for compatibility with saved jobs; no sub-ID editor.
     private readonly TextBox _subId = new(), _siteId = new();
@@ -131,8 +131,9 @@ internal sealed partial class AutomationForm : Form
     };
     private readonly Label _autoSummary = new()
     {
-        Dock = DockStyle.Top, Height = 32, TextAlign = ContentAlignment.MiddleLeft,
-        Padding = new Padding(10, 5, 0, 0)
+        Dock = DockStyle.Top, Height = 39, TextAlign = ContentAlignment.MiddleLeft,
+        Padding = new Padding(19, 4, 0, 0), BackColor = UiTheme.Canvas,
+        ForeColor = UiTheme.Muted
     };
 
 
@@ -160,7 +161,7 @@ internal sealed partial class AutomationForm : Form
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(960, 600);
         Size = new Size(1500, 890);
-        Font = new Font("맑은 고딕", 9.5F);
+        Font = new Font("Segoe UI", 9.5F);
         Icon = new Icon(Settings.Asset("iBook1.ico"));
         _hourLimit.Value = Math.Clamp(_config.MaxSubmissionsPerHour, 1, 1000);
         _editMode.Items.AddRange(new object[] { "판매등록", "구매등록", "재등록" });
@@ -277,8 +278,8 @@ internal sealed partial class AutomationForm : Form
         InitializeBatchContextMenus();
         ConfigureStepsGrid();
         _jobsGrid.EnableHeadersVisualStyles = false;
-        _jobsGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(219, 225, 232);
-        _jobsGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(244, 246, 250);
+        _jobsGrid.ColumnHeadersDefaultCellStyle.BackColor = UiTheme.SurfaceAlt;
+        _jobsGrid.AlternatingRowsDefaultCellStyle.BackColor = UiTheme.Canvas;
         _jobsGrid.ColumnHeadersHeight = 32;
         _jobsGrid.RowTemplate.Height = 27;
         InitializeModernGrids();
@@ -453,48 +454,71 @@ internal sealed partial class AutomationForm : Form
         return row;
     }
 
-    // V13: original-style search bar. Search applies ONLY to local listing rows,
-    // not to browser navigation, stored credentials, or the scheduler queue.
+    // Apple-inspired, progressive-disclosure filters: the everyday game/server/
+    // title controls stay visible. Less-used account/type filters open on demand.
+    // Search applies ONLY to local listing rows, never to site jobs or scheduling.
     private Control BuildSearchFilters()
     {
-        var search = new Panel { Dock = DockStyle.Top, Height = 104, BackColor = UiTheme.SurfaceAlt };
-        var first = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 35, Padding = new Padding(10, 4, 0, 1), WrapContents = false, AutoScroll = true };
-        var second = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 35, Padding = new Padding(10, 4, 0, 1), WrapContents = false, AutoScroll = true };
-        var third = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 33, Padding = new Padding(12, 3, 0, 0), WrapContents = false, AutoScroll = true };
+        var search = new Panel { Dock = DockStyle.Top, Height = 51, BackColor = UiTheme.Surface };
+        var first = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top, Height = 50, Padding = new Padding(15, 9, 0, 5),
+            WrapContents = false, AutoScroll = true, BackColor = UiTheme.Surface
+        };
+        var advanced = new Panel { Dock = DockStyle.Top, Height = 88,
+            BackColor = UiTheme.SurfaceAlt, Visible = false };
+        var second = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top, Height = 43, Padding = new Padding(15, 8, 0, 4),
+            WrapContents = false, AutoScroll = true, BackColor = UiTheme.SurfaceAlt
+        };
+        var third = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top, Height = 43, Padding = new Padding(15, 7, 0, 3),
+            WrapContents = false, AutoScroll = true, BackColor = UiTheme.SurfaceAlt
+        };
         static Label Tag(string title) => new()
         {
-            Text = title, AutoSize = true, Height = 27, Padding = new Padding(5, 5, 4, 3),
-            ForeColor = UiTheme.Muted, BackColor = UiTheme.SurfaceAlt,
-            Margin = new Padding(2, 2, 2, 2)
+            Text = title, AutoSize = true, Height = 29, Padding = new Padding(4, 7, 5, 0),
+            ForeColor = UiTheme.Muted, BackColor = Color.Transparent,
+            Margin = new Padding(2, 1, 2, 1)
         };
         void Add(FlowLayoutPanel line, string caption, Control ctrl)
         {
             line.Controls.Add(Tag(caption));
-            ctrl.Margin = new Padding(0, 2, 6, 2); line.Controls.Add(ctrl);
+            ctrl.Margin = new Padding(0, 2, 12, 2); line.Controls.Add(ctrl);
         }
-        Add(first, "서브 ID", _fSub);
-        Add(first, "사이트", _fSite);
-        Add(first, "사이트 ID", _fSiteId);
-        Add(first, "판매/구매", _fOperation);
-        Add(second, "게임", _fGame);
-        Add(second, "서버", _fServer);
-        Add(second, "물품구분", _fCategory);
-        Add(second, "물품명", _fName);
-        Add(second, "유료등록", _fPaid);
-        var reset = new Button { Text = "조건 초기화", Width = 102, Height = 27 };
+        Add(first, "게임", _fGame);
+        Add(first, "서버", _fServer);
+        Add(first, "검색", _fName);
+        Add(second, "서브 ID", _fSub);
+        Add(second, "사이트", _fSite);
+        Add(second, "사이트 ID", _fSiteId);
+        Add(second, "거래 구분", _fOperation);
+        Add(third, "물품구분", _fCategory);
+        Add(third, "유료등록", _fPaid);
+        var reset = new Button { Text = "필터 초기화", Width = 104, Height = 30,
+            Margin = new Padding(9, 0, 0, 0) };
         UiTheme.StyleButton(reset);
         reset.Click += (_, _) => { ResetFiltersToAll(); RefreshFilteredLists(); };
-        third.Controls.Add(new Label
-        {
-            Text = "검색·필터", AutoSize = true, Font = new Font(Font, FontStyle.Bold),
-            ForeColor = UiTheme.Text, Padding = new Padding(2, 5, 11, 0)
-        });
         third.Controls.Add(reset);
-        _filterSummary.Margin = new Padding(13, 6, 0, 0);
-        third.Controls.Add(_filterSummary);
-        // Dock ordering: last-added Top control is highest.
-        search.Controls.Add(third);
-        search.Controls.Add(second);
+        var toggle = new Button { Text = "세부 필터  ▾", Width = 118, Height = 31,
+            Margin = new Padding(0, 0, 8, 0) };
+        UiTheme.StyleButton(toggle);
+        toggle.Click += (_, _) =>
+        {
+            bool expanded = !advanced.Visible;
+            advanced.Visible = expanded;
+            search.Height = expanded ? 139 : 51;
+            toggle.Text = expanded ? "세부 필터  ▴" : "세부 필터  ▾";
+        };
+        first.Controls.Add(toggle);
+        _filterSummary.Margin = new Padding(13, 7, 0, 0);
+        first.Controls.Add(_filterSummary);
+        // Last added Top control is highest; keep the compact search always on top.
+        advanced.Controls.Add(third);
+        advanced.Controls.Add(second);
+        search.Controls.Add(advanced);
         search.Controls.Add(first);
         foreach (var combo in new[] { _fSub, _fSite, _fSiteId, _fOperation, _fGame, _fServer, _fCategory, _fPaid })
             combo.SelectedIndexChanged += (_, _) =>
@@ -622,7 +646,7 @@ internal sealed partial class AutomationForm : Form
     {
         if (!_filterReady) return;
         int marked = _filteredJobs.Count(j => j.SelectedForBulk);
-        _filterSummary.Text = $"조회 {_filteredJobs.Count}/{_jobs.Count}건  |  체크 선택 {marked}건";
+        _filterSummary.Text = $"조회 {_filteredJobs.Count}/{_jobs.Count}개   ·   선택 {marked}개";
         if (_batchCountLabel is not null && !_batchCountLabel.IsDisposed)
             _batchCountLabel.Text = $"선택 {marked}건  /  조회 {_filteredJobs.Count}건";
     }
@@ -676,9 +700,9 @@ internal sealed partial class AutomationForm : Form
         AppendLog($"같은 가격 선택: {reference.SiteId} · {amount:N0}원 · {matched.Count}건 중 {batch.Count}건 (본인 구매글만)");
         MessageBox.Show(this,
             $"{reference.SiteId} · {amount:N0}원인 본인 구매글 {matched.Count}건 중 {batch.Count}건을 체크했습니다.\n\n" +
-            "[일괄수정]에서 새 금액을 적용한 다음 [선택 가격 반영]을 누르세요.\n" +
-            "확인 대기·판매글·다른 계정 물품은 제외됩니다. 실제 반영은 최대 20건씩 진행됩니다.\n" +
-            (matched.Count > 20 ? "남은 물품은 첫 묶음의 가격 반영을 확인한 후 같은 가격 선택을 다시 눌러 주세요." : ""),
+            "[일괄수정]에서 새 금액을 적용하고 [예]를 누르면 다음 자동등록 순번에 예약됩니다.\n" +
+            "확인 대기·판매글·다른 계정 물품은 제외됩니다. 한 번에 최대 20개씩 예약할 수 있습니다.\n" +
+            (matched.Count > 20 ? "나머지는 첫 묶음을 예약한 뒤 조건을 다시 선택해 주세요." : ""),
             "같은 가격 선택 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
@@ -727,19 +751,19 @@ internal sealed partial class AutomationForm : Form
         _editorTabs.TabPages.Add(_autoTab);
         var buttons = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top, Height = 44, WrapContents = false, AutoScroll = true,
-            BackColor = UiTheme.Surface, Padding = new Padding(10, 7, 0, 0)
+            Dock = DockStyle.Top, Height = 57, WrapContents = false, AutoScroll = true,
+            BackColor = UiTheme.Surface, Padding = new Padding(17, 12, 0, 8)
         };
         Button MakeButton(string name, int width, Action click)
         {
             var b = new Button
             {
                 Text = name,
-                Height = 30, Margin = new Padding(3, 0, 5, 2),
+                Height = 33, Margin = new Padding(2, 0, 8, 1),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
-            UiTheme.StyleButton(b, name == "선택 가격 반영" ?
+            UiTheme.StyleButton(b, name == "선택 물품 일괄수정" ?
                 UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
             b.Width = Math.Max(width, TextRenderer.MeasureText(name, b.Font).Width + b.Padding.Horizontal + 22);
             b.Click += (_, _) => click();
@@ -749,7 +773,7 @@ internal sealed partial class AutomationForm : Form
         MakeButton("+ 물품 추가", 104, AddListing);
         MakeButton("같은 가격 선택", 125, SelectSamePriceListings);
         MakeButton("선택 물품 일괄수정", 150, BulkEditSelected);
-        MakeButton("선택 가격 반영", 129, () => _ = ApplySelectedSitePricesAsync());
+        MakeButton("가격 반영 예약", 129, () => _ = ApplySelectedSitePricesAsync());
         var batchMenu = new ContextMenuStrip();
         batchMenu.Items.Add("선택 물품 편집", null, (_, _) => EditAutoSelectedJob());
         batchMenu.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
@@ -832,9 +856,10 @@ internal sealed partial class AutomationForm : Form
         if (_autoSummary.IsDisposed) return;
         int enabled = _jobs.Count(x => x.Enabled);
         int pending = _jobs.Count(x => x.RequiresReview);
+        int scheduledPrices = _jobs.Count(x => !string.IsNullOrWhiteSpace(x.PendingSitePriceTarget));
         string state = _sitePriceBatchRunning ? _state.Text :
             _schedulerRunning ? "자동 실행 중" : "중지/대기";
-        _autoSummary.Text = $"총 {_jobs.Count}개   |   자동 실행 {enabled}개   |   확인 필요 {pending}개   |   상태: {state}";
+        _autoSummary.Text = $"전체 {_jobs.Count}개     ·     자동 사용 {enabled}개     ·     가격 예약 {scheduledPrices}개     ·     확인 필요 {pending}개     ·     {state}";
     }
 
     private void EditAutoSelectedJob()
@@ -904,13 +929,13 @@ internal sealed partial class AutomationForm : Form
         };
         split.Panel1.Controls.Add(_jobsGrid);
         // Keep everyday actions visible; less-used settings live in one dropdown.
-        var toolsPanel = new Panel { Dock = DockStyle.Top, Height = 43, BackColor = UiTheme.Surface };
-        var primary = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, AutoScroll = true,
-            WrapContents = false, Padding = new Padding(10, 5, 0, 0), BackColor = UiTheme.Surface };
+        var toolsPanel = new Panel { Dock = DockStyle.Top, Height = 54, BackColor = UiTheme.Surface };
+        var primary = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 53, AutoScroll = true,
+            WrapContents = false, Padding = new Padding(15, 10, 0, 6), BackColor = UiTheme.Surface };
         Button ActionButton(string caption, int width, Action run, bool primaryAction = false)
         {
-            var button = new Button { Text = caption, Width = width, Height = 30,
-                Margin = new Padding(2, 0, 7, 0) };
+            var button = new Button { Text = caption, Width = width, Height = 33,
+                Margin = new Padding(2, 0, 9, 0) };
             UiTheme.StyleButton(button, primaryAction ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
             void FitText() => button.Width = Math.Max(width,
                 TextRenderer.MeasureText(caption, button.Font).Width + button.Padding.Horizontal + 26);
@@ -921,7 +946,7 @@ internal sealed partial class AutomationForm : Form
         }
         primary.Controls.Add(ActionButton("같은 가격 선택", 122, SelectSamePriceListings));
         primary.Controls.Add(ActionButton("일괄수정", 105, BulkEditSelected, true));
-        primary.Controls.Add(ActionButton("선택 가격 반영", 138, () => _ = ApplySelectedSitePricesAsync()));
+        primary.Controls.Add(ActionButton("가격 반영 예약", 138, () => _ = ApplySelectedSitePricesAsync()));
         var selectionTools = new ContextMenuStrip();
         selectionTools.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
         selectionTools.Items.Add("선택 해제", null, (_, _) => SetVisibleBatchSelection(false));
@@ -929,7 +954,7 @@ internal sealed partial class AutomationForm : Form
         selectionTools.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
         selectionTools.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
         selectionTools.Items.Add(new ToolStripSeparator());
-        selectionTools.Items.Add("선택 물품 사이트 가격 반영 (1건)", null, (_, _) => _ = ApplySelectedSitePriceAsync());
+        selectionTools.Items.Add("선택 물품 가격 변경 예약 (1건)", null, (_, _) => _ = ApplySelectedSitePriceAsync());
         selectionTools.Items.Add("표 넓게 보기/복원", null, (_, _) => ToggleWideGrid());
         selectionTools.Items.Add("열 너비 초기화", null, (_, _) => ResetGridColumns());
         selectionTools.Items.Add(new ToolStripSeparator());
@@ -939,9 +964,8 @@ internal sealed partial class AutomationForm : Form
         selectionToolsButton = ActionButton("더보기 ▾", 99,
             () => selectionTools.Show(selectionToolsButton!, 0, selectionToolsButton!.Height));
         primary.Controls.Add(selectionToolsButton);
-        _batchCountLabel = new Label { AutoSize = true, ForeColor = UiTheme.Primary,
-            Font = new Font(Font, FontStyle.Bold), Padding = new Padding(7, 8, 0, 0) };
-        primary.Controls.Add(_batchCountLabel);
+        // The visible count lives in the filter/search strip. Repeating it on
+        // the action toolbar made the screen look busier without adding value.
         toolsPanel.Controls.Add(primary);
         split.Panel1.Controls.Add(toolsPanel);
         split.Panel1.Controls.Add(BuildSearchFilters());
@@ -1003,7 +1027,7 @@ internal sealed partial class AutomationForm : Form
 
         // The right editor can be only ~320 px wide. A fixed 80px footer used
         // to clip its third/fourth line of buttons when Windows scaling changed.
-        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 80,
+        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 51,
             AutoScroll = false, WrapContents = true, Padding = new Padding(5, 5, 5, 5),
             BackColor = Color.White };
         void FitBottomHeight()
@@ -1021,9 +1045,9 @@ internal sealed partial class AutomationForm : Form
             if (bottom.Height != height) bottom.Height = height;
         }
         bottom.SizeChanged += (_, _) => FitBottomHeight();
-        void Button(string text, int width, Action action)
+        Button ActionButton(string text, int width, Action action, bool primaryAction = false)
         {
-            var b = new Button { Text = text, Width = width, Height = 30,
+            var b = new Button { Text = text, Width = width, Height = 33,
                 TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(3) };
             void FitText()
             {
@@ -1033,12 +1057,15 @@ internal sealed partial class AutomationForm : Form
             }
             b.FontChanged += (_, _) => FitText();
             b.Click += (_, _) => action(); bottom.Controls.Add(b);
+            UiTheme.StyleButton(b, primaryAction ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
             FitText();
+            return b;
         }
-        Button("물품 저장", 95, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); });
-        Button("구매글 가격 반영", 133, () => _ = ApplySelectedSitePriceAsync());
-        Button("서버별 복제", 103, CopySelectedToOtherServers);
-        Button("완료 표시 초기화", 126, () =>
+        ActionButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
+        ActionButton("가격 변경 예약", 131, () => _ = ApplySelectedSitePriceAsync());
+        var extraActions = new ContextMenuStrip();
+        extraActions.Items.Add("서버별 복제", null, (_, _) => CopySelectedToOtherServers());
+        extraActions.Items.Add("완료 표시 초기화", null, (_, _) =>
         {
             if (_selected is null) return;
             if (_selected.RequiresReview)
@@ -1050,7 +1077,7 @@ internal sealed partial class AutomationForm : Form
             _selected.NextDueUtc = DateTime.MinValue; _selected.LastStatus = "대기";
             SaveAll(); _jobsGrid.Refresh();
         });
-        Button("사이트 확인 후 보류 해제", 167, () =>
+        extraActions.Items.Add("사이트 확인 후 보류 해제", null, (_, _) =>
         {
             if (_selected is null || !_selected.RequiresReview) return;
             if (MessageBox.Show(this, "아이템매니아에서 실제 등록 여부를 먼저 확인했습니까? 중복 등록이 없는 것을 확인한 경우에만 해제하세요.",
@@ -1067,12 +1094,15 @@ internal sealed partial class AutomationForm : Form
             _selected.NextDueUtc = DateTime.MaxValue;
             SaveAll(); _jobsGrid.Refresh(); RefreshAutoSummary();
         });
+        Button? extraButton = null;
+        extraButton = ActionButton("추가 작업  ▾", 112,
+            () => extraActions.Show(extraButton!, 0, extraButton!.Height));
         right.SizeChanged += (_, _) => FitBottomHeight();
         bottom.HandleCreated += (_, _) => FitBottomHeight();
         right.Controls.Add(scroll);
         right.Controls.Add(bottom);
-        right.Controls.Add(new Label { Text = "물품 설정  ·  원본 양식의 주요 선택 항목", Dock = DockStyle.Top, Height = 27,
-            Padding = new Padding(12, 6, 0, 0), BackColor = UiTheme.SurfaceAlt,
+        right.Controls.Add(new Label { Text = "물품 상세 설정", Dock = DockStyle.Top, Height = 35,
+            Padding = new Padding(16, 9, 0, 0), BackColor = UiTheme.Canvas,
             ForeColor = UiTheme.Text, Font = new Font(this.Font, FontStyle.Bold) });
         split.Panel2.Controls.Add(right);
         page.Controls.Add(split);
@@ -2200,6 +2230,48 @@ internal sealed partial class AutomationForm : Form
         foreach (var job in jobs)
         {
             if (!CanRunNow(job, out _)) continue;
+            if (!string.IsNullOrWhiteSpace(job.PendingSitePriceTarget))
+            {
+                // A requested price change replaces THIS job's regular repost
+                // turn; it is never an extra batch and shares CanRunNow/quota.
+                // Local-only edits after the reservation invalidate the old
+                // amount instead of changing what the user approved.
+                if (!TrySitePrice(job.PendingSitePriceTarget, out long reserved) ||
+                    !TrySitePrice(job.Price, out long local) || reserved != local)
+                {
+                    job.PendingSitePriceTarget = "";
+                    _config.Save();
+                    AppendLog($"가격 예약 취소: {job.Server} · {job.ListingNumber} · 예약 후 로컬 금액 변경");
+                }
+                else
+                {
+                    bool updated = await ApplySitePriceAsync(job, bulkApproval: true, fromScheduler: true);
+                    if (updated)
+                    {
+                        job.PendingSitePriceTarget = "";
+                        // If the actual site price was already identical, no
+                        // POST was needed but this due slot still concludes.
+                        if (job.NextDueUtc <= DateTime.UtcNow)
+                            job.NextDueUtc = DateTime.UtcNow.AddMinutes(job.IntervalMinutes);
+                        _config.Save();
+                        AppendLog($"자동등록 순번 가격 반영 완료: {job.Server} · {job.ListingNumber}");
+                    }
+                    else if (_schedulerRunning && !job.RequiresReview)
+                    {
+                        // A pre-submit verification failure must not spin on
+                        // every timer tick or block healthy listings.
+                        job.RequiresReview = true;
+                        job.Enabled = false;
+                        job.NextDueUtc = DateTime.MaxValue;
+                        job.LastStatus = "예약 가격 변경 확인 실패 (자동 재시도 금지)";
+                        _config.Save();
+                        AppendLog($"예약 가격 수정 보류: {job.Server} · {job.ListingNumber} · " +
+                            _lastSitePriceEditFailure + " · 다른 물품은 계속 등록합니다.");
+                    }
+                    _jobsGrid.Refresh(); _autoGrid.Refresh(); RefreshAutoSummary();
+                    return;
+                }
+            }
             await ExecuteJobAsync(job, false);
             _jobsGrid.Refresh();
             return;
