@@ -43,13 +43,21 @@ internal static class SitePriceEdit
       if(!/^\d{8,20}$/.test(a.number)||norm(a.title).length<3)return result('error','등록번호 또는 제목이 유효하지 않습니다');
       const exact=new RegExp('(?:^|\\D)'+a.number+'(?!\\d)');
       const candidates=new Set();
-      for(const row of document.querySelectorAll('tr,[data-tid],[data-listing-id],[data-goods-id]')){
-        const container=row.closest('tr,li,article')||row;
-        if(String(container.innerText||'').length<5000)candidates.add(container);
+      const docs=[document],seen=new Set(docs);
+      for(let i=0;i<docs.length&&i<8;i++){
+        for(const frame of docs[i].querySelectorAll('iframe,frame')){
+          try{const d=frame.contentDocument;if(d&&!seen.has(d)){seen.add(d);docs.push(d)}}catch{}
+        }
       }
-      for(const e of document.querySelectorAll('[onclick]')){
-        if(exact.test(String(e.getAttribute('onclick')||''))){
-          const row=e.closest('tr,li,article');if(row)candidates.add(row);
+      for(const d of docs){
+        for(const row of d.querySelectorAll('tr,[data-tid],[data-listing-id],[data-goods-id],[data-trade-id]')){
+          const container=row.closest('tr,li,article')||row;
+          if(String(container.innerText||'').length<5000)candidates.add(container);
+        }
+        for(const e of d.querySelectorAll('[onclick]')){
+          if(exact.test(String(e.getAttribute('onclick')||''))){
+            const row=e.closest('tr,li,article');if(row)candidates.add(row);
+          }
         }
       }
       const core=s=>norm(s).replace(/^\[[\d,]+개[~〜-][\d,]+개\]/,'');
@@ -58,10 +66,10 @@ internal static class SitePriceEdit
         const text=String(row.innerText||row.textContent||'');
         const ids=new Set();
         for(const e of [row,...row.querySelectorAll('*')].slice(0,300)){
-          for(const attr of ['data-tid','data-listing-id','data-goods-id','data-trade-id']){
+          for(const attr of ['data-tid','data-listing-id','data-goods-id','data-trade-id','data-id']){
             const id=e.getAttribute?.(attr)||'';if(/^\d{8,20}$/.test(id))ids.add(id);
           }
-          for(const attr of ['onclick','href','data-url']){
+          for(const attr of ['onclick','href','data-url','data-href']){
             const val=e.getAttribute?.(attr)||'';
             if(exact.test(val))ids.add(a.number);
           }
@@ -77,20 +85,27 @@ internal static class SitePriceEdit
         '등록번호·제목이 일치하는 행이 여러 개입니다':'등록번호·제목이 일치하는 행이 없습니다',matching.length);
       const row=matching[0];
       const visible=e=>e.isConnected&&e.getClientRects().length>0&&!e.disabled&&
-        getComputedStyle(e).visibility!=='hidden';
+        (e.ownerDocument?.defaultView?.getComputedStyle(e)||getComputedStyle(e)).visibility!=='hidden';
       const label=e=>norm([e.innerText,e.value,e.getAttribute('title'),e.getAttribute('aria-label'),
-        e.getAttribute('data-desc'),e.getAttribute('data-tooltip')].filter(Boolean).join(' '));
+        e.getAttribute('data-desc'),e.getAttribute('data-tooltip'),e.getAttribute('data-original-title'),
+        ...[...(e.querySelectorAll?.('[title],[aria-label],svg title')||[])].slice(0,8).map(x=>
+          [x.getAttribute('title'),x.getAttribute('aria-label'),x.textContent].filter(Boolean).join(' '))]
+        .filter(Boolean).join(' '));
       const edit=[];
-      for(const e of row.querySelectorAll('a,button,input[type="button"],[role="button"]')){
+      const debug=[];
+      for(const e of row.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"],[onclick]')){
         if(!visible(e))continue;
         const words=label(e),handler=String(e.getAttribute('onclick')||'');
         const classname=String(e.className||'').toLowerCase();
         const isEdit=/(수정|편집|edit|modify)/i.test(words+' '+classname+' '+handler);
-        const forbidden=/(삭제|취소|거래신청|결제|유료|정지|숨김|삭제하기)/.test(words+' '+classname);
+        const forbidden=/(삭제|취소|거래신청|결제|유료|정지|숨김|재등록|reregist|reinsert)/i.test(words+' '+classname+' '+handler);
+        if(debug.length<12)debug.push([String(e.tagName||'control').toLowerCase(),String(e.getAttribute('data-desc')||'').slice(0,30),
+          classname.slice(0,45),handler.replace(/\d{8,20}/g,'[등록번호]').slice(0,65)].join('/'));
         if(isEdit&&!forbidden)edit.push(e);
       }
-      if(edit.length!==1)return result('error',edit.length?
-        '해당 글의 수정 버튼이 여러 개라 중단했습니다':'해당 글의 수정 버튼을 찾지 못했습니다',edit.length);
+      if(edit.length!==1)return result('error',(edit.length?
+        '해당 글의 수정 버튼이 여러 개라 중단했습니다':'해당 글의 수정 버튼을 찾지 못했습니다')+
+        ' [진단: 문서 '+docs.length+'개, 후보 '+debug.join(' | ').slice(0,650)+']',edit.length);
       if(!a.click)return result('ready','정확한 등록번호·제목의 수정 버튼을 확인했습니다',1);
       edit[0].click();
       return result('opened','검증된 등록글의 수정 화면 열기 요청',1);
