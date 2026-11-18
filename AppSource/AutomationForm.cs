@@ -329,6 +329,8 @@ internal sealed partial class AutomationForm : Form
         _timer.Tick += async (_, _) => await SchedulerTickAsync();
         FormClosing += (_, _) =>
         {
+            _siteRequestTraceActive = false;
+            DetachSiteTrace();
             _timer.Stop(); _currentRun?.Cancel(); _pendingReviewRun?.Cancel();
             _schedulerRunning = false;
             try { SaveAll(); } catch { }
@@ -357,6 +359,11 @@ internal sealed partial class AutomationForm : Form
         }
         Btn("내 등록글 불러오기", async (_, _) => await ImportMyRegisteredListingsAsync(), 158, UiTheme.ButtonTone.Primary);
         Btn("선택 1건 조회시험", async (_, _) => await ProbeSelectedRepostReadOnlyAsync(), 150);
+        var siteTraceButton = new Button { Text = "수정 요청 기록", Width = 130, Height = 31,
+            Margin = new Padding(2, 0, 5, 0) };
+        UiTheme.StyleButton(siteTraceButton, UiTheme.ButtonTone.Neutral);
+        siteTraceButton.Click += async (_, _) => await ToggleSiteRequestTraceAsync(siteTraceButton);
+        actions.Controls.Add(siteTraceButton);
         actions.Controls.Add(new Panel
         {
             Width = 1, Height = 23, BackColor = UiTheme.Border,
