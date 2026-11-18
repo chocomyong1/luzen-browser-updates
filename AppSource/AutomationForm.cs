@@ -336,6 +336,7 @@ internal sealed partial class AutomationForm : Form
         _timer.Tick += async (_, _) => await SchedulerTickAsync();
         FormClosing += (_, _) =>
         {
+            _sitePriceBatchCancellation?.Cancel();
             _siteRequestTraceActive = false;
             DetachSiteTrace();
             _timer.Stop(); _currentRun?.Cancel(); _pendingReviewRun?.Cancel();
@@ -352,7 +353,7 @@ internal sealed partial class AutomationForm : Form
             Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true,
             Padding = new Padding(11, 7, 4, 2), BackColor = UiTheme.Surface
         };
-        void Btn(string label, EventHandler action, int width,
+        Button Btn(string label, EventHandler action, int width,
             UiTheme.ButtonTone tone = UiTheme.ButtonTone.Neutral)
         {
             var b = new Button
@@ -363,14 +364,16 @@ internal sealed partial class AutomationForm : Form
             UiTheme.StyleButton(b, tone);
             b.Click += action;
             actions.Controls.Add(b);
+            return b;
         }
         Btn("내 등록글 불러오기", async (_, _) => await ImportMyRegisteredListingsAsync(), 158, UiTheme.ButtonTone.Primary);
-        Btn("선택 1건 조회시험", async (_, _) => await ProbeSelectedRepostReadOnlyAsync(), 150);
-        var siteTraceButton = new Button { Text = "수정 요청 기록", Width = 130, Height = 31,
-            Margin = new Padding(2, 0, 5, 0) };
-        UiTheme.StyleButton(siteTraceButton, UiTheme.ButtonTone.Neutral);
-        siteTraceButton.Click += async (_, _) => await ToggleSiteRequestTraceAsync(siteTraceButton);
-        actions.Controls.Add(siteTraceButton);
+        var diagnostics = new ContextMenuStrip();
+        diagnostics.Items.Add("선택 1건 조회시험", null, async (_, _) => await ProbeSelectedRepostReadOnlyAsync());
+        var traceMenuItem = new ToolStripMenuItem("수정 요청 기록");
+        traceMenuItem.Click += async (_, _) => await ToggleSiteRequestTraceAsync(traceMenuItem);
+        diagnostics.Items.Add(traceMenuItem);
+        Button? diagnosticButton = null;
+        diagnosticButton = Btn("진단 도구 ▾", (_, _) => diagnostics.Show(diagnosticButton!, 0, diagnosticButton!.Height), 112);
         actions.Controls.Add(new Panel
         {
             Width = 1, Height = 23, BackColor = UiTheme.Border,
@@ -633,6 +636,11 @@ internal sealed partial class AutomationForm : Form
 
     private void SetVisibleBatchSelection(bool selected)
     {
+        if (_sitePriceBatchRunning)
+        {
+            MessageBox.Show(this, "사이트 가격 순차 반영이 끝난 뒤 선택을 바꾸세요.", "가격 반영 중");
+            return;
+        }
         _jobsGrid.EndEdit(); _autoGrid.EndEdit();
         foreach (var job in _filteredJobs) job.SelectedForBulk = selected;
         _jobsGrid.Refresh(); _autoGrid.Refresh(); RefreshBatchSummary();
@@ -640,8 +648,54 @@ internal sealed partial class AutomationForm : Form
         AppendLog($"조회 결과 {_filteredJobs.Count}건 {(selected ? "전체 선택" : "선택 해제")}");
     }
 
+    // Pick one row as the price reference. Never mix other site IDs, sales,
+    // hidden rows or unverified registration IDs into a live price batch.
+    private void SelectSamePriceListings()
+    {
+        if (_sitePriceBatchRunning)
+        {
+            MessageBox.Show(this, "사이트 가격 순차 반영이 끝난 뒤 같은 가격을 다시 선택하세요.", "가격 반영 중");
+            return;
+        }
+        _jobsGrid.EndEdit();
+        _autoGrid.EndEdit();
+        var activeGrid = _editorTabs.SelectedTab == _autoTab ? _autoGrid : _jobsGrid;
+        var reference = activeGrid.CurrentRow?.DataBoundItem as ListingJob;
+        if (reference is null || !_filteredJobs.Contains(reference) ||
+            !TrySitePrice(reference.Price, out var amount) ||
+            !reference.ImportedFromSite || reference.OriginalTradeSide != "구매")
+        {
+            MessageBox.Show(this, "먼저 불러온 본인 구매글 중 가격을 기준으로 삼을 물품 한 줄을 클릭하세요.", "같은 가격 선택");
+            return;
+        }
+        var matched = _filteredJobs.Where(job =>
+            job.ImportedFromSite && job.OriginalTradeSide == "구매" &&
+            !job.RequiresReview && ListingIdentity.HasNumber(job.ListingNumber) &&
+            MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job)) &&
+            string.Equals(job.SiteId, reference.SiteId, StringComparison.OrdinalIgnoreCase) &&
+            TrySitePrice(job.Price, out var price) && price == amount).ToList();
+        var batch = matched.Take(20).ToList();
+        foreach (var job in _jobs) job.SelectedForBulk = batch.Contains(job);
+        _jobsGrid.Refresh();
+        _autoGrid.Refresh();
+        RefreshBatchSummary();
+        RefreshSelectAllHeaderVisuals();
+        AppendLog($"같은 가격 선택: {reference.SiteId} · {amount:N0}원 · {matched.Count}건 중 {batch.Count}건 (본인 구매글만)");
+        MessageBox.Show(this,
+            $"{reference.SiteId} · {amount:N0}원인 본인 구매글 {matched.Count}건 중 {batch.Count}건을 체크했습니다.\n\n" +
+            "[일괄수정]에서 새 금액을 적용한 다음 [선택 가격 반영]을 누르세요.\n" +
+            "확인 대기·판매글·다른 계정 물품은 제외됩니다. 실제 반영은 최대 20건씩 진행됩니다.\n" +
+            (matched.Count > 20 ? "남은 물품은 첫 묶음의 가격 반영을 확인한 후 같은 가격 선택을 다시 눌러 주세요." : ""),
+            "같은 가격 선택 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
     private void SetBatchEnabled(bool enabled)
     {
+        if (_sitePriceBatchRunning)
+        {
+            MessageBox.Show(this, "사이트 가격 순차 반영이 끝난 뒤 자동 ON/OFF를 변경하세요.", "가격 반영 중");
+            return;
+        }
         if (_busy) { MessageBox.Show(this, _myListingsImportRunning
             ? "등록글 조회 중입니다. '즉시 중지'로 조회를 중단하거나 조회 완료 후 다시 시도하세요."
             : "작업 실행 중에는 자동 사용 여부를 일괄 변경할 수 없습니다."); return; }
@@ -699,25 +753,23 @@ internal sealed partial class AutomationForm : Form
             buttons.Controls.Add(b);
             return b;
         }
-        MakeButton("선택 물품 편집", 125, EditAutoSelectedJob);
         MakeButton("+ 물품 추가", 104, AddListing);
+        MakeButton("선택 물품 편집", 125, EditAutoSelectedJob);
+        MakeButton("같은 가격 선택", 125, SelectSamePriceListings);
         MakeButton("선택 물품 일괄수정", 150, BulkEditSelected);
-        buttons.Controls.Add(new Panel
-        {
-            Width = 1, Height = 23, BackColor = UiTheme.Border,
-            Margin = new Padding(8, 3, 9, 0)
-        });
-        MakeButton("조회 전체선택", 119, () => SetVisibleBatchSelection(true));
-        MakeButton("선택 해제", 91, () => SetVisibleBatchSelection(false));
+        MakeButton("선택 가격 반영", 129, () => _ = ApplySelectedSitePricesAsync());
         var batchMenu = new ContextMenuStrip();
+        batchMenu.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
+        batchMenu.Items.Add("선택 해제", null, (_, _) => SetVisibleBatchSelection(false));
+        batchMenu.Items.Add(new ToolStripSeparator());
         batchMenu.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
         batchMenu.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
         Button? batchButton = null;
-        batchButton = MakeButton("자동 ON/OFF ▾", 139,
+        batchButton = MakeButton("선택/설정 ▾", 116,
             () => batchMenu.Show(batchButton!, 0, batchButton!.Height));
         var help = new Label
         {
-            Text = "표의 체크박스로 여러 물품 선택  ·  물품을 더블클릭하면 편집  ·  실제 사이트 제출은 실행 조건에 따라 진행",
+            Text = "1. 기준 물품 선택 후 같은 가격 선택   →   2. 일괄수정에서 가격 적용   →   3. 선택 가격 반영",
             Dock = DockStyle.Top, Height = 25,
             Padding = new Padding(12, 6, 0, 0), ForeColor = UiTheme.Muted,
             BackColor = UiTheme.SurfaceAlt
@@ -864,13 +916,10 @@ internal sealed partial class AutomationForm : Form
             initialized = true;
         };
         split.Panel1.Controls.Add(_jobsGrid);
-        // Permanent two-row toolbar. The main batch edit command must not be hidden
-        // off-screen by a single long, horizontally scrolling toolbar.
-        var toolsPanel = new Panel { Dock = DockStyle.Top, Height = 79, BackColor = UiTheme.Surface };
+        // Keep everyday actions visible; less-used settings live in one dropdown.
+        var toolsPanel = new Panel { Dock = DockStyle.Top, Height = 43, BackColor = UiTheme.Surface };
         var primary = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 40, AutoScroll = true,
             WrapContents = false, Padding = new Padding(10, 5, 0, 0), BackColor = UiTheme.Surface };
-        var secondary = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, AutoScroll = true,
-            WrapContents = false, Padding = new Padding(10, 3, 0, 0), BackColor = UiTheme.Surface };
         Button ActionButton(string caption, int width, Action run, bool primaryAction = false)
         {
             var button = new Button { Text = caption, Width = width, Height = 30,
@@ -883,29 +932,35 @@ internal sealed partial class AutomationForm : Form
             button.Click += (_, _) => run();
             return button;
         }
-        primary.Controls.Add(ActionButton("선택 물품 일괄수정", 160, BulkEditSelected, true));
-        primary.Controls.Add(ActionButton("구매글 가격 반영 (1건)", 182, () => _ = ApplySelectedSitePriceAsync()));
-        primary.Controls.Add(ActionButton("일괄 가격 변경 중단", 182, () => _ = ApplySelectedSitePricesAsync()));
-        primary.Controls.Add(ActionButton("조회 전체선택", 116, () => SetVisibleBatchSelection(true)));
-        primary.Controls.Add(ActionButton("선택 해제", 90, () => SetVisibleBatchSelection(false)));
-        primary.Controls.Add(ActionButton("표 넓게 보기", 116, ToggleWideGrid));
+        primary.Controls.Add(ActionButton("같은 가격 선택", 122, SelectSamePriceListings));
+        primary.Controls.Add(ActionButton("일괄수정", 105, BulkEditSelected, true));
+        primary.Controls.Add(ActionButton("선택 가격 반영", 138, () => _ = ApplySelectedSitePricesAsync()));
+        var selectionTools = new ContextMenuStrip();
+        selectionTools.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
+        selectionTools.Items.Add("선택 해제", null, (_, _) => SetVisibleBatchSelection(false));
+        selectionTools.Items.Add(new ToolStripSeparator());
+        selectionTools.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
+        selectionTools.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
+        selectionTools.Items.Add(new ToolStripSeparator());
+        selectionTools.Items.Add("선택 물품 사이트 가격 반영 (1건)", null, (_, _) => _ = ApplySelectedSitePriceAsync());
+        selectionTools.Items.Add("표 넓게 보기/복원", null, (_, _) => ToggleWideGrid());
+        selectionTools.Items.Add("열 너비 초기화", null, (_, _) => ResetGridColumns());
+        selectionTools.Items.Add(new ToolStripSeparator());
+        selectionTools.Items.Add("CSV 가져오기", null, (_, _) => ImportJobsCsv());
+        selectionTools.Items.Add("CSV 내보내기", null, (_, _) => ExportJobsCsv());
+        Button? selectionToolsButton = null;
+        selectionToolsButton = ActionButton("더보기 ▾", 99,
+            () => selectionTools.Show(selectionToolsButton!, 0, selectionToolsButton!.Height));
+        primary.Controls.Add(selectionToolsButton);
         _batchCountLabel = new Label { AutoSize = true, ForeColor = UiTheme.Primary,
             Font = new Font(Font, FontStyle.Bold), Padding = new Padding(7, 8, 0, 0) };
         primary.Controls.Add(_batchCountLabel);
-        // Import lives in the persistent run-control strip, so it is available
-        // regardless of which editor tab is selected.
-        secondary.Controls.Add(ActionButton("자동 ON", 90, () => SetBatchEnabled(true)));
-        secondary.Controls.Add(ActionButton("자동 OFF", 90, () => SetBatchEnabled(false)));
-        secondary.Controls.Add(ActionButton("열 너비 초기화", 114, ResetGridColumns));
-        secondary.Controls.Add(ActionButton("CSV 가져오기", 104, ImportJobsCsv));
-        secondary.Controls.Add(ActionButton("CSV 내보내기", 104, ExportJobsCsv));
-        toolsPanel.Controls.Add(secondary);
         toolsPanel.Controls.Add(primary);
         split.Panel1.Controls.Add(toolsPanel);
         split.Panel1.Controls.Add(BuildSearchFilters());
         split.Panel1.Controls.Add(new Label
         {
-            Text = "조회한 물품은 표 맨 위 [전체]에서 한 번에 선택  ·  여러 물품의 가격/주기 변경은 [선택 물품 일괄수정]",
+            Text = "같은 가격 선택 → 일괄수정(금액) → 선택 가격 반영 · 편집창 숨기기는 [더보기]",
             Dock = DockStyle.Top, Height = 28, ForeColor = UiTheme.Muted,
             BackColor = UiTheme.Surface, Padding = new Padding(12, 6, 0, 0)
         });
@@ -2062,6 +2117,11 @@ internal sealed partial class AutomationForm : Form
 
     private void StartScheduler()
     {
+        if (_sitePriceBatchRunning)
+        {
+            MessageBox.Show(this, "선택 물품 가격을 순서대로 반영하고 있습니다. 완료 또는 [즉시 중지] 후 자동 시작하세요.", "가격 반영 중");
+            return;
+        }
         if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
         {
             MessageBox.Show(this, $"시스템 {_system} 연결 설정에서 독립적인 외부 IP를 먼저 확인하세요. 확인 전에는 {_system}가 현재 IP로 등록하지 않습니다.",
@@ -2107,6 +2167,7 @@ internal sealed partial class AutomationForm : Form
 
     private void StopScheduler()
     {
+        _sitePriceBatchCancellation?.Cancel();
         _schedulerRunning = false; _timer.Stop();
         _pendingReviewRun?.Cancel();
         if (!_submissionVerificationPending) _currentRun?.Cancel();
