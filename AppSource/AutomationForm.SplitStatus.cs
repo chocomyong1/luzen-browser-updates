@@ -24,7 +24,11 @@ internal sealed partial class AutomationForm
             string state = _system == "B" && _schedulerRunning && _bConnectionRecheckRunning
                 ? "VPN 연결 재확인 중" :
                 _system == "B" && _schedulerRunning && _bConnectionRecoveryUtc > DateTime.UtcNow
-                ? "VPN 연결 대기" :
+                ? "VPN·관리목록 복구 대기" :
+                _system != "B" && _schedulerRunning && _ownedListRecoveryRecheckRunning
+                ? "관리목록 복구 확인 중" :
+                _system != "B" && _schedulerRunning && _ownedListRecoveryUtc > DateTime.UtcNow
+                ? "관리목록 복구 대기" :
                 _schedulerRunning ? "실행 중" : _busy ? "작업 중" : "중지/대기";
             return $"{state}   ·   전체 {_jobs.Count}   ·   자동 {enabled}   ·   확인 필요 {pending}";
         }
