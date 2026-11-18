@@ -30,10 +30,10 @@ assert(switchCode.includes('OpenSystemNetworkSettings(system)') &&
   '연결 실패 시에만 수동 설정 창을 여는 경로가 없음');
 assert(!switchCode.includes('OpenSystemNetworkSettings(system);\n            if'),
   '기존 설정이 있어도 매번 수동 설정으로 이동하는 예전 흐름이 남아 있음');
-assert(main.includes('() => _ = SelectSystemAsync("B")'),
-  'B 버튼이 자동 확인 흐름에 연결되지 않음');
-assert(main.includes('() => _ = SelectSystemAsync("C")'),
-  'C 버튼이 자동 확인 흐름에 연결되지 않음');
+assert(main.includes('systemMenu.Items.Add("B VPN", null, (_, _) => _ = SelectSystemAsync("B"))'),
+  'B 메뉴가 자동 확인 흐름에 연결되지 않음');
+assert(main.includes('systemMenu.Items.Add("C VPN", null, (_, _) => _ = SelectSystemAsync("C"))'),
+  'C 메뉴가 자동 확인 흐름에 연결되지 않음');
 assert(net.includes('if (string.Equals(direct, routed, StringComparison.OrdinalIgnoreCase))'),
   'A와 B/C가 동일한 공인 IP일 때 연결을 거부하는 검증이 없음');
 assert(net.includes('if (string.Equals(b, c, StringComparison.OrdinalIgnoreCase))'),
