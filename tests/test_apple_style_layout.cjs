@@ -29,6 +29,6 @@ const editor = form.slice(form.indexOf('private void BuildJobTab()'),
 assert.match(editor, /extraActions\.Items\.Add\("서버별 복제"/);
 assert.match(editor, /extraActions\.Items\.Add\("완료 표시 초기화"/);
 assert.match(editor, /extraActions\.Items\.Add\("사이트 확인 후 보류 해제"/);
-assert.match(editor, /ActionButton\("추가 작업  ▾"/);
+assert.match(editor, /FooterButton\("추가 작업  ▾"/);
 assert.match(table, /SelectionBackColor = Color\.FromArgb\(230, 242, 255\)/);
 console.log('PASS compact light Apple-inspired layout and preserved controls');
