@@ -173,8 +173,10 @@ internal static class MyListingsImport
 
     private static bool ValidPrice(string? price)
     {
-        var digits = Clean(price, 30).Replace(",", "", StringComparison.Ordinal);
-        return Regex.IsMatch(digits, @"^[1-9][0-9]*$") && long.TryParse(digits, out _);
+        var raw = Clean(price, 30);
+        if (!Regex.IsMatch(raw, @"^(?:[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)$"))
+            return false;
+        return long.TryParse(raw.Replace(",", "", StringComparison.Ordinal), out _);
     }
 
     private static bool SameImportedTitle(string? a, string? b) =>
@@ -257,11 +259,7 @@ internal static class MyListingsImport
                             ? Clean(row.Quantity, 30) : "",
                         Unit = string.IsNullOrWhiteSpace(target.Unit) ? Clean(row.Unit, 30) : "",
                         UpdateVerifiedPrice = priceChanged,
-                        Price = priceChanged || (string.IsNullOrWhiteSpace(target.Price) ||
-                            (target.Price == "1" && CanTrustOwnedImport(row, number) &&
-                             Regex.IsMatch(Clean(row.Price, 30), @"^[1-9][0-9,]*$") &&
-                             Clean(row.Price, 30).Replace(",", "") != "1"))
-                            ? verifiedPrice : "",
+                        Price = priceChanged ? verifiedPrice : "",
                         ItemCategory = string.IsNullOrWhiteSpace(target.ItemCategory) ? Clean(row.ItemCategory, 40) : "",
                         TradingMethod = string.IsNullOrWhiteSpace(target.TradingMethod) ? Clean(row.TradingMethod, 40) : "",
                         Character = string.IsNullOrWhiteSpace(target.Character) ? Clean(row.Character, 80) : "",
