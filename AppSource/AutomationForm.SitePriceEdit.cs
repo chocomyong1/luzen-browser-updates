@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -12,6 +13,7 @@ internal sealed partial class AutomationForm
     private string _armedSitePriceEditNumber = "";
     private string _sitePriceEditDialogWarning = "";
     private string _lastSitePriceEditFailure = "";
+    private string _sitePriceReadbackNote = "";
 
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
@@ -113,6 +115,22 @@ internal sealed partial class AutomationForm
         {
             _lastSitePriceEditFailure = "변경 가격은 1,000원 이상, 10원 단위여야 합니다";
             if (!bulkApproval) MessageBox.Show(this, "변경할 단가는 1,000원 이상, 10원 단위로 입력해 주세요.", "가격 확인");
+            return false;
+        }
+        // A previous price submission may already have re-registered this
+        // listing under a new ID. NEVER submit it again while on hold.
+        // This dedicated path only reads the signed-in OWN list.
+        bool unresolvedPriceAttempt = job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
+            (job.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
+             job.LastStatus.Contains("결과 확인 필요", StringComparison.Ordinal));
+        if (job.RequiresReview || unresolvedPriceAttempt)
+        {
+            if (job.LastStatus.Contains("가격", StringComparison.Ordinal))
+                await InspectPendingSitePriceOnlyAsync(job, desired);
+            else if (!bulkApproval)
+                MessageBox.Show(this, "이 물품은 확인 대기 상태입니다. 확인이 끝나기 전에는 사이트에 다시 제출하지 않습니다.",
+                    "중복 가격 제출 차단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _lastSitePriceEditFailure = "확인 대기 물품: 사이트 가격 재제출 차단";
             return false;
         }
         if (_schedulerRunning) PauseScheduler();
@@ -301,6 +319,8 @@ internal sealed partial class AutomationForm
             if (!await ConfirmChangedSitePriceAsync(job, desired, token))
                 throw new InvalidOperationException("구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " +
                     "새 등록번호가 생겼을 수도 있으므로 이 글은 확인 대기 상태로 두고 자동으로 다시 제출하지 않습니다." +
+                    (string.IsNullOrWhiteSpace(_sitePriceReadbackNote) ? "" :
+                        "\n읽기 전용 목록 검사: " + _sitePriceReadbackNote) +
                     (string.IsNullOrWhiteSpace(_sitePriceEditDialogWarning) ? "" :
                         " 사이트 메시지: " + _sitePriceEditDialogWarning));
 
@@ -358,23 +378,133 @@ internal sealed partial class AutomationForm
         }
     }
 
+    private sealed class SitePriceReadback
+    {
+        public bool ExactIdVerified { get; set; }
+        public string Message { get; set; } = "";
+    }
+
+    private async Task InspectPendingSitePriceOnlyAsync(ListingJob job, long target)
+    {
+        _busy = true;
+        _state.Text = "확인 대기 구매글 사이트 가격 읽는 중 (제출 없음)";
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        try
+        {
+            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
+            if (_web.CoreWebView2 is null) throw new InvalidOperationException("아이템매니아 브라우저를 열지 못했습니다.");
+            if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(cancellation.Token);
+            var readback = await ReadSitePriceAfterRepostAsync(job, target, cancellation.Token);
+            AppendLog("가격 확인 대기 글 재조회 (제출 없음): " + job.ListingNumber + " · " + readback.Message);
+            MessageBox.Show(this,
+                "사이트 관리 목록을 읽기 전용으로 확인했습니다. 가격을 다시 제출하지 않았습니다.\n\n" +
+                readback.Message + "\n\n등록번호가 바뀐 경우 자동 연결하거나 재등록하지 않습니다.",
+                "가격 변경 결과 재확인", MessageBoxButtons.OK,
+                readback.ExactIdVerified ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        }
+        catch (Exception ex)
+        {
+            AppendLog("가격 확인 대기 글 읽기 전용 조회 실패: " + ex.Message);
+            MessageBox.Show(this, "사이트 가격을 확인하지 못했습니다. 다시 제출하지 않았습니다.\n" + ex.Message,
+                "가격 결과 조회 중단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _busy = false;
+            _state.Text = _schedulerRunning ? "자동 실행 중" : "중지/대기";
+            _jobsGrid.Refresh();
+            DispatchQueuedMyListingsImport();
+        }
+    }
+
     private async Task<bool> ConfirmChangedSitePriceAsync(ListingJob job, long target, CancellationToken token)
+    {
+        var readback = await ReadSitePriceAfterRepostAsync(job, target, token);
+        _sitePriceReadbackNote = readback.Message;
+        AppendLog("구매글 재등록 후 사이트 가격 읽기: " + readback.Message);
+        return readback.ExactIdVerified;
+    }
+
+    private static string PriceReadbackTitle(string? title) => Regex.Replace(
+        Regex.Replace(title ?? "", @"^\s*\[[\d,]+\s*개\s*[~〜-]\s*[\d,]+\s*개\]\s*", ""),
+        @"\s+", "").Trim().ToLowerInvariant();
+
+    // Scan the authenticated OWN list, never public search results. New IDs
+    // are only reported as candidates; identity is not silently reassigned.
+    private async Task<SitePriceReadback> ReadSitePriceAfterRepostAsync(ListingJob job, long target,
+        CancellationToken token)
     {
         string firstPage = job.OriginalTradeSide == "판매"
             ? MyListingsImport.SellListingsUrl : MyListingsImport.BuyListingsUrl;
-        for (int i = 0; i < 4; i++)
+        var queue = new Queue<string>();
+        queue.Enqueue(firstPage);
+        if (MyListingsImport.IsOwnedListUrl(job.SourceListUrl)) queue.Enqueue(job.SourceListUrl);
+        foreach (var url in _jobs.Where(j => j.SiteId == job.SiteId &&
+                j.OriginalTradeSide == job.OriginalTradeSide).Select(j => j.SourceListUrl)
+            .Where(MyListingsImport.IsOwnedListUrl).Distinct(StringComparer.OrdinalIgnoreCase))
+            queue.Enqueue(url);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var matchingOld = new List<ExistingListingRecord>();
+        var newCandidates = new Dictionary<string, ExistingListingRecord>(StringComparer.Ordinal);
+        int totalRows = 0;
+        const int maxPages = 25;
+        string expectedTitle = PriceReadbackTitle(job.Title);
+        string expectedServer = Regex.Replace(job.Server ?? "", @"\s+", "").ToLowerInvariant();
+        while (queue.Count > 0 && visited.Count < maxPages)
         {
-            await Task.Delay(i == 0 ? 1600 : 1100, token);
-            await NavigateOwnedListAsync(firstPage, token);
-            var found = await LocateOwnedListRepostAsync(job, token, requireRepostButton: false);
-            if (found.Status != "found") continue;
+            token.ThrowIfCancellationRequested();
+            var url = queue.Dequeue();
+            if (!MyListingsImport.IsOwnedListUrl(url) ||
+                MyListingsImport.IsSellListUrl(url) != (job.OriginalTradeSide == "판매") ||
+                !visited.Add(url)) continue;
+            await NavigateOwnedListAsync(url, token);
             var page = MyListingsImport.DecodePage(await _web.CoreWebView2!.ExecuteScriptAsync(MyListingsImport.ExtractPageScript));
-            var match = page.Listings.Where(r => r.ListingNumber == job.ListingNumber &&
-                r.TradeSide == job.OriginalTradeSide).ToList();
-            if (match.Count == 1 && TrySitePrice(match[0].Price, out var observed) && observed == target)
-                return true;
+            // If a transient page rendered empty, do not infer deletion.
+            if (page.Listings.Count == 0 && !page.IsEmptyList)
+            {
+                await Task.Delay(750, token);
+                page = MyListingsImport.DecodePage(await _web.CoreWebView2.ExecuteScriptAsync(MyListingsImport.ExtractPageScript));
+            }
+            totalRows += page.Listings.Count;
+            foreach (var row in page.Listings)
+            {
+                if (row.TradeSide != job.OriginalTradeSide ||
+                    !ListingIdentity.HasNumber(row.ListingNumber)) continue;
+                if (row.ListingNumber == job.ListingNumber)
+                {
+                    matchingOld.Add(row);
+                    continue;
+                }
+                if (!TrySitePrice(row.Price, out var price) || price != target ||
+                    PriceReadbackTitle(row.Title) != expectedTitle ||
+                    Regex.Replace(row.Server ?? "", @"\s+", "").ToLowerInvariant() != expectedServer)
+                    continue;
+                if (!newCandidates.ContainsKey(row.ListingNumber))
+                    newCandidates.Add(row.ListingNumber, row);
+            }
+            foreach (var next in page.NextPageUrls)
+                if (MyListingsImport.IsOwnedListUrl(next) && !visited.Contains(next) &&
+                    MyListingsImport.IsSellListUrl(next) == (job.OriginalTradeSide == "판매"))
+                    queue.Enqueue(next);
+            if (matchingOld.Count == 1 && TrySitePrice(matchingOld[0].Price, out var exactPrice) &&
+                exactPrice == target) break;
         }
-        return false;
+        string summary = $"관리목록 {visited.Count}페이지 / {totalRows}건 검사. ";
+        var oldPrices = matchingOld.Select(r => r.Price).Distinct().ToList();
+        if (matchingOld.Count == 1 && TrySitePrice(matchingOld[0].Price, out var current) && current == target)
+            return new SitePriceReadback { ExactIdVerified = true,
+                Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 확인." };
+        if (oldPrices.Count > 0)
+            summary += $"기존 등록번호 {job.ListingNumber} 조회 단가: {string.Join(", ", oldPrices)}원. ";
+        else summary += $"기존 등록번호 {job.ListingNumber}는 검사한 목록에서 찾지 못함. ";
+        if (newCandidates.Count == 1)
+            summary += $"새 등록번호 후보 1건: {newCandidates.Keys.Single()} ({target:N0}원). " +
+                "제목·서버·가격은 일치하지만 동일 물품인지는 사이트에서 확인 필요.";
+        else if (newCandidates.Count > 1)
+            summary += $"새 등록번호 후보 {newCandidates.Count}건: " +
+                string.Join(", ", newCandidates.Keys.Take(4)) + ". 동일 물품을 특정할 수 없음.";
+        else summary += "변경 가격과 제목·서버가 모두 일치하는 새 등록번호 후보 없음.";
+        return new SitePriceReadback { Message = summary };
     }
 
     private void HandleSitePriceEditScriptDialog(Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogOpeningEventArgs e)
