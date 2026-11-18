@@ -166,6 +166,12 @@ internal static class MyListingsImport
         return value.Length > limit ? value[..limit] : value;
     }
 
+    // ItemMania renders the split-trade range inside its listing-title cell.
+    // It is UI metadata, not part of the actual title typed by the owner.
+    public static string CleanImportedTitle(string? text) =>
+        Regex.Replace(Clean(text),
+            @"^\[\s*[\d,]+\s*개\s*[~〜～–-]\s*[\d,]+\s*개\s*\]\s*", "").Trim();
+
     internal static bool IsImportOnlyStatus(string? status) =>
         (status ?? "").StartsWith("가져옴:", StringComparison.Ordinal) ||
         (status ?? "").StartsWith("기존 글 정보 보완됨:", StringComparison.Ordinal) ||
@@ -217,7 +223,7 @@ internal static class MyListingsImport
             if (row is null) { result.Invalid++; continue; }
             var number = Clean(row.ListingNumber, 24);
             var url = CanonicalUrl(row.ListingUrl);
-            var title = Clean(row.Title);
+            var title = CleanImportedTitle(row.Title);
             if (string.IsNullOrWhiteSpace(title) || (string.IsNullOrWhiteSpace(url) && !Regex.IsMatch(number, @"^\d{8,20}$")))
             { result.Invalid++; continue; }
             string numberKey = Regex.IsMatch(number, @"^\d{8,20}$") ? "N:" + siteIdKey(siteId) + ":" + number : "";
@@ -358,6 +364,7 @@ internal static class MyListingsImport
 (() => {
   const norm = s => String(s || '').replace(/\s+/g,' ').trim();
   const clip = (s,n=350) => norm(s).slice(0,n);
+  const stripQuantityRange = s => norm(s).replace(/^\[\s*[\d,]+\s*개\s*[~〜～–-]\s*[\d,]+\s*개\s*\]\s*/, '');
   const clean = s => norm(s).replace(/[\s:*：()]/g,'');
   const official = u => { try { const x=new URL(u,location.href); return x.protocol==='https:' &&
     (x.hostname==='itemmania.com' || x.hostname.endsWith('.itemmania.com')); } catch { return false; } };
@@ -547,7 +554,7 @@ internal static class MyListingsImport
   const append=(row, title, header={}, values=[], known={}) => {
     const id=getId(row);
     const {url,editUrl}=candidateUrls(row,id);
-    title=clip(title,350);
+    title=clip(stripQuantityRange(title),350);
     if(!title || title.length < 2 || (!id && !url)) return;
     const key=id||url;
     if(signatures.has(key))return;
