@@ -18,26 +18,84 @@ internal sealed partial class AutomationForm
     // A local price Save is deliberately never hooked to this operation:
     // SaveSelectedJob(false) is also called by selection changes and imports.
     // Only the dedicated button may initiate a live site edit/re-registration.
-    private async Task ApplySelectedSitePriceAsync()
+    private async Task ApplySelectedSitePriceAsync() => await ApplySitePriceAsync(null, false);
+
+    // A batch uses the same independently verified single-listing transaction.
+    // Never parallelize submissions: the WebView2 and server quota are shared.
+    private async Task ApplySelectedSitePricesAsync()
     {
         if (_myListingsImportRunning || _busy)
         {
-            MessageBox.Show(this, "등록글 조회·재등록 작업이 끝난 뒤 사이트 가격을 수정할 수 있습니다.", "사이트 가격 변경 대기");
+            MessageBox.Show(this, "진행 중인 조회·등록 작업이 끝난 뒤 실행하세요.", "사이트 일괄 가격 반영");
             return;
         }
+        _jobsGrid.EndEdit();
+        _autoGrid.EndEdit();
         SaveSelectedJob(false);
-        var job = _selected;
+        var targets = _filteredJobs.Where(j => j.SelectedForBulk).ToList();
+        if (targets.Count == 0)
+        {
+            MessageBox.Show(this, "사이트 가격을 변경할 물품의 왼쪽 체크박스를 선택해 주세요.", "선택한 물품 없음");
+            return;
+        }
+        if (targets.Count > 20)
+        {
+            MessageBox.Show(this, "안전을 위해 한 번에 최대 20개만 사이트에 반영할 수 있습니다. 조회 조건을 좁혀 나누어 실행하세요.",
+                "일괄 수정 수량 제한");
+            return;
+        }
+        var invalid = targets.Where(j => !j.ImportedFromSite || !ListingIdentity.HasNumber(j.ListingNumber) ||
+            !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j)) ||
+            !TrySitePrice(j.Price, out var p) || p % 10 != 0).ToList();
+        if (invalid.Count > 0)
+        {
+            MessageBox.Show(this, $"선택 물품 중 {invalid.Count}건은 본인 등록번호·구매/판매 방향·가격이 확인되지 않았습니다.\n" +
+                "내 등록글 불러오기에서 확인된 물품만 선택한 뒤 다시 시도하세요.", "사이트 일괄 가격 반영 중단");
+            return;
+        }
+        var preview = string.Join("\n", targets.Take(12).Select(j =>
+            $"{j.Server} · {j.ListingNumber} → {j.Price}원"));
+        if (targets.Count > 12) preview += $"\n외 {targets.Count - 12}건";
+        if (MessageBox.Show(this,
+            $"선택한 {targets.Count}건의 가격을 아이템매니아 실제 등록글에 순서대로 반영할까요?\n\n{preview}\n\n" +
+            "각 물품의 등록번호·제목·현재 사이트 가격을 다시 확인하며, 한 건이라도 실패하거나 결과가 불확실하면 즉시 중단합니다.\n" +
+            "재등록 횟수·서버 간격 제한이 적용됩니다.",
+            "실제 사이트 가격 일괄 변경", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        if (_schedulerRunning) PauseScheduler();
+        int finished = 0;
+        foreach (var job in targets)
+        {
+            if (!await ApplySitePriceAsync(job, true)) break;
+            finished++;
+        }
+        MessageBox.Show(this, $"선택 {targets.Count}건 중 {finished}건 확인 완료.\n" +
+            (finished == targets.Count ? "모든 물품을 확인했습니다." :
+                "확인하지 못한 물품이 있어 중단했습니다. 마지막 실행 기록을 확인하세요. 남은 글은 제출하지 않았습니다."),
+            "사이트 일괄 가격 반영 결과", MessageBoxButtons.OK,
+            finished == targets.Count ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+    }
+
+    private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval)
+    {
+        if (_myListingsImportRunning || _busy)
+        {
+            if (!bulkApproval) MessageBox.Show(this, "등록글 조회·재등록 작업이 끝난 뒤 사이트 가격을 수정할 수 있습니다.", "사이트 가격 변경 대기");
+            return false;
+        }
+        if (!bulkApproval) SaveSelectedJob(false);
+        var job = explicitJob ?? _selected;
         if (job is null || !job.ImportedFromSite || !ListingIdentity.HasNumber(job.ListingNumber) ||
             !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job)))
         {
-            MessageBox.Show(this, "내 등록글 불러오기로 정확한 등록번호와 구매/판매 방향이 연결된 기존 물품만 사이트 가격을 변경할 수 있습니다.",
+            if (!bulkApproval) MessageBox.Show(this, "내 등록글 불러오기로 정확한 등록번호와 구매/판매 방향이 연결된 기존 물품만 사이트 가격을 변경할 수 있습니다.",
                 "수정 대상 확인");
-            return;
+            return false;
         }
         if (!TrySitePrice(job.Price, out var desired) || desired % 10 != 0)
         {
-            MessageBox.Show(this, "변경할 단가는 1,000원 이상, 10원 단위로 입력해 주세요.", "가격 확인");
-            return;
+            if (!bulkApproval) MessageBox.Show(this, "변경할 단가는 1,000원 이상, 10원 단위로 입력해 주세요.", "가격 확인");
+            return false;
         }
         if (_schedulerRunning) PauseScheduler();
         _busy = true;
@@ -68,9 +126,9 @@ internal sealed partial class AutomationForm
             if (current == desired)
             {
                 AppendLog($"사이트 가격이 이미 동일합니다: {job.Server} · {job.ListingNumber} · {desired:N0}원 (제출 없음)");
-                MessageBox.Show(this, $"{job.Server} · {job.ListingNumber}\n현재 아이템매니아 가격도 {desired:N0}원입니다.\n재등록하지 않았습니다.",
+                if (!bulkApproval) MessageBox.Show(this, $"{job.Server} · {job.ListingNumber}\n현재 아이템매니아 가격도 {desired:N0}원입니다.\n재등록하지 않았습니다.",
                     "이미 반영된 가격");
-                return;
+                return true;
             }
             if (!CanRunNow(job, out var quotaReason))
                 throw new InvalidOperationException("가격 변경 시 사이트 재등록이 필요합니다. " + quotaReason);
@@ -79,8 +137,8 @@ internal sealed partial class AutomationForm
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
                 "사이트의 '재등록' 버튼을 사용하므로 등록 횟수·서버별 간격 제한에 포함됩니다.\n" +
                 "확인된 이 글 하나에만 반영합니다.";
-            if (MessageBox.Show(this, ask, "실제 사이트 가격 수정", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (!bulkApproval && MessageBox.Show(this, ask, "실제 사이트 가격 수정", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
 
             var record = records[0];
             var edit = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
@@ -163,20 +221,23 @@ internal sealed partial class AutomationForm
             _config.Jobs = _jobs.ToList();
             _config.Save();
             AppendLog($"✓ 사이트 단가 변경 확인: {job.Server} · {job.ListingNumber} · {current:N0}원 → {desired:N0}원");
-            MessageBox.Show(this, $"아이템매니아에서 가격 변경을 확인했습니다.\n\n" +
+            if (!bulkApproval) MessageBox.Show(this, $"아이템매니아에서 가격 변경을 확인했습니다.\n\n" +
                 $"{job.Server} · {job.ListingNumber}\n{current:N0}원 → {desired:N0}원", "사이트 가격 반영 완료");
+            return true;
         }
         catch (OperationCanceledException)
         {
             AppendLog("사이트 가격 수정 시간 초과. 제출 여부는 실행 기록에서 확인하세요.");
-            MessageBox.Show(this, submitted ? "제출 결과를 확인하지 못했습니다. 해당 글은 확인 대기 상태입니다. 자동으로 다시 제출하지 않습니다." :
+            if (!bulkApproval) MessageBox.Show(this, submitted ? "제출 결과를 확인하지 못했습니다. 해당 글은 확인 대기 상태입니다. 자동으로 다시 제출하지 않습니다." :
                 "수정 화면 확인 시간이 초과되어 제출하지 않았습니다.", "사이트 가격 확인");
+            return false;
         }
         catch (Exception ex)
         {
             AppendLog("사이트 가격 수정 중단: " + job.Server + " · " + job.ListingNumber + " · " + ex.Message);
-            MessageBox.Show(this, ex.Message, submitted ? "가격 변경 결과 확인 필요" : "사이트 가격 수정 중단",
+            if (!bulkApproval) MessageBox.Show(this, ex.Message, submitted ? "가격 변경 결과 확인 필요" : "사이트 가격 수정 중단",
                 MessageBoxButtons.OK, submitted ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            return false;
         }
         finally
         {
