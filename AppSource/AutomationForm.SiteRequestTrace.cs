@@ -29,7 +29,7 @@ internal sealed partial class AutomationForm
         public int? ResponseStatus { get; set; }
     }
 
-    private async Task ToggleSiteRequestTraceAsync(Button button)
+    private async Task ToggleSiteRequestTraceAsync(ToolStripItem button)
     {
         if (_siteRequestTraceActive)
         {
@@ -79,7 +79,7 @@ internal sealed partial class AutomationForm
         }
     }
 
-    private void StopSiteRequestTrace(Button button)
+    private void StopSiteRequestTrace(ToolStripItem button)
     {
         DetachSiteTrace();
         _siteRequestTraceActive = false;
