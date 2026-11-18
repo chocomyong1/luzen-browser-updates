@@ -19,7 +19,7 @@ internal static class ErrorLogCopy
     private static readonly Regex BearerToken = new(
         @"(?i)Bearer\s+[^\s,;]+", RegexOptions.Compiled);
 
-    public static string Build(IEnumerable<string> logLines, string version, DateTime copiedAt)
+    public static string Build(IEnumerable<string> logLines, string version, DateTime copiedAt, string system = "")
     {
         var lines = (logLines ?? Array.Empty<string>()).ToArray();
         var errors = Enumerable.Range(0, lines.Length)
@@ -41,6 +41,8 @@ internal static class ErrorLogCopy
         var output = new StringBuilder();
         output.AppendLine("[Luzen 자동등록 오류 로그]");
         output.AppendLine("버전: " + version);
+        if (system is "A" or "B" or "C")
+            output.AppendLine("시스템: " + (system == "A" ? "A 기본" : system + " VPN"));
         output.AppendLine("복사 시각: " + copiedAt.ToString("yyyy-MM-dd HH:mm:ss"));
         output.AppendLine(errors.Length > 0
             ? $"최근 오류 {errors.Length}건과 관련 작업 기록 (로컬 복사, 자동 전송 없음)"
