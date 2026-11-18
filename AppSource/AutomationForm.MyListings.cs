@@ -113,6 +113,7 @@ internal sealed partial class AutomationForm
             }
             var account = ItemManiaAccountStore.Load(_system);
             var plan = MyListingsImport.Prepare(records, _jobs, _defaultSubId, account.UserId);
+            var priceChanges = plan.Updates.Where(u => u.UpdateVerifiedPrice).ToList();
             if (plan.NewJobs.Count == 0 && plan.Updates.Count == 0)
             {
                 MessageBox.Show(this,
@@ -123,12 +124,19 @@ internal sealed partial class AutomationForm
                     "내 등록글 자동 조회");
                 return;
             }
+            string pricePreview = string.Join("\n", priceChanges.Take(6).Select(u =>
+                $"  {u.Target.Server} · {u.Target.ListingNumber}: {u.Target.Price}원 → {u.Price}원"));
+            if (priceChanges.Count > 6) pricePreview += $"\n  외 {priceChanges.Count - 6}건";
             string confirm = $"판매·구매 등록글 {records.Count}건 확인 ({scan.PagesVisited}페이지 검사)\n\n" +
-                $"새로 가져오기: {plan.NewJobs.Count}건 / 기존 항목 빈칸 보완: {plan.Updates.Count}건\n" +
+                $"새로 가져오기: {plan.NewJobs.Count}건 / 기존 정보 보완·갱신: {plan.Updates.Count}건\n" +
+                $"사이트 가격으로 갱신: {priceChanges.Count}건\n" +
                 $"이미 목록에 있음: {plan.Duplicates}건\n" +
                 $"정보 부족: {plan.Invalid}건 / 일부 정보 미표시: {incomplete}건\n" +
                 $"개별 상세 URL 없는 글: {plan.WithoutUrl}건 (관리 목록에서 대상 행 확인 후 재등록 시도)\n\n" +
-                "가져온 글은 '기존 글 재등록' 대상으로 저장하며 자동실행은 꺼 둡니다.\n" +
+                (priceChanges.Count > 0 ? "가격 변경 미리보기:\n" + pricePreview + "\n\n" : "") +
+                "새로 가져온 글은 '기존 글 재등록' 대상으로 저장하며 자동실행은 꺼 둡니다.\n" +
+                "등록번호·제목·계정·거래 방향이 일치하는 기존 글은 사이트 가격을 적용합니다.\n" +
+                "기존 글의 자동 실행 여부·시간 설정은 유지됩니다.\n" +
                 "등록번호·상세 URL·가격이 확인된 글은 불필요한 '확인 필요' 표시를 제거합니다.\n" +
                 "사이트에서 확인되지 않은 글과 제출 결과가 불분명한 글의 보류는 유지합니다.\n" +
                 "불러오기만으로 사이트에 등록 또는 재등록하지 않습니다.\n\n물품 목록에 추가할까요?";
@@ -146,7 +154,7 @@ internal sealed partial class AutomationForm
             RefreshFilterChoices();
             RefreshFilteredLists(plan.NewJobs.FirstOrDefault()?.Id ?? plan.Updates.First().Target.Id);
             ShowItemRegistrationView();
-            AppendLog($"내 등록글 자동 조회 완료: {plan.NewJobs.Count}건 추가 · {plan.Updates.Count}건 정보 보완 · {plan.Duplicates}건 중복 제외 · 재등록 결과 확인 {reconciled}건");
+            AppendLog($"내 등록글 자동 조회 완료: {plan.NewJobs.Count}건 추가 · {plan.Updates.Count}건 정보 보완·갱신 (가격 {priceChanges.Count}건) · {plan.Duplicates}건 중복 제외 · 재등록 결과 확인 {reconciled}건");
             if (!scan.CompletedAllPages)
                 AppendLog("주의: 일부 페이지를 읽지 못했거나 페이지 제한에 도달했습니다. 모든 등록글을 확인했다고 판단하지 마세요.");
         }

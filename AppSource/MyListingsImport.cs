@@ -52,8 +52,9 @@ internal sealed class ExistingListingMergeSummary
     public List<ExistingListingUpdate> Updates { get; } = new();
 }
 
-// Never overwrite a user-edited value with an uncertain scraped value.
-// Re-import fills ONLY empty fields of posts already imported from the site.
+// Re-import normally fills only missing fields. The sole exception is price:
+// it may refresh from a verified signed-in OWN listing with the same ID,
+// trade side, account, and title, after the user reviews the change summary.
 internal sealed class ExistingListingUpdate
 {
     public ListingJob Target { get; set; } = null!;
@@ -62,6 +63,7 @@ internal sealed class ExistingListingUpdate
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
     public string Price { get; set; } = "";
+    public bool UpdateVerifiedPrice { get; set; }
     public string EntryUrl { get; set; } = "";
     public string SourceListUrl { get; set; } = "";
     public string ItemCategory { get; set; } = "";
@@ -82,10 +84,9 @@ internal sealed class ExistingListingUpdate
             (Target.ImportedFromSite && Target.Quantity == "1" && !string.IsNullOrWhiteSpace(Quantity) && Quantity != "1"))
             Target.Quantity = Quantity;
         if (string.IsNullOrWhiteSpace(Target.Unit)) Target.Unit = Unit;
-        // Earlier site imports occasionally persisted the new-item template's
-        // 1-won placeholder. Replace only that exact legacy value with a
-        // DIFFERENT, verified price from the signed-in OWN listing row.
-        if (string.IsNullOrWhiteSpace(Target.Price) ||
+        // An authenticated own-listing price can replace a stale saved price
+        // only after exact listing/title/side verification in Prepare().
+        if (UpdateVerifiedPrice || string.IsNullOrWhiteSpace(Target.Price) ||
             (Target.ImportedFromSite && Target.Price == "1" && !string.IsNullOrWhiteSpace(Price) && Price != "1"))
             Target.Price = Price;
         if (string.IsNullOrWhiteSpace(Target.EntryUrl)) Target.EntryUrl = EntryUrl;
@@ -168,7 +169,17 @@ internal static class MyListingsImport
         !string.IsNullOrWhiteSpace(row.Title) &&
         // An old detail link may be missing or stale; the signed-in OWN list
         // already identifies the item by listing number, direction and price.
-        Regex.IsMatch(Clean(row.Price, 30), @"^[1-9][0-9,]*$");
+        ValidPrice(row.Price);
+
+    private static bool ValidPrice(string? price)
+    {
+        var digits = Clean(price, 30).Replace(",", "", StringComparison.Ordinal);
+        return Regex.IsMatch(digits, @"^[1-9][0-9]*$") && long.TryParse(digits, out _);
+    }
+
+    private static bool SameImportedTitle(string? a, string? b) =>
+        string.Equals(Regex.Replace(Clean(a), @"\s+", ""), Regex.Replace(Clean(b), @"\s+", ""),
+            StringComparison.OrdinalIgnoreCase);
 
     public static ExistingListingMergeSummary Prepare(IEnumerable<ExistingListingRecord> records, IEnumerable<ListingJob> existing,
         string subId, string siteId)
@@ -224,6 +235,16 @@ internal static class MyListingsImport
                         (string.IsNullOrWhiteSpace(target.MinQuantity) || target.MinQuantity == "1") &&
                         (string.IsNullOrWhiteSpace(target.MaxQuantity) || target.MaxQuantity == "9999") &&
                         (target.MinQuantity != minFromSite || target.MaxQuantity != maxFromSite);
+                    string verifiedPrice = Clean(row.Price, 30);
+                    // Never refresh by a shared URL or a similar title alone.
+                    // A verified 1:1 site ID + exact title prevents applying
+                    // another listing's price to an existing scheduled job.
+                    bool sameOwnedListing = CanTrustOwnedImport(row, number) &&
+                        string.Equals(target.ListingNumber, number, StringComparison.Ordinal) &&
+                        SameImportedTitle(target.Title, row.Title);
+                    bool priceChanged = sameOwnedListing &&
+                        !string.Equals((target.Price ?? "").Replace(",", "", StringComparison.Ordinal).Trim(),
+                            verifiedPrice.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
                     var update = new ExistingListingUpdate
                     {
                         Target = target,
@@ -235,11 +256,12 @@ internal static class MyListingsImport
                              Clean(row.Quantity, 30).Replace(",", "") != "1"))
                             ? Clean(row.Quantity, 30) : "",
                         Unit = string.IsNullOrWhiteSpace(target.Unit) ? Clean(row.Unit, 30) : "",
-                        Price = (string.IsNullOrWhiteSpace(target.Price) ||
+                        UpdateVerifiedPrice = priceChanged,
+                        Price = priceChanged || (string.IsNullOrWhiteSpace(target.Price) ||
                             (target.Price == "1" && CanTrustOwnedImport(row, number) &&
                              Regex.IsMatch(Clean(row.Price, 30), @"^[1-9][0-9,]*$") &&
                              Clean(row.Price, 30).Replace(",", "") != "1"))
-                            ? Clean(row.Price, 30) : "",
+                            ? verifiedPrice : "",
                         ItemCategory = string.IsNullOrWhiteSpace(target.ItemCategory) ? Clean(row.ItemCategory, 40) : "",
                         TradingMethod = string.IsNullOrWhiteSpace(target.TradingMethod) ? Clean(row.TradingMethod, 40) : "",
                         Character = string.IsNullOrWhiteSpace(target.Character) ? Clean(row.Character, 80) : "",
