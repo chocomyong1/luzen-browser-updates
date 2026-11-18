@@ -71,6 +71,28 @@ internal static class Program
         Check(HourlyServerQuota.Reconcile(higher, 30, 58) is null, "lower user cap does not cause a false alert");
         Check(HourlyServerQuota.Remaining(higher, 30) == 28, "configured cap still applies");
 
+        // Six approved buying-price changes run as SIX ordinary posting slots,
+        // not six immediate submissions when the user clicks 'reserve'.
+        var sixJobs = new ListingJob { SiteId = "batch-account", Game = "로스트아크", Server = "아브렐슈드" };
+        var sixCounter = HourlyServerQuota.Current(counters, sixJobs, start);
+        DateTime lastBatchSubmit = DateTime.MinValue;
+        for (int i = 0; i < 6; i++)
+        {
+            DateTime at = lastBatchSubmit == DateTime.MinValue
+                ? start : HourlyServerQuota.NextAllowedUtc(lastBatchSubmit,
+                    lastBatchSubmit.AddSeconds(1), sixCounter, 30, 21);
+            Check(at >= start && at < start.AddHours(1), "all six slots fit one hour at quota 30");
+            if (lastBatchSubmit != DateTime.MinValue)
+                Check((at - lastBatchSubmit).TotalSeconds >= 21,
+                    "six price changes never bypass the server spacing rule");
+            HourlyServerQuota.MarkAttempt(sixCounter);
+            lastBatchSubmit = at;
+        }
+        Check(sixCounter.Attempts == 6 && HourlyServerQuota.Remaining(sixCounter, 30) == 24,
+            "six price changes consume exactly six normal hourly slots");
+        Check(HourlyServerQuota.Current(counters, kadan, start).Attempts == 21,
+            "six changes on Abrelshud do not consume Kadan's server allocation");
+
         DateTime reset = new(2026, 11, 17, 10, 0, 0, DateTimeKind.Utc); // 19:00 KST
         Check(HourlyServerQuota.Current(counters, kadan, reset).Attempts == 0, "resets on Korean hour");
         Check(HourlyServerQuota.Remaining(HourlyServerQuota.Current(counters, kadan, reset), 60) == 60,
