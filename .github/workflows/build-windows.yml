@@ -88,10 +88,20 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $url = 'https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.1.0/LuzenBrowser_22.1.0_BinaryUpdate.zip'
-          Invoke-WebRequest -Uri $url -OutFile existing-release.zip
           $expected = '7038fb9052d288f9564444b39cfaed7110601f91921e23265e56d54a54df93ea'
-          $actual = (Get-FileHash existing-release.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw 'Existing release archive failed SHA-256 integrity check.' }
+          for ($attempt = 1; $attempt -le 6; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile existing-release.zip -TimeoutSec 90
+              $actual = (Get-FileHash existing-release.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($actual -ne $expected) { throw 'Existing release archive failed SHA-256 integrity check.' }
+              break
+            }
+            catch {
+              if ($attempt -eq 6) { throw }
+              Write-Host "Asset download retry $attempt/6: $($_.Exception.GetType().Name)"
+              Start-Sleep -Seconds ([Math]::Min(5 * $attempt, 20))
+            }
+          }
           Expand-Archive -Path existing-release.zip -DestinationPath existing-release
           if (-not (Test-Path 'existing-release/Published/Assets/iBook1.ico')) { throw 'Existing release assets are missing.' }
           Copy-Item -Path 'existing-release/Published/Assets' -Destination 'AppSource/Assets' -Recurse
