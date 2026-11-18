@@ -148,6 +148,13 @@ internal sealed partial class AutomationForm : Form
             // V12 did not have these fields; preserve any explicit existing values.
             if (string.IsNullOrWhiteSpace(oldJob.SubId)) oldJob.SubId = _defaultSubId;
             if (string.IsNullOrWhiteSpace(oldJob.SiteId)) oldJob.SiteId = currentSiteId;
+            // Earlier imports accidentally included '[1개~9,995개]' in titles.
+            // Repair only site-imported items; preserve manually authored titles.
+            if (oldJob.ImportedFromSite)
+            {
+                var cleanTitle = MyListingsImport.CleanImportedTitle(oldJob.Title);
+                if (cleanTitle.Length > 0) oldJob.Title = cleanTitle;
+            }
         }
         Text = "Luzen Browser V22 - 자동 업데이트 지원";
         StartPosition = FormStartPosition.CenterParent;
