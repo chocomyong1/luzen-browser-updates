@@ -170,6 +170,7 @@ internal sealed partial class MainForm
 
     private async Task ToggleSplitViewAsync()
     {
+        if (_integratedVisible) DisableIntegratedEditor();
         if (_togglingSplit) return;
         if (_splitActive) { DisableSplitView(); return; }
         _togglingSplit = true;
