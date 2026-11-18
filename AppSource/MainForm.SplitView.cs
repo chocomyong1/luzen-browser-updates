@@ -82,7 +82,7 @@ internal sealed partial class MainForm
 
     // Never start or display B's browser with the A route. A separate, verified
     // proxy is mandatory, including when A is already running in the background.
-    private async Task<bool> EnsureBReadyAsync()
+    private async Task<bool> EnsureBReadyAsync(bool silentStartup = false)
     {
         if (_checkingProxyConnection)
         {
@@ -94,7 +94,7 @@ internal sealed partial class MainForm
             if (string.IsNullOrWhiteSpace(DualSystemNetwork.Load("B").ProxyUrl))
             {
                 _status.Text = "  B VPN 연결이 아직 설정되지 않았습니다. B 연결 설정을 완료하세요.";
-                OpenSystemNetworkSettings("B");
+                if (!silentStartup) OpenSystemNetworkSettings("B");
                 return false;
             }
             _checkingProxyConnection = true;
@@ -103,9 +103,10 @@ internal sealed partial class MainForm
             catch (Exception ex)
             {
                 _status.Text = "  B VPN 연결 확인 실패 · B 자동등록을 시작하지 않았습니다.";
-                MessageBox.Show(this, "B VPN의 독립 외부 IP를 확인하지 못했습니다.\n" + ex.Message +
-                    "\n\nA 자동등록은 별개로 유지됩니다.", "B VPN 연결 확인",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (!silentStartup)
+                    MessageBox.Show(this, "B VPN의 독립 외부 IP를 확인하지 못했습니다.\n" + ex.Message +
+                        "\n\nA 자동등록은 별개로 유지됩니다.", "B VPN 연결 확인",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
             finally { _checkingProxyConnection = false; }
@@ -121,23 +122,43 @@ internal sealed partial class MainForm
         return true;
     }
 
-    private async Task StartSelectedSystemsAsync()
+    private async Task StartSelectedSystemsAsync(bool silentStartup = false)
     {
         if (_startingBoth) return;
+        if (silentStartup && _bootCancelledByUser) return;
+        if (!silentStartup)
+        {
+            _bootCancelledByUser = false;
+            CancelBootBRetry();
+        }
         _startingBoth = true;
         try
         {
             // C remains opt-in and independent; never include it in A+B starts.
-            if (_activeSystem == "C" && !_splitActive)
+            if (!silentStartup && _activeSystem == "C" && !_splitActive)
             {
                 _moduleC.StartAutomationFromHeader();
                 return;
             }
-            if (_startTargets.A) _moduleA.StartAutomationFromHeader();
-            bool bReady = !_startTargets.B || await EnsureBReadyAsync();
-            if (bReady && _startTargets.B) _moduleB.StartAutomationFromHeader();
+            if (_startTargets.A)
+            {
+                if (silentStartup) _moduleA.StartAutomationOnBoot();
+                else _moduleA.StartAutomationFromHeader();
+            }
+            bool bReady = !_startTargets.B || await EnsureBReadyAsync(silentStartup);
+            // An explicit Pause/Stop during an awaited VPN check wins.
+            if (_bootCancelledByUser) return;
+            if (bReady && _startTargets.B)
+            {
+                if (silentStartup) _moduleB.StartAutomationOnBoot();
+                else _moduleB.StartAutomationFromHeader();
+            }
+            else if (!bReady && silentStartup && !_bootCancelledByUser)
+                ScheduleBootBRetry();
             if (!bReady)
-                _status.Text = "  A 동작은 유지 · B VPN 설정/연결 확인 전에는 B 자동등록을 실행하지 않습니다.";
+                _status.Text = silentStartup
+                    ? "  A 동작은 유지 · B VPN 준비를 기다리며 자동 재확인합니다 (B 제출 없음)."
+                    : "  A 동작은 유지 · B VPN 설정/연결 확인 전에는 B 자동등록을 실행하지 않습니다.";
             else
                 _status.Text = $"  자동 시작 요청 · A {(_moduleA.IsAutomationRunning ? "실행" : "대기")} / " +
                     $"B {(_moduleB.IsAutomationRunning ? "실행" : "대기")}";
@@ -148,6 +169,11 @@ internal sealed partial class MainForm
 
     private void PauseSelectedSystems()
     {
+        if (!(_activeSystem == "C" && !_splitActive))
+        {
+            _bootCancelledByUser = true;
+            CancelBootBRetry();
+        }
         if (_activeSystem == "C" && !_splitActive) _moduleC.PauseAutomationFromHeader();
         else
         {
@@ -159,6 +185,11 @@ internal sealed partial class MainForm
 
     private void StopSelectedSystems()
     {
+        if (!(_activeSystem == "C" && !_splitActive))
+        {
+            _bootCancelledByUser = true;
+            CancelBootBRetry();
+        }
         if (_activeSystem == "C" && !_splitActive) _moduleC.StopAutomationFromHeader();
         else
         {

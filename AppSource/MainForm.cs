@@ -105,8 +105,7 @@ internal sealed partial class MainForm : Form
             _status.Text = "  자동등록 현황 · 물품등록 탭은 별도 편집 화면으로 전환됩니다.";
             AppUpdateService.ReportStartupReady();
             _updateTimer.Start();
-            if (_updateSettings.Automatic && !string.IsNullOrWhiteSpace(_updateSettings.FeedUrl))
-                _ = CheckForUpdateAsync(automatic: true);
+            _ = InitializeWindowsBootAsync();
         };
         _updateTimer.Tick += async (_, _) =>
         {
@@ -122,7 +121,7 @@ internal sealed partial class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
+        FormClosing += (_, _) => { CancelBootBRetry(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
     private bool CanInstallUpdateAcrossSystems =>
@@ -243,6 +242,7 @@ internal sealed partial class MainForm : Form
         _splitButton = AddToolButton(bar, "스플릿", () => _ = ToggleSplitViewAsync(), 88);
         _integratedButton = AddToolButton(bar, "통합 편집", ToggleIntegratedEditor, 105);
         var moreMenu = new ContextMenuStrip();
+        moreMenu.Items.Add(BuildWindowsStartupMenu());
         moreMenu.Items.Add(BuildAutoStartTargetsMenu());
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("내 등록글 불러오기", null,

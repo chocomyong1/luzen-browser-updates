@@ -18,14 +18,16 @@ assert.match(split, /public bool B \{ get; set; \} = true;/);
 assert.match(split, /JsonSerializer\.Deserialize<AutomaticStartTargets>/);
 assert.match(split, /File\.Move\(temp, StartTargetsPath, true\)/);
 assert.match(main, /"자동 시작", \(\) => _ = StartSelectedSystemsAsync\(\)/);
-const start = split.slice(split.indexOf('private async Task StartSelectedSystemsAsync()'), split.indexOf('private void PauseSelectedSystems()'));
-assert(start.includes('if (_startTargets.A) _moduleA.StartAutomationFromHeader();'));
-assert(start.includes('await EnsureBReadyAsync()'));
-assert(start.includes('if (bReady && _startTargets.B) _moduleB.StartAutomationFromHeader();'));
-assert(start.includes('if (_activeSystem == "C" && !_splitActive)'));
+const start = split.slice(split.indexOf('private async Task StartSelectedSystemsAsync(bool silentStartup = false)'), split.indexOf('private void PauseSelectedSystems()'));
+assert(start.includes('if (_startTargets.A)'));
+assert(start.includes('_moduleA.StartAutomationFromHeader()'));
+assert(start.includes('await EnsureBReadyAsync(silentStartup)'));
+assert(start.includes('if (bReady && _startTargets.B)'));
+assert(start.includes('_moduleB.StartAutomationFromHeader()'));
+assert(start.includes('if (!silentStartup && _activeSystem == "C" && !_splitActive)'));
 
 // B cannot start or become visible with A's route. Stop/pause affects both.
-const ensure = split.slice(split.indexOf('private async Task<bool> EnsureBReadyAsync()'), split.indexOf('private async Task StartSelectedSystemsAsync()'));
+const ensure = split.slice(split.indexOf('private async Task<bool> EnsureBReadyAsync(bool silentStartup = false)'), split.indexOf('private async Task StartSelectedSystemsAsync(bool silentStartup = false)'));
 assert(ensure.includes('DualSystemNetwork.IsRouteVerified("B")'));
 assert(ensure.includes('await DualSystemNetwork.VerifyBRouteAsync()'));
 assert(ensure.indexOf('DualSystemNetwork.IsRouteVerified("B") || IsDisposed') < ensure.indexOf('_moduleB.Show()'));

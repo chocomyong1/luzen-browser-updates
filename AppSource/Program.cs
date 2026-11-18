@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace LuzenBrowserReplica;
@@ -7,9 +8,19 @@ namespace LuzenBrowserReplica;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+
+        // An accidental second launch (including a Windows startup entry plus
+        // a manual shortcut) must not create TWO independent site submitters.
+        using var instance = new Mutex(true, @"Local\LuzenBrowserReplica.SingleInstance", out bool first);
+        if (!first)
+        {
+            if (!args.Contains("--windows-startup", StringComparer.OrdinalIgnoreCase))
+                MessageBox.Show("Luzen이 이미 실행 중입니다. 기존 창을 사용하세요.", "Luzen 실행 중");
+            return;
+        }
 
         // Single-user/local mode: the replica's own sign-in has no server-side
         // authentication, so open the actual main window immediately.

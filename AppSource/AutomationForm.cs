@@ -419,6 +419,7 @@ internal sealed partial class AutomationForm : Form
     // above the tabs, so status and listing actions cannot be duplicated.
     public Task ImportMyRegisteredListingsFromHeaderAsync() => ImportMyRegisteredListingsAsync();
     public void StartAutomationFromHeader() => StartScheduler();
+    public void StartAutomationOnBoot() => StartScheduler(silent: true);
     public void PauseAutomationFromHeader() => PauseScheduler();
     public void StopAutomationFromHeader() => StopScheduler();
     public Task ProbeSelectedRepostFromHeaderAsync() => ProbeSelectedRepostReadOnlyAsync();
@@ -2286,24 +2287,27 @@ internal sealed partial class AutomationForm : Form
         await ExecuteJobAsync(_selected, dryRun);
     }
 
-    private void StartScheduler()
+    private void StartScheduler(bool silent = false)
     {
         if (_sitePriceBatchRunning)
         {
-            MessageBox.Show(this, "선택 물품 가격을 순서대로 반영하고 있습니다. 완료 또는 [즉시 중지] 후 자동 시작하세요.", "가격 반영 중");
+            if (!silent) MessageBox.Show(this, "선택 물품 가격을 순서대로 반영하고 있습니다. 완료 또는 [즉시 중지] 후 자동 시작하세요.", "가격 반영 중");
+            else AppendLog("Windows 자동 시작 보류: 사이트 가격 변경 작업 중");
             return;
         }
         if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
         {
-            MessageBox.Show(this, $"시스템 {_system} 연결 설정에서 독립적인 외부 IP를 먼저 확인하세요. 확인 전에는 {_system}가 현재 IP로 등록하지 않습니다.",
+            if (!silent) MessageBox.Show(this, $"시스템 {_system} 연결 설정에서 독립적인 외부 IP를 먼저 확인하세요. 확인 전에는 {_system}가 현재 IP로 등록하지 않습니다.",
                 $"{_system} 연결 확인 필요");
+            else AppendLog($"Windows 자동 시작 보류: {_system} 독립 IP 미확인");
             return;
         }
         SaveAll();
         if (_schedulerRunning) return;
         if (_busy || _pendingMyListingsImport)
         {
-            MessageBox.Show(this, "현재 작업 또는 기존 등록글 불러오기가 완료된 후 자동 시작할 수 있습니다.", "자동등록 대기");
+            if (!silent) MessageBox.Show(this, "현재 작업 또는 기존 등록글 불러오기가 완료된 후 자동 시작할 수 있습니다.", "자동등록 대기");
+            else AppendLog("Windows 자동 시작 보류: 진행 중인 작업 또는 등록글 조회 있음");
             return;
         }
         var enabled = _jobs.Where(WantsWork).ToList();
@@ -2311,9 +2315,22 @@ internal sealed partial class AutomationForm : Form
             !string.IsNullOrWhiteSpace(j.PendingRepostBeforeStamp) &&
             ListingIdentity.HasNumber(j.ListingNumber) && MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j)));
         if (enabled.Count == 0 && !canCheckHeld)
-        { MessageBox.Show(this, "자동 실행할 물품이나 사이트에서 재검증할 수 있는 보류 물품이 없습니다."); return; }
+        {
+            if (!silent) MessageBox.Show(this, "자동 실행할 물품이나 사이트에서 재검증할 수 있는 보류 물품이 없습니다.");
+            else AppendLog("Windows 자동 시작 생략: 자동 사용 물품 및 확인할 보류 물품 없음");
+            return;
+        }
         foreach (var job in enabled)
-            if (!ValidateJob(job, false, out var error)) { MessageBox.Show(this, job.Title + ": " + error, "자동 시작 불가"); return; }
+            if (!ValidateJob(job, false, out var error))
+            {
+                if (!silent) MessageBox.Show(this, job.Title + ": " + error, "자동 시작 불가");
+                else
+                {
+                    AppendLog("Windows 자동 시작 보류: " + job.Server + " · " + error);
+                    NotifyAutomationIssue("자동 시작 설정 오류", error, job);
+                }
+                return;
+            }
         _schedulerRunning = true; _timer.Start();
         _nextPendingReviewUtc = DateTime.UtcNow.AddSeconds(15);
         // Old builds scheduled each item at a fixed 30-minute interval. Hourly
