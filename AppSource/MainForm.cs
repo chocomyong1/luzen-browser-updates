@@ -188,6 +188,11 @@ internal sealed partial class MainForm : Form
             _moduleC.ShowAutomationView();
             _systemCShown = true;
         }
+        if (_splitActive && system is ("A" or "B"))
+        {
+            SelectSplitSystem(system);
+            return;
+        }
         if (_splitActive && system == "C") DisableSplitView();
         _activeSystem = system;
         _module.BringToFront();
