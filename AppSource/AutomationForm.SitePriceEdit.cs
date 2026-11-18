@@ -27,8 +27,12 @@ internal sealed partial class AutomationForm
 
     // A batch uses the same independently verified single-listing transaction.
     // Never parallelize submissions: the WebView2 and server quota are shared.
-    private async Task ApplySelectedSitePricesAsync(IReadOnlyList<ListingJob>? explicitTargets = null)
+    private async Task ApplySelectedSitePricesAsync(IReadOnlyList<ListingJob>? explicitTargets = null,
+        bool sitePriceConsentConfirmed = false)
     {
+        // The user may press Apply while a long read-only import is enriching
+        // details. Stop and await that import before any price readback/submit.
+        if (_myListingsImportRunning && !await CancelImportForManualRunAsync("사이트 가격 순차 반영")) return;
         if (_myListingsImportRunning || _busy || _sitePriceBatchRunning || _siteRequestTraceActive)
         {
             MessageBox.Show(this, "진행 중인 조회·등록·기록 작업이 끝난 뒤 실행하세요.", "사이트 일괄 가격 반영");
@@ -77,7 +81,7 @@ internal sealed partial class AutomationForm
         var preview = string.Join("\n", targets.Take(12).Select(j =>
             $"{j.Server} · {j.ListingNumber} → {j.Price}원"));
         if (targets.Count > 12) preview += $"\n외 {targets.Count - 12}건";
-        if (MessageBox.Show(this,
+        if ((!sitePriceConsentConfirmed || explicitTargets is null) && MessageBox.Show(this,
             $"선택한 {targets.Count}건의 가격을 아이템매니아 실제 등록글에 순서대로 반영할까요?\n\n{preview}\n\n" +
             "각 물품의 등록번호·제목·현재 사이트 가격을 다시 확인하며, 한 건이라도 실패하거나 결과가 불확실하면 즉시 중단합니다.\n" +
             "재등록 횟수·서버 간격 제한이 적용됩니다.",
