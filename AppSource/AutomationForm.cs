@@ -867,6 +867,7 @@ internal sealed partial class AutomationForm : Form
         }
         primary.Controls.Add(ActionButton("선택 물품 일괄수정", 160, BulkEditSelected, true));
         primary.Controls.Add(ActionButton("현재 글 사이트 가격 반영", 182, () => _ = ApplySelectedSitePriceAsync()));
+        primary.Controls.Add(ActionButton("선택 글 사이트 가격 반영", 182, () => _ = ApplySelectedSitePricesAsync()));
         primary.Controls.Add(ActionButton("조회 전체선택", 116, () => SetVisibleBatchSelection(true)));
         primary.Controls.Add(ActionButton("선택 해제", 90, () => SetVisibleBatchSelection(false)));
         primary.Controls.Add(ActionButton("표 넓게 보기", 116, ToggleWideGrid));
