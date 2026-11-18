@@ -91,6 +91,21 @@ internal sealed partial class AutomationForm
             (_, _) => SetVisibleBatchSelection(false)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("선택한 물품 일괄수정", null, (_, _) => BulkEditSelected()));
+        if (ReferenceEquals(_batchContextGrid, _autoGrid))
+        {
+            // Advanced table columns remain available without occupying a
+            // permanent toolbar on the registration-status page.
+            menu.Items.Add(new ToolStripSeparator());
+            bool visible = _autoGrid.Columns.Cast<DataGridViewColumn>()
+                .Any(c => c.DataPropertyName == "MinQuantity" && c.Visible);
+            menu.Items.Add(visible ? "최소·최대·주기 열 숨기기" : "최소·최대·주기 열 표시", null,
+                (_, _) =>
+                {
+                    foreach (DataGridViewColumn column in _autoGrid.Columns)
+                        if (column.DataPropertyName is "MinQuantity" or "MaxQuantity" or "IntervalMinutes")
+                            column.Visible = !visible;
+                });
+        }
     }
 
     private void AddCriterion(ToolStripMenuItem group, string title, ListingJob target,
