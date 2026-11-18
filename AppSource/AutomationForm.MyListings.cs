@@ -11,10 +11,10 @@ namespace LuzenBrowserReplica;
 
 internal sealed partial class AutomationForm
 {
-    private async Task<bool> CancelImportForManualRunAsync()
+    private async Task<bool> CancelImportForManualRunAsync(string purpose = "수동 실행")
     {
         if (!_myListingsImportRunning) return true;
-        AppendLog("수동 시험/실제 실행 요청: 진행 중인 읽기 전용 등록글 조회를 취소합니다.");
+        AppendLog(purpose + ": 진행 중인 읽기 전용 등록글 조회를 취소하고 저장된 물품 목록을 사용합니다.");
         var completion = _myListingsImportCompletion?.Task;
         _myListingsImportCancellation?.Cancel();
         // Stop only the read-only page navigation owned by the importer.
