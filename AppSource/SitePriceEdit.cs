@@ -27,7 +27,13 @@ internal static class SitePriceEdit
     }
 
     public static string BuildOwnedRowScript(string number, string title, bool click) =>
-        OwnedRowScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click }), StringComparison.Ordinal);
+        OwnedRowScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click, openTitle = false }), StringComparison.Ordinal);
+
+    public static string BuildOwnedTitleScript(string number, string title, bool click) =>
+        OwnedRowScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click, openTitle = true }), StringComparison.Ordinal);
+
+    public static string BuildDetailEditScript(string number, string title, bool click) =>
+        DetailEditScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click }), StringComparison.Ordinal);
 
     public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit) =>
         EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, oldPrice, newPrice, submit }), StringComparison.Ordinal);
@@ -86,6 +92,15 @@ internal static class SitePriceEdit
       const row=matching[0];
       const visible=e=>e.isConnected&&e.getClientRects().length>0&&!e.disabled&&
         (e.ownerDocument?.defaultView?.getComputedStyle(e)||getComputedStyle(e)).visibility!=='hidden';
+      if(a.openTitle){
+        const titleLinks=[...row.querySelectorAll('.trade_title')].filter(visible)
+          .filter(e=>core(e.textContent)===core(a.title));
+        if(titleLinks.length!==1)return result('error',titleLinks.length?
+          '등록글 제목이 여러 개 연결되어 있습니다':'검증된 등록글의 클릭 가능한 제목을 찾지 못했습니다',titleLinks.length);
+        if(!a.click)return result('ready','등록번호·제목이 일치하는 상세 화면 제목 링크 확인',1);
+        titleLinks[0].click();
+        return result('opened','검증된 등록글 제목 클릭',1);
+      }
       const label=e=>norm([e.innerText,e.value,e.getAttribute('title'),e.getAttribute('aria-label'),
         e.getAttribute('data-desc'),e.getAttribute('data-tooltip'),e.getAttribute('data-original-title'),
         ...[...(e.querySelectorAll?.('[title],[aria-label],svg title')||[])].slice(0,8).map(x=>
@@ -109,6 +124,42 @@ internal static class SitePriceEdit
       if(!a.click)return result('ready','정확한 등록번호·제목의 수정 버튼을 확인했습니다',1);
       edit[0].click();
       return result('opened','검증된 등록글의 수정 화면 열기 요청',1);
+    })()
+    """;
+
+    // The current My Room cards show only reInsert/hide/delete icons. Clicking
+    // the title opens the registered listing detail where '수정하기' is present.
+    // This script never clicks until both listing identity and the unique edit
+    // control are independently verified on that read-only detail page.
+    public const string DetailEditScript = """
+    (() => {
+      const a=__ARG__;
+      const result=(status,message='',candidates=0)=>({status,message,candidates});
+      const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
+      const core=s=>norm(s).replace(/^\[[\d,]+개[~〜-][\d,]+개\]/,'');
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname))
+        return result('error','아이템매니아 공식 HTTPS 화면이 아닙니다');
+      if(/^\/myroom\//i.test(location.pathname))
+        return result('error','물품 상세 화면이 아닌 관리 목록입니다');
+      if(!/^\d{8,20}$/.test(a.number)||core(a.title).length<3)
+        return result('error','등록번호 또는 제목이 유효하지 않습니다');
+      const exact=new RegExp('(?:^|\\D)'+a.number+'(?!\\d)');
+      const page=String(document.body?.innerText||'');
+      const path=location.pathname+location.search;
+      if(!exact.test(path)||!exact.test(page))
+        return result('error','상세 화면 URL과 본문에서 동일한 등록번호를 확인하지 못했습니다');
+      if(!core(page).includes(core(a.title)))
+        return result('error','상세 화면 제목이 선택한 등록글과 다릅니다');
+      const visible=e=>e.isConnected&&e.getClientRects().length>0&&!e.disabled&&
+        getComputedStyle(e).visibility!=='hidden';
+      const buttons=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"]')]
+        .filter(visible).filter(e=>norm([e.innerText,e.value,e.getAttribute('aria-label'),
+          e.getAttribute('title')].filter(Boolean).join(' '))==='수정하기');
+      if(buttons.length!==1)return result('error',buttons.length?
+        '상세 화면의 수정하기 버튼이 여러 개입니다':'상세 화면의 수정하기 버튼을 찾지 못했습니다',buttons.length);
+      if(!a.click)return result('ready','등록번호·제목·수정하기 버튼을 확인했습니다',1);
+      buttons[0].click();
+      return result('opened','검증된 상세 화면의 수정하기 버튼을 눌렀습니다',1);
     })()
     """;
 
@@ -175,7 +226,7 @@ internal static class SitePriceEdit
       priceInput.dispatchEvent(new Event('change',{bubbles:true}));
       if(money(priceInput.value)!==desired)return result('error','사이트 입력칸 가격 변경에 실패했습니다');
       buttons[0].click();
-      return result('submitted','사이트 재등록 버튼 클릭. 실제 변경 여부는 별도로 검사해야 합니다',desired,1);
+      return result('submitted','사이트 수정 제출 버튼 클릭. 실제 변경 여부는 별도로 검사해야 합니다',desired,1);
     })()
     """;
 }
