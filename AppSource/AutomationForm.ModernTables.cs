@@ -93,9 +93,9 @@ internal sealed partial class AutomationForm
         grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
         grid.ScrollBars = ScrollBars.Both;
         grid.EnableHeadersVisualStyles = false;
-        grid.ColumnHeadersHeight = 36;
+        grid.ColumnHeadersHeight = 40;
         grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
-        grid.RowTemplate.Height = 29;
+        grid.RowTemplate.Height = 36;
         grid.BorderStyle = BorderStyle.None;
         grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
         grid.GridColor = UiTheme.Border;
@@ -104,16 +104,19 @@ internal sealed partial class AutomationForm
         grid.ColumnHeadersDefaultCellStyle.ForeColor = UiTheme.Text;
         grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = UiTheme.SurfaceAlt;
         grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = UiTheme.Text;
-        grid.ColumnHeadersDefaultCellStyle.Font = new Font(Font, FontStyle.Bold);
+        grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9.2F, FontStyle.Bold);
         grid.DefaultCellStyle.BackColor = UiTheme.Surface;
         grid.DefaultCellStyle.ForeColor = UiTheme.Text;
-        grid.DefaultCellStyle.SelectionBackColor = UiTheme.Primary;
-        grid.DefaultCellStyle.SelectionForeColor = Color.White;
+        grid.DefaultCellStyle.Font = new Font("Segoe UI", 9.2F);
+        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(230, 242, 255);
+        grid.DefaultCellStyle.SelectionForeColor = UiTheme.Text;
         grid.AlternatingRowsDefaultCellStyle.BackColor = UiTheme.Canvas;
         foreach (DataGridViewColumn col in grid.Columns)
         {
             col.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
             col.Resizable = DataGridViewTriState.True;
+            if (col is DataGridViewTextBoxColumn)
+                col.DefaultCellStyle.Padding = new Padding(7, 0, 7, 0);
             if (col.DataPropertyName is "Price" or "Quantity" or "QuantityDisplay" or "MinQuantity" or "MaxQuantity" or "IntervalMinutes")
                 col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
         }
