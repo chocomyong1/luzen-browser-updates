@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.63",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.63/LuzenBrowser_22.2.63_BinaryUpdate.zip",
-  "sha256": "f0fa5f821e631ff489593b670177f94aa90441ff098818250d09a0bdc8322d63",
+  "version": "22.2.64",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.64/LuzenBrowser_22.2.64_BinaryUpdate.zip",
+  "sha256": "aee8761c483dfd9d724bcbce81ac0b27ca37f6f5f0660b629933750bfc329239",
   "format": "binary",
-  "releaseNotes": "v22.2.63 화면 구성 재설계: 기본 Windows 탭 헤더를 감추고 독립적인 세그먼트 메뉴를 적용했습니다. 실행 기록은 기본으로 접고 제목을 누르거나 경계선을 드래그해 열 수 있어 물품 표의 세로 공간이 늘어났습니다. 등록 현황 표의 상품 제목은 화면 너비에 맞게 확장되며 최소·최대·재등록 주기는 더보기에서 추가 열로 표시합니다. 상단 실행 버튼은 실제 글자 폭에 맞춰 자동 조정해 잘림을 방지하고, Luzen 로고를 간결한 파란 심볼로 교체했습니다. v22.2.62의 다음 자동등록 순번 가격 변경 예약과 안전 검증은 그대로 유지합니다."
+  "releaseNotes": "v22.2.64 화면 정리: 내 등록글 불러오기는 상단 관리 메뉴로 이동하고 고급 설정은 일반 탭에서 숨겨 관리 메뉴로만 엽니다. 등록 현황에서 새 물품·일괄수정·가격 예약 버튼 줄을 제거해 현황 표에 집중하고, 물품 편집 탭에 새 물품 버튼을 추가했습니다. 등록 현황 행 더블클릭 편집 이동과 추가 표 열 우클릭 설정은 유지합니다. 자동등록과 순번별 가격 변경 동작은 변경하지 않았습니다."
 }
