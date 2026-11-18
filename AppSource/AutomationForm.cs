@@ -862,6 +862,10 @@ internal sealed partial class AutomationForm : Form
             var button = new Button { Text = caption, Width = width, Height = 30,
                 Margin = new Padding(2, 0, 7, 0) };
             UiTheme.StyleButton(button, primaryAction ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
+            void FitText() => button.Width = Math.Max(width,
+                TextRenderer.MeasureText(caption, button.Font).Width + button.Padding.Horizontal + 26);
+            button.FontChanged += (_, _) => FitText();
+            FitText();
             button.Click += (_, _) => run();
             return button;
         }
@@ -947,11 +951,39 @@ internal sealed partial class AutomationForm : Form
         // require a verified live form and are not pre-populated here.
         UpdateContextFields();
 
-        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 80, AutoScroll = true, WrapContents = true, Padding = new Padding(5, 5, 0, 0), BackColor = Color.White };
+        // The right editor can be only ~320 px wide. A fixed 80px footer used
+        // to clip its third/fourth line of buttons when Windows scaling changed.
+        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 80,
+            AutoScroll = false, WrapContents = true, Padding = new Padding(5, 5, 5, 5),
+            BackColor = Color.White };
+        void FitBottomHeight()
+        {
+            int available = bottom.ClientSize.Width - bottom.Padding.Horizontal;
+            if (available < 120) return;
+            int used = 0, lines = 1;
+            foreach (Control item in bottom.Controls)
+            {
+                int needed = item.Width + item.Margin.Horizontal;
+                if (used > 0 && used + needed > available) { lines++; used = 0; }
+                used += needed;
+            }
+            int height = bottom.Padding.Vertical + lines * 37 + 4;
+            if (bottom.Height != height) bottom.Height = height;
+        }
+        bottom.SizeChanged += (_, _) => FitBottomHeight();
         void Button(string text, int width, Action action)
         {
-            var b = new Button { Text = text, Width = width, Height = 29, Margin = new Padding(3) };
+            var b = new Button { Text = text, Width = width, Height = 30,
+                TextAlign = ContentAlignment.MiddleCenter, Margin = new Padding(3) };
+            void FitText()
+            {
+                b.Width = Math.Max(width, TextRenderer.MeasureText(text, b.Font).Width +
+                    b.Padding.Horizontal + 28);
+                FitBottomHeight();
+            }
+            b.FontChanged += (_, _) => FitText();
             b.Click += (_, _) => action(); bottom.Controls.Add(b);
+            FitText();
         }
         Button("물품 저장", 95, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); });
         Button("사이트 가격 반영", 133, () => _ = ApplySelectedSitePriceAsync());
@@ -985,6 +1017,8 @@ internal sealed partial class AutomationForm : Form
             _selected.NextDueUtc = DateTime.MaxValue;
             SaveAll(); _jobsGrid.Refresh(); RefreshAutoSummary();
         });
+        right.SizeChanged += (_, _) => FitBottomHeight();
+        bottom.HandleCreated += (_, _) => FitBottomHeight();
         right.Controls.Add(scroll);
         right.Controls.Add(bottom);
         right.Controls.Add(new Label { Text = "물품 설정  ·  원본 양식의 주요 선택 항목", Dock = DockStyle.Top, Height = 27,
