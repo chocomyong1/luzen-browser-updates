@@ -17,6 +17,21 @@ assert.match(panel, /foreach \(string system in new\[\] \{ "A", "B", "C" \}\)/);
 assert.match(panel, /IntegratedOwner\(system\)\.IntegratedEditJobs/);
 assert.match(panel, /_workspaceBody\.Controls\.Add\(panel\)/);
 assert.match(panel, /_integratedSystemFilter\.Items\.AddRange\(new object\[\] \{ "전체", "A", "B", "C" \}\)/);
+// The unified view composes A/B/C + buy/sell tabs + server + search.
+assert.match(panel, /new\[\] \{ "전체", "구매", "판매" \}/);
+assert.match(panel, /Job\.OriginalTradeSide is "구매" or "판매"/);
+assert.match(panel, /Job\.Operation == "구매등록"/);
+assert.match(panel, /MyListingsImport\.IsSellListUrl\(Job\.SourceListUrl\)/);
+assert.match(panel, /return "미확인"/);
+assert.match(panel, /RefreshIntegratedServerOptions\(\)/);
+assert.match(panel, /_integratedServerFilter\.Items\.Add\("전체"\)/);
+assert.match(panel, /\.Distinct\(StringComparer\.CurrentCulture\)/);
+assert.match(panel, /servers\.Contains\(previous\) \? previous : "전체"/);
+assert.match(panel, /_integratedTradeSide == "전체" \|\| row\.TradeSide == _integratedTradeSide/);
+assert.match(panel, /server == "전체" \|\| row\.Server == server/);
+assert.match(panel, /Column\("TradeSide", "거래", 67\)/);
+assert.match(panel, /"TradeSide" => row => row\.TradeSide/);
+assert.match(panel, /var targets = visible\.Where\(row => row\.Selected\)\.ToList\(\)/);
 assert.match(panel, /같은 가격 선택/);
 assert.match(panel, /row\.PriceAmount == reference\.PriceAmount/);
 assert.match(panel, /"Server" => row => row.Server/);
@@ -44,4 +59,4 @@ assert.doesNotMatch(edits, /ExecuteStepAsync|CoreWebView2\.Navigate|InspectOwned
 assert.match(panel, /foreach \(var group in groups\)[\s\S]*group\.Form\.ValidateIntegratedEdit/);
 assert.match(panel, /group\.Form\.ApplyIntegratedEdit\(group\.Jobs, command\)/);
 assert.match(automation, /if \(!string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)\)/);
-console.log('PASS one-grid A/B/C editing, per-system persistence, next-slot prices and in-flight protection');
+console.log('PASS A/B/C combined editor filters, safe visible-only batch editing and next-slot prices');
