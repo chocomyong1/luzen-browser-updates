@@ -16,6 +16,8 @@ const title = '+ 8 + 레벨 겁화, 작열 삽니다 + 즉시대기중 +';
 function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정',
   buttonDesc = '수정', buttonHandler = `modifyItem('${number}')`, count = 1 } = {}) {
   let clicked = 0;
+  const titleLink = { textContent: displayedTitle, isConnected: true, disabled: false,
+    getClientRects: () => [1], click: () => clicked++ };
   const actions = Array.from({ length: count }, () => ({
     innerText: buttonText, value: '', className: 'list_icon edit', isConnected: true,
     disabled: false, getClientRects: () => [1],
@@ -27,12 +29,13 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
     innerText: `${id} ${displayedTitle}`, textContent: `${id} ${displayedTitle}`,
     getAttribute: key => key === 'data-tid' ? id : null,
     querySelector: key => key === '.trade_title' ? { textContent: displayedTitle } : null,
-    querySelectorAll: key => key === '*' ? actions : key.startsWith('a,button,') ? actions : [],
+    querySelectorAll: key => key === '*' ? actions : key === '.trade_title' ? [titleLink] :
+      key.startsWith('a,button,') ? actions : [],
     closest: () => null
   };
   const document = { querySelectorAll: key => key.startsWith('tr,') ? [row] : key === '[onclick]' ? actions : [] };
-  const evaluate = (click = true) => vm.runInNewContext(
-    script('OwnedRowScript').replace('__ARG__', JSON.stringify({ number, title, click })),
+  const evaluate = (click = true, openTitle = false) => vm.runInNewContext(
+    script('OwnedRowScript').replace('__ARG__', JSON.stringify({ number, title, click, openTitle })),
     { document, location: { protocol: 'https:', hostname: 'www.itemmania.com',
         pathname: '/myroom/buy/buy_regist.html' },
       getComputedStyle: () => ({ visibility: 'visible' }) }, { timeout: 1000 });
@@ -53,6 +56,45 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   const many = ownRowCase({ count: 2 });
   assert.equal(many.evaluate(true).status, 'error');
   assert.equal(many.clicked, 0);
+}
+{
+  const titleRoute = ownRowCase({ buttonText: '', buttonDesc: '', buttonHandler: '' });
+  assert.equal(titleRoute.evaluate(false, true).status, 'ready');
+  assert.equal(titleRoute.evaluate(true, true).status, 'opened');
+  assert.equal(titleRoute.clicked, 1);
+  const wrong = ownRowCase({ id: '2026070508129999' });
+  assert.equal(wrong.evaluate(true, true).status, 'error');
+  assert.equal(wrong.clicked, 0);
+}
+
+function detailCase({ pageId = number, pageTitle = title, buttonCount = 1 } = {}) {
+  let clicked = 0;
+  const buttons = Array.from({length: buttonCount}, () => ({
+    innerText: '수정하기', value: '', isConnected: true, disabled: false,
+    getClientRects: () => [1], getAttribute: () => null,
+    click: () => clicked++
+  }));
+  const document = { body: {innerText: `#${pageId} ${pageTitle}`},
+    querySelectorAll: () => buttons };
+  const evaluate = click => vm.runInNewContext(
+    script('DetailEditScript').replace('__ARG__', JSON.stringify({number, title, click})),
+    { document, location: {protocol: 'https:', hostname: 'www.itemmania.com',
+      pathname: '/buy/detail.html', search: `?id=${pageId}`},
+    getComputedStyle: () => ({visibility: 'visible'}) }, {timeout: 1000});
+  return {evaluate, get clicked() {return clicked;}};
+}
+{
+  const good = detailCase();
+  assert.equal(good.evaluate(false).status, 'ready');
+  assert.equal(good.clicked, 0);
+  assert.equal(good.evaluate(true).status, 'opened');
+  assert.equal(good.clicked, 1);
+  const wrong = detailCase({pageId: '2026070508129999'});
+  assert.equal(wrong.evaluate(true).status, 'error');
+  assert.equal(wrong.clicked, 0);
+  const ambiguous = detailCase({buttonCount: 2});
+  assert.equal(ambiguous.evaluate(true).status, 'error');
+  assert.equal(ambiguous.clicked, 0);
 }
 
 function editFormCase({ id = number, old = '10,000', priceFields = 1,
