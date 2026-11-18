@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.46",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.46/LuzenBrowser_22.2.46_BinaryUpdate.zip",
-  "sha256": "2a62e55e15ea99f1e5627f8e9d4e8d43c80bd9807528453adbba60e1a985e6e4",
+  "version": "22.2.47",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.47/LuzenBrowser_22.2.47_BinaryUpdate.zip",
+  "sha256": "33c5af5f51a69290f447dd44d330f2752a416203b589b673c9dd9fbd24ccc740",
   "format": "binary",
-  "releaseNotes": "v22.2.46: 관리 목록에는 수정 버튼이 없는 사이트 구조를 반영했습니다. 정확한 등록번호의 제목·상세 URL로 이동해 물품 상세 화면의 [수정하기] 버튼을 찾습니다. 상세 URL이 없으면 본인 목록에서 검증된 제목을 클릭합니다. 등록번호·제목·기존 가격을 재검증한 후에만 수정 제출하며 실제 계정에서 첫 적용 검증이 필요합니다."
+  "releaseNotes": "v22.2.47: 목록에서 등록번호가 일치하는 물품 제목의 실제 링크/동작 요소를 클릭하도록 보완했습니다. 제목 클릭 후 목록에 남으면 검증된 상세 URL로 이동하고, 최대 약 11초 동안 상세 화면 표시를 확인합니다. 이동에 실패하면 현재 페이지 경로를 오류로 남기며, 가격 제출 전에 반드시 등록번호·기존 가격을 검증합니다."
 }
