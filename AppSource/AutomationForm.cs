@@ -870,7 +870,7 @@ internal sealed partial class AutomationForm : Form
             return button;
         }
         primary.Controls.Add(ActionButton("선택 물품 일괄수정", 160, BulkEditSelected, true));
-        primary.Controls.Add(ActionButton("사이트 가격 버튼 진단", 182, () => _ = ApplySelectedSitePriceAsync()));
+        primary.Controls.Add(ActionButton("구매글 가격 반영 (1건)", 182, () => _ = ApplySelectedSitePriceAsync()));
         primary.Controls.Add(ActionButton("일괄 가격 변경 중단", 182, () => _ = ApplySelectedSitePricesAsync()));
         primary.Controls.Add(ActionButton("조회 전체선택", 116, () => SetVisibleBatchSelection(true)));
         primary.Controls.Add(ActionButton("선택 해제", 90, () => SetVisibleBatchSelection(false)));
@@ -986,7 +986,7 @@ internal sealed partial class AutomationForm : Form
             FitText();
         }
         Button("물품 저장", 95, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); });
-        Button("가격 버튼 진단", 133, () => _ = ApplySelectedSitePriceAsync());
+        Button("구매글 가격 반영", 133, () => _ = ApplySelectedSitePriceAsync());
         Button("서버별 복제", 103, CopySelectedToOtherServers);
         Button("완료 표시 초기화", 126, () =>
         {
