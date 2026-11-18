@@ -17,7 +17,8 @@ internal static class LogPresentation
         "선택 물품", "서버별 복제 완료:", "표 상단", "물품 목록 열 너비",
         "선택한 기존 등록글", "일괄수정", "물품 설정 저장:", "사이트 진단 파일 저장",
         "주의: 결과 확인 대기", "보류 사유:", "보류 자동 확인:", "보류 자동 해제:",
-        "결과 확인이 필요한 물품", "[미제출 조회시험"
+        "결과 확인이 필요한 물품", "[미제출 조회시험",
+        "B VPN 접속 대기:", "B VPN 독립 외부 IP 재확인 완료", "B 자동등록 전체를 90초"
     };
 
     public static LogPresentationResult Format(string? message)
@@ -36,7 +37,7 @@ internal static class LogPresentation
         {
             "등록글 자동 조회 실패:", "내 등록글 페이지 조회 오류:",
             "사이트 진단 실패:", "오류 로그 복사 실패:", "선택 모드 실패:",
-            "등록글 조회 페이지 오류:", "실행 거절:"
+            "등록글 조회 페이지 오류:", "실행 거절:", "B VPN 연결 재확인 실패:"
         }.Any(prefix => value.StartsWith(prefix, StringComparison.Ordinal));
         if (standaloneError) return new LogPresentationResult(true, true, Compact(value));
 
