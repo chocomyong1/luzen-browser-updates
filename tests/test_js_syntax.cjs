@@ -21,7 +21,9 @@ const snippets = [
   ['AutomationForm.cs', 'private async Task<string> ResolveAutoSelectorAsync'],
   ['AutomationForm.cs', 'private async Task ExecuteStepAsync'],
   ['AutomationForm.cs', 'private async Task ConfirmExactRegistrationDialogAsync'],
-  ['AutomationForm.SiteDiagnostics.cs', 'private async Task ExportSiteDiagnosticsAsync']
+  ['AutomationForm.SiteDiagnostics.cs', 'private async Task ExportSiteDiagnosticsAsync'],
+  ['SitePriceEdit.cs', 'public const string OwnedRowScript'],
+  ['SitePriceEdit.cs', 'public const string EditFormScript']
 ];
 for (const [file, marker] of snippets) {
   const code = section(file, marker);

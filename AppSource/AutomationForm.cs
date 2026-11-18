@@ -866,6 +866,7 @@ internal sealed partial class AutomationForm : Form
             return button;
         }
         primary.Controls.Add(ActionButton("선택 물품 일괄수정", 160, BulkEditSelected, true));
+        primary.Controls.Add(ActionButton("현재 글 사이트 가격 반영", 182, () => _ = ApplySelectedSitePriceAsync()));
         primary.Controls.Add(ActionButton("조회 전체선택", 116, () => SetVisibleBatchSelection(true)));
         primary.Controls.Add(ActionButton("선택 해제", 90, () => SetVisibleBatchSelection(false)));
         primary.Controls.Add(ActionButton("표 넓게 보기", 116, ToggleWideGrid));
@@ -952,6 +953,7 @@ internal sealed partial class AutomationForm : Form
             b.Click += (_, _) => action(); bottom.Controls.Add(b);
         }
         Button("물품 저장", 95, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); });
+        Button("사이트 가격 반영", 133, () => _ = ApplySelectedSitePriceAsync());
         Button("서버별 복제", 103, CopySelectedToOtherServers);
         Button("완료 표시 초기화", 126, () =>
         {
@@ -2772,6 +2774,11 @@ internal sealed partial class AutomationForm : Form
     // generic confirmation, payments, deletion, account checks or other pages.
     private void OnItemManiaScriptDialog(object? sender, CoreWebView2ScriptDialogOpeningEventArgs e)
     {
+        if (!string.IsNullOrWhiteSpace(_armedSitePriceEditNumber))
+        {
+            HandleSitePriceEditScriptDialog(e);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(_armedOwnListRepost)) return;
         var currentPage = _web.Source?.AbsoluteUri ?? "";
         bool officialDialog = Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) &&
