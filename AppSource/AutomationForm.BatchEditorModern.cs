@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace LuzenBrowserReplica;
@@ -10,11 +11,17 @@ internal sealed partial class AutomationForm
 {
     // One visible Apply button per field, as in the reference application.
     // Every application affects ONLY checked rows in the currently filtered list.
-    private void ShowModernBatchEditor()
+    private void ShowModernBatchEditor() => _ = ShowModernBatchEditorAsync();
+
+    private async Task ShowModernBatchEditorAsync()
     {
+        // An ongoing read-only import owns the WebView. Stop that import and
+        // await its finally block before letting a user change local prices.
+        // Never cancel a live site submission or write into a pending import.
+        if (_myListingsImportRunning && !await CancelImportForManualRunAsync("선택 물품 일괄수정")) return;
         if (_sitePriceBatchRunning || _myListingsImportRunning || (_busy && _currentlyExecutingJob is null))
         {
-            MessageBox.Show(this, "등록글을 불러오는 중에는 물품 목록이 바뀔 수 있습니다. 조회가 끝난 뒤 일괄수정하세요.",
+            MessageBox.Show(this, "진행 중인 사이트 제출 또는 목록 조회가 끝난 뒤 일괄수정하세요.",
                 "일괄수정 대기", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -49,7 +56,7 @@ internal sealed partial class AutomationForm
         });
         header.Controls.Add(new Label
         {
-            Text = "바꾸고 싶은 항목만 입력 → 해당 줄의 [적용] 클릭  ·  아이템매니아 사이트의 글은 즉시 수정되지 않습니다.",
+            Text = "가격 [적용]을 누르면 프로그램만 저장할지, 사이트에도 순서대로 반영할지 선택합니다.",
             Dock = DockStyle.Bottom, Height = 38, ForeColor = Color.FromArgb(207, 225, 248),
             Padding = new Padding(19, 8, 0, 0)
         });
@@ -63,6 +70,7 @@ internal sealed partial class AutomationForm
         var close = new Button { Text = "닫기", Dock = DockStyle.Right, Width = 107, Margin = new Padding(8) };
         close.Click += (_, _) => window.Close();
         var changedPriceTargets = new List<ListingJob>();
+        bool sitePriceConsentConfirmed = false;
         var siteApply = new Button { Text = "사이트에 순차 반영", Dock = DockStyle.Right,
             Width = 185, Margin = new Padding(8), Enabled = false };
         siteApply.Click += (_, _) =>
@@ -131,7 +139,8 @@ internal sealed partial class AutomationForm
             return c;
         }
 
-        bool ApplyField<T>(string field, Func<ListingJob, T> read, Action<ListingJob, T> write, T value)
+        bool ApplyField<T>(string field, Func<ListingJob, T> read, Action<ListingJob, T> write,
+            T value, bool confirmLocalSave = true)
         {
             // If an earlier edit changed the current search results (e.g. title),
             // don't silently modify jobs that are now hidden by the active query.
@@ -141,7 +150,7 @@ internal sealed partial class AutomationForm
                 Error("현재 조회 조건에서 선택된 물품이 없습니다. 창을 닫고 조회 조건과 체크 상태를 확인하세요.");
                 return false;
             }
-            if (MessageBox.Show(window,
+            if (confirmLocalSave && MessageBox.Show(window,
                 $"체크한 {active.Count}건의 '{field}'만 바꿀까요?\n\n이 작업은 프로그램의 물품 설정을 변경하며 사이트에 등록된 원본 글은 즉시 수정하지 않습니다.",
                 "일괄수정 적용", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
@@ -188,11 +197,48 @@ internal sealed partial class AutomationForm
             if (!long.TryParse(s, out long price) || price < 1000 || price % 10 != 0)
             { Error("사이트 구매글 가격은 1,000원 이상, 10원 단위로 입력하세요."); return; }
             var activePriceTargets = _filteredJobs.Where(j => j.SelectedForBulk && items.Contains(j)).ToList();
-            if (ApplyField("가격", x => x.Price, (x, v) => x.Price = v, price.ToString()))
+            if (activePriceTargets.Count == 0) { Error("선택한 물품이 없습니다."); return; }
+            var preview = string.Join("\n", activePriceTargets.Take(8).Select(j =>
+                $"{j.Server} · {j.ListingNumber} : {j.Price}원 → {price:N0}원"));
+            if (activePriceTargets.Count > 8) preview += $"\n외 {activePriceTargets.Count - 8}건";
+            var siteChoice = MessageBox.Show(window,
+                $"선택 {activePriceTargets.Count}건을 {price:N0}원으로 변경합니다.\n\n{preview}\n\n" +
+                "[예] 프로그램 저장 + 실제 사이트에 차례로 반영\n" +
+                "[아니오] 프로그램 설정에만 저장 (사이트 변경 없음)\n" +
+                "[취소] 아무것도 변경하지 않음\n\n" +
+                "실제 사이트 반영은 구매글 최대 20건만 가능하며 21초 이상 서버 간격을 지킵니다. " +
+                "사이트 결과가 불분명하면 다음 글의 전송을 중단합니다.",
+                "가격 일괄수정 방식 선택", MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Warning, MessageBoxDefaultButton.Button3);
+            if (siteChoice == DialogResult.Cancel) return;
+            if (siteChoice == DialogResult.Yes)
+            {
+                if (_busy || _sitePriceBatchRunning)
+                { Error("실제 제출 작업 중에는 사이트 가격 일괄 반영을 시작할 수 없습니다. 진행 중인 작업을 마친 후 다시 시도하세요."); return; }
+                if (activePriceTargets.Count > 20 || activePriceTargets.Any(j =>
+                    !j.ImportedFromSite || j.OriginalTradeSide != "구매" || j.RequiresReview ||
+                    !ListingIdentity.HasNumber(j.ListingNumber) ||
+                    !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j))))
+                { Error("사이트 반영은 등록번호가 확인된 본인 구매글 20건 이하만 가능합니다. 확인 대기·판매글을 제외하고 다시 선택해 주세요."); return; }
+                string accountId = ItemManiaAccountStore.Load(_system).UserId;
+                if (activePriceTargets.Select(j => j.SiteId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 1 ||
+                    (!string.IsNullOrWhiteSpace(accountId) && activePriceTargets.Any(j =>
+                        !string.Equals(j.SiteId, accountId, StringComparison.OrdinalIgnoreCase))) ||
+                    activePriceTargets.GroupBy(j => (j.SiteId, j.ListingNumber)).Any(g => g.Count() > 1))
+                { Error("사이트 계정이 서로 다르거나 등록번호가 중복됩니다. 같은 아이디의 고유한 구매글만 선택해 주세요."); return; }
+            }
+            if (ApplyField("가격", x => x.Price, (x, v) => x.Price = v, price.ToString(), confirmLocalSave: false))
             {
                 changedPriceTargets = activePriceTargets;
                 siteApply.Enabled = !_busy && !_sitePriceBatchRunning;
-                result.Text = $"✓ {changedPriceTargets.Count}건 금액 저장 완료 · [사이트에 순차 반영]으로 안전 확인 후 순서대로 제출";
+                sitePriceConsentConfirmed = siteChoice == DialogResult.Yes;
+                result.Text = $"✓ {changedPriceTargets.Count}건 금액 저장 · " +
+                    (sitePriceConsentConfirmed ? "사이트 순차 반영 시작" : "사이트는 아직 변경되지 않음");
+                if (sitePriceConsentConfirmed)
+                {
+                    window.DialogResult = DialogResult.OK;
+                    window.Close();
+                }
             }
         });
         var quantityBox = Input("예: 3");
@@ -280,6 +326,6 @@ internal sealed partial class AutomationForm
         window.Controls.Add(header);
         UiTheme.ApplyControlStyles(window);
         if (window.ShowDialog(this) == DialogResult.OK)
-            _ = ApplySelectedSitePricesAsync(changedPriceTargets);
+            _ = ApplySelectedSitePricesAsync(changedPriceTargets, sitePriceConsentConfirmed);
     }
 }
