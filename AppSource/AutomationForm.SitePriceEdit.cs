@@ -85,6 +85,8 @@ internal sealed partial class AutomationForm
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         if (_schedulerRunning) PauseScheduler();
         _sitePriceBatchRunning = true;
+        _state.Text = $"사이트 가격 순차 반영 0/{targets.Count}건";
+        RefreshAutoSummary();
         using var cancellation = new CancellationTokenSource();
         _sitePriceBatchCancellation = cancellation;
         int finished = 0;
@@ -94,6 +96,8 @@ internal sealed partial class AutomationForm
             foreach (var item in snapshots)
             {
                 var job = item.Job;
+                _state.Text = $"사이트 가격 순차 반영 {finished + 1}/{targets.Count}건 확인 중";
+                RefreshAutoSummary();
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (!IsUnchangedBatchTarget(item))
                 {
@@ -119,6 +123,8 @@ internal sealed partial class AutomationForm
                     break;
                 }
                 finished++;
+                _state.Text = $"사이트 가격 순차 반영 {finished}/{targets.Count}건 완료";
+                RefreshAutoSummary();
                 AppendLog($"구매글 일괄 가격 반영: {finished}/{targets.Count}건 확인 완료");
             }
         }
@@ -164,6 +170,7 @@ internal sealed partial class AutomationForm
             var delay = allowedAt - now + TimeSpan.FromMilliseconds(400);
             if (allowedAt >= HourlyServerQuota.NextHourUtc(now)) return false;
             _state.Text = $"{job.Server} 서버 간격 대기 · {Math.Ceiling(delay.TotalSeconds)}초";
+            RefreshAutoSummary();
             AppendLog($"일괄 가격 반영 서버 간격 대기: {job.Server} · {Math.Ceiling(delay.TotalSeconds)}초 (즉시 중지 가능)");
             await Task.Delay(delay, token);
         }
