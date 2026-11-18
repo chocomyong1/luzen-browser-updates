@@ -23,11 +23,24 @@ internal sealed partial class MainForm
         public string Quantity => Job.QuantityDisplay;
         public long PriceAmount => long.TryParse((Job.Price ?? "").Replace(",", ""), out var p) ? p : 0;
         public string Status => Job.StatusDisplay;
+        public string TradeSide
+        {
+            get
+            {
+                if (Job.OriginalTradeSide is "구매" or "판매") return Job.OriginalTradeSide;
+                if (Job.Operation == "구매등록") return "구매";
+                if (Job.Operation == "판매등록") return "판매";
+                if (MyListingsImport.IsOwnedListUrl(Job.SourceListUrl))
+                    return MyListingsImport.IsSellListUrl(Job.SourceListUrl) ? "판매" : "구매";
+                return "미확인";
+            }
+        }
     }
 
     private Panel? _integratedEditor;
     private DataGridView? _integratedGrid;
     private ComboBox? _integratedSystemFilter;
+    private ComboBox? _integratedServerFilter;
     private TextBox? _integratedSearch;
     private Label? _integratedSummary;
     private Button? _integratedButton;
@@ -37,6 +50,9 @@ internal sealed partial class MainForm
     private bool _integratedTimerAttached;
     private string _integratedSort = "System";
     private bool _integratedAscending = true;
+    private string _integratedTradeSide = "전체";
+    private bool _integratedServerFilterUpdating;
+    private readonly Dictionary<string, Button> _integratedTradeTabs = new();
 
     private AutomationForm IntegratedOwner(string system) => system switch
     {
@@ -77,7 +93,13 @@ internal sealed partial class MainForm
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 87));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var titleBar = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
+        var titleBar = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = UiTheme.Surface
+        };
+        titleBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 265));
+        titleBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        titleBar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 142));
         var title = new Label
         {
             Text = "A · B · C 통합 물품 편집", Dock = DockStyle.Left, Width = 265,
@@ -85,9 +107,29 @@ internal sealed partial class MainForm
             ForeColor = UiTheme.Text, Font = new Font("Segoe UI", 12F, FontStyle.Bold)
         };
         var close = IntegratedButton("단일 화면으로", 125, DisableIntegratedEditor);
-        close.Dock = DockStyle.Right;
-        titleBar.Controls.Add(title);
-        titleBar.Controls.Add(close);
+        close.Anchor = AnchorStyles.Right;
+        var tradeTabs = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true,
+            Padding = new Padding(0, 5, 0, 0)
+        };
+        foreach (string side in new[] { "전체", "구매", "판매" })
+        {
+            var tab = IntegratedButton(side, 73, () =>
+            {
+                _integratedTradeSide = side;
+                RefreshIntegratedTradeTabs();
+                RefreshIntegratedServerOptions();
+                RefreshIntegratedGrid();
+            });
+            tab.Height = 32;
+            _integratedTradeTabs[side] = tab;
+            tradeTabs.Controls.Add(tab);
+        }
+        RefreshIntegratedTradeTabs();
+        titleBar.Controls.Add(title, 0, 0);
+        titleBar.Controls.Add(tradeTabs, 1, 0);
+        titleBar.Controls.Add(close, 2, 0);
         layout.Controls.Add(titleBar, 0, 0);
 
         var toolsArea = new TableLayoutPanel
@@ -109,11 +151,31 @@ internal sealed partial class MainForm
         };
         _integratedSystemFilter.Items.AddRange(new object[] { "전체", "A", "B", "C" });
         _integratedSystemFilter.SelectedIndex = 0;
-        _integratedSystemFilter.SelectedIndexChanged += (_, _) => RefreshIntegratedGrid();
+        _integratedSystemFilter.SelectedIndexChanged += (_, _) =>
+        {
+            RefreshIntegratedServerOptions();
+            RefreshIntegratedGrid();
+        };
         filters.Controls.Add(_integratedSystemFilter);
+        filters.Controls.Add(new Label
+        {
+            Text = "서버", AutoSize = true, Padding = new Padding(2, 12, 5, 0), ForeColor = UiTheme.Muted
+        });
+        _integratedServerFilter = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList, Width = 145,
+            Margin = new Padding(0, 7, 14, 0)
+        };
+        _integratedServerFilter.Items.Add("전체");
+        _integratedServerFilter.SelectedIndex = 0;
+        _integratedServerFilter.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_integratedServerFilterUpdating) RefreshIntegratedGrid();
+        };
+        filters.Controls.Add(_integratedServerFilter);
         _integratedSearch = new TextBox
         {
-            Width = 296, Height = 30, PlaceholderText = "서버 · 제목 · 사이트 ID · 등록번호 검색",
+            Width = 266, Height = 30, PlaceholderText = "제목 · 사이트 ID · 등록번호 검색",
             Margin = new Padding(0, 7, 12, 0)
         };
         _integratedSearch.TextChanged += (_, _) => RefreshIntegratedGrid();
@@ -162,6 +224,7 @@ internal sealed partial class MainForm
             });
         }
         Column("System", "시스템", 73);
+        Column("TradeSide", "거래", 67);
         Column("Game", "게임", 98);
         Column("Server", "서버", 109);
         Column("Quantity", "수량", 65);
@@ -237,8 +300,11 @@ internal sealed partial class MainForm
         _integratedEditor = null;
         _integratedGrid = null;
         _integratedSystemFilter = null;
+        _integratedServerFilter = null;
         _integratedSearch = null;
         _integratedSummary = null;
+        _integratedTradeTabs.Clear();
+        _integratedTradeSide = "전체";
         if (_integratedButton is not null) _integratedButton.Text = "통합 편집";
         _module.BringToFront();
     }
@@ -251,14 +317,47 @@ internal sealed partial class MainForm
         foreach (string system in new[] { "A", "B", "C" })
             foreach (var job in IntegratedOwner(system).IntegratedEditJobs)
                 _integratedRows.Add(new IntegratedRow { System = system, Job = job, Selected = marked.Contains(job) });
+        RefreshIntegratedServerOptions();
         RefreshIntegratedGrid();
+    }
+
+    private void RefreshIntegratedTradeTabs()
+    {
+        foreach (var tab in _integratedTradeTabs)
+            UiTheme.StyleButton(tab.Value, tab.Key == _integratedTradeSide
+                ? UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
+    }
+
+    private void RefreshIntegratedServerOptions()
+    {
+        if (_integratedServerFilter is null) return;
+        string previous = _integratedServerFilter.SelectedItem?.ToString() ?? "전체";
+        string system = _integratedSystemFilter?.SelectedItem?.ToString() ?? "전체";
+        var servers = _integratedRows
+            .Where(row => (system == "전체" || row.System == system) &&
+                          (_integratedTradeSide == "전체" || row.TradeSide == _integratedTradeSide))
+            .Select(row => row.Server).Where(server => !string.IsNullOrWhiteSpace(server))
+            .Distinct(StringComparer.CurrentCulture).OrderBy(server => server, StringComparer.CurrentCulture)
+            .ToList();
+        _integratedServerFilterUpdating = true;
+        try
+        {
+            _integratedServerFilter.Items.Clear();
+            _integratedServerFilter.Items.Add("전체");
+            foreach (var server in servers) _integratedServerFilter.Items.Add(server);
+            _integratedServerFilter.SelectedItem = servers.Contains(previous) ? previous : "전체";
+        }
+        finally { _integratedServerFilterUpdating = false; }
     }
 
     private List<IntegratedRow> VisibleIntegratedRows()
     {
         string system = _integratedSystemFilter?.SelectedItem?.ToString() ?? "전체";
+        string server = _integratedServerFilter?.SelectedItem?.ToString() ?? "전체";
         string search = (_integratedSearch?.Text ?? "").Trim();
         return _integratedRows.Where(row => (system == "전체" || row.System == system) &&
+            (_integratedTradeSide == "전체" || row.TradeSide == _integratedTradeSide) &&
+            (server == "전체" || row.Server == server) &&
             (search.Length == 0 || new[] { row.Server, row.Game, row.Title, row.SiteId, row.ListingNumber }
                 .Any(value => (value ?? "").Contains(search, StringComparison.OrdinalIgnoreCase)))).ToList();
     }
@@ -272,6 +371,7 @@ internal sealed partial class MainForm
         {
             "PriceAmount" => row => row.PriceAmount,
             "System" => row => row.System,
+            "TradeSide" => row => row.TradeSide,
             "Server" => row => row.Server,
             "Game" => row => row.Game,
             "Quantity" => row => row.Quantity,
