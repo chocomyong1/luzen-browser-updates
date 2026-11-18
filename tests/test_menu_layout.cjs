@@ -14,11 +14,11 @@ const autoTab = automation.slice(index, end);
 // The host and child form must expose ONE navigation layer and ONE run-control set.
 assert(!main.includes('BuildModeTabs()'), '메인 중복 메뉴 탭이 다시 추가됨');
 for (const [caption, handler] of [
-  ['자동 시작', 'StartAutomationFromHeader()'],
-  ['일시정지', 'PauseAutomationFromHeader()'],
-  ['즉시 중지', 'StopAutomationFromHeader()']
+  ['자동 시작', '() => _ = StartSelectedSystemsAsync()'],
+  ['일시정지', 'PauseSelectedSystems'],
+  ['즉시 중지', 'StopSelectedSystems']
 ]) {
-  assert(main.includes(`AddToolButton(bar, "${caption}", () => _module.${handler}`),
+  assert(main.includes(`AddToolButton(bar, "${caption}", ${handler}`),
     `${caption} 상단 단일 실행 제어가 사라짐`);
 }
 assert(!automation.includes('private Control BuildToolbar()'), '안쪽에 중복 실행 도구막대가 있음');
