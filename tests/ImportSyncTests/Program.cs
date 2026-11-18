@@ -58,6 +58,7 @@ internal static class Program
         ListingNumber = Number, SiteId = "slshrn124", ImportedFromSite = true,
         OriginalTradeSide = "구매", Game = "로스트아크", Server = "카마인",
         Title = Title, Price = price, Quantity = "1", Unit = "개",
+        SourceListUrl = MyListingsImport.BuyListingsUrl,
         Enabled = true, AutoRepost = true, RequiresReview = false,
         NextDueUtc = new DateTime(2026, 11, 18, 8, 0, 0, DateTimeKind.Utc),
         LastStatus = "예약됨"
