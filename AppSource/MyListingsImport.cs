@@ -96,8 +96,9 @@ internal sealed class ExistingListingUpdate
         if (string.IsNullOrWhiteSpace(Target.Unit)) Target.Unit = Unit;
         // An authenticated own-listing price can replace a stale saved price
         // only after exact listing/title/side verification in Prepare().
-        if (UpdateVerifiedPrice || string.IsNullOrWhiteSpace(Target.Price) ||
-            (Target.ImportedFromSite && Target.Price == "1" && !string.IsNullOrWhiteSpace(Price) && Price != "1"))
+        if (string.IsNullOrWhiteSpace(Target.PendingSitePriceTarget) &&
+            (UpdateVerifiedPrice || string.IsNullOrWhiteSpace(Target.Price) ||
+             (Target.ImportedFromSite && Target.Price == "1" && !string.IsNullOrWhiteSpace(Price) && Price != "1")))
             Target.Price = Price;
         if (string.IsNullOrWhiteSpace(Target.EntryUrl)) Target.EntryUrl = EntryUrl;
         if (string.IsNullOrWhiteSpace(Target.SourceListUrl)) Target.SourceListUrl = SourceListUrl;
@@ -241,7 +242,8 @@ internal static class MyListingsImport
                 bool trustedPrice = exactNumber && CanTrustOwnedImport(row, number);
                 if (exactNumber && target is not null)
                 {
-                    string note = !target.ImportedFromSite ? "수동 등록 항목: 자동 가격 변경 제외"
+                    string note = !string.IsNullOrWhiteSpace(target.PendingSitePriceTarget) ? "다음 자동등록 가격 변경 예약 중"
+                        : !target.ImportedFromSite ? "수동 등록 항목: 자동 가격 변경 제외"
                         : !string.IsNullOrEmpty(target.OriginalTradeSide) && target.OriginalTradeSide != row.TradeSide
                         ? "거래 방향 불일치"
                         : !trustedPrice ? "사이트 가격 미확인 또는 관리목록 검증 실패"
@@ -271,7 +273,7 @@ internal static class MyListingsImport
                     // Titles can change format (quantity prefix, punctuation)
                     // without changing the listing. Never sync by title/URL alone.
                     bool sameOwnedListing = trustedPrice;
-                    bool priceChanged = sameOwnedListing &&
+                    bool priceChanged = sameOwnedListing && string.IsNullOrWhiteSpace(target.PendingSitePriceTarget) &&
                         !string.Equals((target.Price ?? "").Replace(",", "", StringComparison.Ordinal).Trim(),
                             verifiedPrice.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
                     var update = new ExistingListingUpdate
