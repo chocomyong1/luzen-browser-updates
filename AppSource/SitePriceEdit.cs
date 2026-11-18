@@ -149,15 +149,19 @@ internal static class SitePriceEdit
       const core=s=>norm(s).replace(/^\[[\d,]+개[~〜-][\d,]+개\]/,'');
       if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname))
         return result('error','아이템매니아 공식 HTTPS 화면이 아닙니다');
-      if(/^\/myroom\//i.test(location.pathname))
-        return result('error','물품 상세 화면이 아닌 관리 목록입니다');
+      const isList=/^\/myroom\/(sell\/sell_regist|buy\/buy_regist)\.html$/i.test(location.pathname);
+      const isKnownDetail=/^\/myroom\/(sell\/sell_regist_view|buy\/buy_regist_view)\.html$/i.test(location.pathname);
+      if(isList)return result('error','물품 상세 화면이 아닌 관리 목록입니다');
       if(!/^\d{8,20}$/.test(a.number)||core(a.title).length<3)
         return result('error','등록번호 또는 제목이 유효하지 않습니다');
       const exact=new RegExp('(?:^|\\D)'+a.number+'(?!\\d)');
       const page=String(document.body?.innerText||'');
       const path=location.pathname+location.search;
-      if(!exact.test(path)||!exact.test(page))
-        return result('error','상세 화면 URL과 본문에서 동일한 등록번호를 확인하지 못했습니다');
+      const displayedIds=[...new Set([...page.matchAll(/#\s*(\d{8,20})(?!\d)/g)].map(m=>m[1]))];
+      const independentlyIdentified=exact.test(path)||
+        (isKnownDetail&&displayedIds.length===1&&displayedIds[0]===a.number);
+      if(!independentlyIdentified||!exact.test(page))
+        return result('error','상세 화면의 등록번호를 독립적으로 확인하지 못했습니다');
       if(!core(page).includes(core(a.title)))
         return result('error','상세 화면 제목이 선택한 등록글과 다릅니다');
       const visible=e=>e.isConnected&&e.getClientRects().length>0&&!e.disabled&&
