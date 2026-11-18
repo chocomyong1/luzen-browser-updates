@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.48",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.48/LuzenBrowser_22.2.48_BinaryUpdate.zip",
-  "sha256": "366f906cfec8c1305f40d48db77132b44a479bf1de10abd4031f63080c174bd2",
+  "version": "22.2.49",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.49/LuzenBrowser_22.2.49_BinaryUpdate.zip",
+  "sha256": "0bba6f6766ea372f1536355f6a65975c0e99c94f9334bbb9a5f5837bfda1b6ff",
   "format": "binary",
-  "releaseNotes": "v22.2.48: 아이템매니아 /myroom/buy/buy_regist_view.html 및 판매 상세 경로를 실제 물품 상세 화면으로 인식합니다. 기존의 과도한 /myroom/ 차단을 수정하고 상세 화면에 표시된 유일한 #등록번호와 제목을 검증합니다. 관리 목록에서는 여전히 수정을 제출하지 않습니다."
+  "releaseNotes": "v22.2.49: 가격 수정 화면에 재등록·수정 등 여러 제출 버튼이 있는 경우 가장 명확한 [수정하기] 버튼을 우선합니다. 같은 우선순위의 버튼이 여러 개면 제출하지 않고 후보 버튼 정보를 오류 메시지로 표시합니다. 등록번호·기존 가격 검증과 제출 후 확인은 유지합니다."
 }
