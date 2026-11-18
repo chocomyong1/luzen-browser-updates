@@ -34,8 +34,8 @@ assert(!/MakeButton\("(?:자동등록 시작|일시정지|중지)"/.test(autoTab
   '안쪽 목록 도구막대에 중복 실행 제어가 있음');
 
 // Existing features are not deleted: only their presentation is regrouped.
-for (const caption of ['+ 물품 추가', '같은 가격 선택',
-  '선택 물품 일괄수정', '가격 반영 예약', '더보기 ▾']) {
+for (const caption of ['+ 새 물품', '같은 가격 선택',
+  '일괄수정', '가격 변경 예약', '더보기 ▾']) {
   assert(autoTab.includes(`MakeButton("${caption}"`), `${caption} UI가 사라짐`);
 }
 assert((autoTab.match(/MakeButton\("/g) || []).length === 5,
@@ -44,6 +44,14 @@ for (const action of ['선택 물품 편집', '조회 전체선택', '선택 해
   assert(autoTab.includes(`batchMenu.Items.Add("${action}"`), `${action} 메뉴가 사라짐`);
 assert(!autoTab.includes('MakeButton("조회 전체선택"') && !autoTab.includes('MakeButton("선택 해제"'),
   '조회/선택 관리 버튼은 보조 메뉴에서만 보여야 함');
+assert.match(automation, /private Control BuildSegmentedNavigation\(\)/,
+  '윈도우 기본 탭 대신 사용자 지정 세그먼트 메뉴가 있어야 함');
+assert.match(automation, /_editorTabs\.Location = new Point\(-4, -hiddenNativeHeader\)/,
+  '기본 WinForms 탭 헤더가 노출되면 안 됨');
+assert.match(automation, /_log\.Visible = false/,
+  '로그 영역은 기본 접힘 상태여야 함');
+assert.match(main, /TextRenderer\.MeasureText\(label, button\.Font\)/,
+  '상단 실행 버튼의 글자가 잘리면 안 됨');
 const itemToolbar = automation.slice(automation.indexOf('private void BuildJobTab()'), automation.indexOf('private void ConfigureJobsGrid()', automation.indexOf('private void BuildJobTab()')));
 assert(itemToolbar.includes('ActionButton("같은 가격 선택"') && itemToolbar.includes('ActionButton("가격 반영 예약"'),
   '편집 탭 일괄 가격 동선이 사라짐');
