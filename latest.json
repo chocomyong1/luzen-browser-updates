@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.75",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.75/LuzenBrowser_22.2.75_BinaryUpdate.zip",
-  "sha256": "3e5489ce10814f029b39c741bc7f4df75ad9ad43fad28ae0ee3668deb0bcfbdd",
+  "version": "22.2.76",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.76/LuzenBrowser_22.2.76_BinaryUpdate.zip",
+  "sha256": "a4424dc40ce2f8525bfc788cc81345da4b0aa24a1985cfb80b4087a7de1484cc",
   "format": "binary",
-  "releaseNotes": "v22.2.75 Windows 로그인 시 B 자동 시작 대상으로 지정되어 있고 Cloudflare WARP가 B의 로컬 프록시 포트로 설정되어 있으면, 설치된 공식 warp-cli에서 모드를 읽기 전용으로 확인한 뒤 필요할 때만 연결을 시도합니다. WARP 일반 VPN 모드/DNS 모드는 변경하지 않고, 다른 프록시 서비스는 건드리지 않습니다. A는 독립적으로 먼저 시작하고 B는 독립 외부 IP 검증 성공 후에만 등록하며 60초 재확인은 유지합니다. 추가로 프로그램 핵심 신규등록·재등록·가격수정과 시간당 제한은 그대로 유지합니다."
+  "releaseNotes": "v22.2.76 B VPN이 실행 중 끊어져 관리목록 복구에 진입하면 WARP 로컬 프록시 모드를 안전 검증한 뒤 자동 재연결을 시도합니다. A에는 영향 없이 B IP와 관리목록을 재검증한 뒤에만 B 재등록을 재개합니다. 기존 텔레그램 오류 알림 봇의 개인 채팅에서 /status 또는 현황으로 A/B/C 실행 상태, 등록 대상, 가격 예약, 확인 필요 건수, 마지막 성공 시각을 조회할 수 있습니다. 현황 답장에 버튼을 제공합니다. 등록·가격 변경 원격 명령은 제공하지 않습니다."
 }
