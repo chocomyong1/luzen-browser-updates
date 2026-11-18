@@ -55,6 +55,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pending site price readback safety test failed' }
           node tests/test_site_price_batch_safety.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Deferred site price scheduling guard failed' }
+          node tests/test_new_listing_preflight_mock.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'New sale/buy submission preflight mock failed' }
           node tests/test_apple_style_layout.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Apple-inspired layout regression test failed' }
           node tests/test_listing_grid_sort.cjs
@@ -99,15 +101,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.64'
+          $version = '22.2.65'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.64
-          path: LuzenBrowser_22.2.64_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.65
+          path: LuzenBrowser_22.2.65_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -115,7 +117,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.64'
+          $version = '22.2.65'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -127,7 +129,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.64 화면 정리: 내 등록글 불러오기는 상단 관리 메뉴로 이동하고 고급 설정은 일반 탭에서 숨겨 관리 메뉴로만 엽니다. 등록 현황에서 새 물품·일괄수정·가격 예약 버튼 줄을 제거해 현황 표에 집중하고, 물품 편집 탭에 새 물품 버튼을 추가했습니다. 등록 현황 행 더블클릭 편집 이동과 추가 표 열 우클릭 설정은 유지합니다. 자동등록과 순번별 가격 변경 동작은 변경하지 않았습니다.'
+            releaseNotes = 'v22.2.65 세 가지 자동등록 검증 강화: 아브렐슈드 구매글 6건 가격 변경 예약이 기존 시간당 횟수와 서버 간격을 공유하는 오프라인 회귀 테스트를 추가했습니다. 신규 판매글·구매글은 해당 거래 화면에서 유일한 등록하기 버튼을 찾도록 보완하고, 관리 메뉴에서 신규글 입력시험(미제출)을 실행해 입력칸과 최종 버튼을 실제 게시 없이 확인할 수 있습니다. 사이트에 실제 새 글을 제출하거나 6건을 자동 변경한 실사용 검증은 별도로 필요합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
