@@ -41,5 +41,10 @@ assert.match(form, /job\.SiteId, reference\.SiteId/);
 assert.match(editor, /siteApply = new Button \{ Text = "사이트에 순차 반영"/);
 assert.match(editor, /Enabled = false/);
 assert.match(editor, /changedPriceTargets = activePriceTargets/);
-assert.match(editor, /ApplySelectedSitePricesAsync\(changedPriceTargets\)/);
+assert.match(editor, /MessageBoxButtons\.YesNoCancel/);
+assert.match(editor, /sitePriceConsentConfirmed = siteChoice == DialogResult\.Yes/);
+assert.match(editor, /if \(sitePriceConsentConfirmed\)[\s\S]*?window\.DialogResult = DialogResult\.OK/);
+assert.match(editor, /ApplySelectedSitePricesAsync\(changedPriceTargets, sitePriceConsentConfirmed\)/);
+assert.match(price, /\(!sitePriceConsentConfirmed \|\| explicitTargets is null\)/,
+  'A site submit must require explicit user approval in editor or batch preview');
 console.log('PASS same-price selection and serialized verified site price batch safety');
