@@ -24,6 +24,7 @@ internal sealed class ListingJob
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
     public string Price { get; set; } = "";
+    public string PendingSitePriceTarget { get; set; } = "";
     public string EntryUrl { get; set; } = "";
     public string SourceListUrl { get; set; } = "";
     public bool Enabled { get; set; }
@@ -94,6 +95,18 @@ internal static class Program
         Check(current.Price == "35,100", "30,000 becomes 35,100");
         Check(current.Enabled && current.AutoRepost && current.NextDueUtc == scheduled, "scheduler untouched");
         Check(!current.RequiresReview && current.LastStatus == "예약됨", "review and status untouched");
+
+        var queued = Job("93,000");
+        queued.PendingSitePriceTarget = "93000";
+        var queuedPlan = MyListingsImport.Prepare(new[] { Row("90,000") },
+            new[] { queued }, "A", "slshrn124");
+        Check(queuedPlan.PriceObservations.Count == 1 &&
+            queuedPlan.PriceObservations[0].Note.Contains("예약"), "reserved site price is visibly identified");
+        Check(queuedPlan.Updates.All(x => !x.UpdateVerifiedPrice),
+            "site re-import must not overwrite a user-approved pending price");
+        foreach (var update in queuedPlan.Updates) update.Apply();
+        Check(queued.Price == "93,000" && queued.PendingSitePriceTarget == "93000",
+            "next-slot price reservation survives a site re-import");
 
         var same = MyListingsImport.Prepare(new[] { Row("35,100") }, new[] { current }, "A", "slshrn124");
         Check(same.Updates.Count == 0, "equal prices not duplicated");
