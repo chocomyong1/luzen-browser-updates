@@ -181,9 +181,9 @@ internal static class SitePriceEdit
     // containing both '1개당' and the actual unit-price input. Match the
     // current SITE price, never an arbitrary first numeric input.
     // IMPORTANT: The site's character-name editor also has a '수정하기'
-    // button. Until the real price-submit control is independently verified,
-    // THIS SCRIPT IS READ-ONLY, regardless of a.submit. Never infer a submit
-    // action from a Korean button label alone.
+    // button. Never infer submission from a button label. The single audited
+    // path is the owned BUY re-registration form (frmBuy) with a unique
+    // button#ok_btn.buy_re_reg[type=submit]. Other pages stay read-only.
     public const string EditFormScript = """
     (() => {
       const a=__ARG__;
@@ -252,13 +252,35 @@ internal static class SitePriceEdit
       const formName=attr(form,'id')||attr(form,'name')||'-';
       const formAction=safe(String(form?.getAttribute?.('action')||'').split('?')[0])||'-';
       const priceName=attr(priceInput,'name')||attr(priceInput,'id')||safe(priceInput.name)||'-';
+      const isAuditedBuyForm=location.pathname.toLowerCase()==='/myroom/buy/buy_re_reg.html'&&
+        form?.tagName==='FORM'&&formName==='frmBuy'&&priceName==='user_division_price';
+      const formOwnedId=isAuditedBuyForm&&[...form.querySelectorAll('input[type="hidden"]')]
+        .some(e=>String(e.value||'')===a.number);
+      const siteSubmit=isAuditedBuyForm?[...form.querySelectorAll('button[type="submit"]')].filter(e=>
+        visible(e)&&attr(e,'id')==='ok_btn'&&attr(e,'class').split(/\s+/).includes('buy_re_reg')&&
+        String(e.innerText||e.textContent||'').replace(/\s+/g,'')==='재등록'):[];
+      // All of path, form, old site price, hidden listing ID, and the EXACT
+      // native submit control must agree. A character-name save cannot pass.
+      if(formOwnedId&&siteSubmit.length===1){
+        if(!a.submit)return result('ready','구매글 등록번호·현재 단가·frmBuy/ok_btn 재등록 제출 확인',old,1);
+        if(money(priceInput.value)!==old)return result('error','제출 직전 사이트 단가가 달라졌습니다');
+        const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
+        if(!setter)return result('error','사이트 단가 변경을 지원하지 않는 입력칸입니다');
+        setter.call(priceInput,desired);
+        priceInput.dispatchEvent(new Event('input',{bubbles:true}));
+        priceInput.dispatchEvent(new Event('change',{bubbles:true}));
+        if(money(priceInput.value)!==desired)return result('error','단가 입력 확인에 실패했습니다');
+        siteSubmit[0].click();
+        return result('submitted','정확한 구매 재등록 제출 버튼 클릭 (목록에서 결과 재검증 필요)',desired,1);
+      }
       const diag=`경로:${safe(location.pathname)}; 가격칸:${priceName}; 폼:${formName}/${formAction}; `+
+        `폼 등록번호:${formOwnedId?'일치':'미확인'}; 제출후보:${siteSubmit.length}개; `+
         `컨트롤:${controls.length}개, 작업 후보:${candidates.length}개\n`+
         `작업 후보(뒤쪽 우선):\n${focus.map(d=>d.line).join('\n')||'없음'}\n`+
         `화면 끝부분:\n${tail.map(d=>d.line).join('\n')||'후보에 포함됨'}`;
-      // This is a hard safety interlock, not a dry-run branch that can be
-      // bypassed by submit=true. Inspect only; do not set a value or click.
-      return result('diagnostic','제출 차단(읽기 전용).\n'+diag.slice(0,4300),old,controls.length);
+      // This is a hard safety interlock for every non-audited page/control,
+      // even when submit=true. Never fall back to another labeled button.
+      return result('diagnostic','제출 차단(폼 검증 불충분, 읽기 전용).\n'+diag.slice(0,4300),old,controls.length);
     })()
     """;
 }
