@@ -148,14 +148,17 @@ internal sealed partial class AutomationForm
                     "이미 반영된 가격");
                 return true;
             }
+            if (job.OriginalTradeSide != "구매")
+                throw new InvalidOperationException("현재는 실제 수정 버튼이 확인된 구매글만 1건씩 가격 반영할 수 있습니다. 판매글은 제출하지 않았습니다.");
             if (!CanRunNow(job, out var quotaReason))
                 throw new InvalidOperationException("가격 변경 시 등록 작업 간격을 확인해야 합니다. " + quotaReason);
-            var ask = $"아이템매니아 수정 화면의 버튼을 읽기 전용으로 진단할까요?\n\n" +
+            var ask = $"아이템매니아 구매 등록글 1건의 가격을 변경할까요?\n\n" +
                 $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n제목: {job.Title}\n\n" +
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
-                "이번 버전은 수정 화면의 버튼 연결 상태만 확인합니다.\n" +
-                "가격 입력·제출·재등록은 하지 않으며 등록 횟수도 차감하지 않습니다.";
-            if (!bulkApproval && MessageBox.Show(this, ask, "사이트 가격 버튼 안전 진단", MessageBoxButtons.YesNo,
+                "사이트의 구매 재등록 화면(frmBuy)에서 단가를 바꾼 뒤 '재등록' 버튼을 사용합니다.\n" +
+                "등록번호가 바뀔 수 있어 결과가 불확실하면 자동 실행을 보류합니다.\n" +
+                "재등록 횟수·서버 간격 제한에 포함되며 중복 제출하지 않습니다.";
+            if (!bulkApproval && MessageBox.Show(this, ask, "실제 사이트 구매글 가격 변경", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
 
             var record = records[0];
@@ -264,9 +267,57 @@ internal sealed partial class AutomationForm
             }
             if (form.Status != "ready")
                 throw new InvalidOperationException("수정 페이지를 안전하게 확인하지 못했습니다: " + form.Message);
-            // Defense in depth: even an older page script reporting "ready"
-            // must never reach a live submission without an audited handler.
-            throw new InvalidOperationException("가격 제출 버튼의 실제 동작을 확인하지 못해 제출하지 않았습니다.");
+
+            // Commit a crash-safe review checkpoint BEFORE touching the site.
+            // A navigation can abort ExecuteScriptAsync after the site accepts;
+            // never retry a submission when its result is uncertain.
+            if (!CanRunNow(job, out quotaReason)) throw new InvalidOperationException(quotaReason);
+            var submittedAt = DateTime.UtcNow;
+            HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
+            _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
+            job.RequiresReview = true;
+            job.Enabled = false;
+            job.LastStatus = "구매글 가격 재등록 제출 중: 결과 확인 필요";
+            job.NextDueUtc = DateTime.MaxValue;
+            _config.Jobs = _jobs.ToList();
+            _config.Save();
+            _armedSitePriceEditNumber = job.ListingNumber;
+            _sitePriceEditDialogWarning = "";
+            _submissionVerificationPending = true;
+            submitted = true;
+            try
+            {
+                var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true)));
+                if (result.Status != "submitted")
+                    AppendLog("구매글 가격 수정 제출 결과 불확실 (자동 재시도 금지): " + result.Message);
+            }
+            catch (Exception ex)
+            {
+                AppendLog("구매글 가격 수정 뒤 화면 전환: " + ex.GetType().Name + " (중복 제출 금지)");
+            }
+
+            _state.Text = "구매글 가격 변경 결과 확인 중";
+            if (!await ConfirmChangedSitePriceAsync(job, desired, token))
+                throw new InvalidOperationException("구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " +
+                    "새 등록번호가 생겼을 수도 있으므로 이 글은 확인 대기 상태로 두고 자동으로 다시 제출하지 않습니다." +
+                    (string.IsNullOrWhiteSpace(_sitePriceEditDialogWarning) ? "" :
+                        " 사이트 메시지: " + _sitePriceEditDialogWarning));
+
+            job.RequiresReview = previousReview;
+            job.Enabled = previousEnabled && !previousReview;
+            job.LastStatus = "사이트 구매글 단가 변경 확인: " + desired.ToString("N0") + "원";
+            job.LastSucceededUtc = DateTime.UtcNow;
+            job.InitialCompleted = true;
+            job.NextDueUtc = previousDue == DateTime.MaxValue ? previousDue :
+                new[] { previousDue, DateTime.UtcNow.AddMinutes(job.IntervalMinutes) }.Max();
+            _config.Jobs = _jobs.ToList();
+            _config.Save();
+            AppendLog($"✓ 사이트 구매글 단가 확인: {job.Server} · {job.ListingNumber} · {current:N0}원 → {desired:N0}원");
+            if (!bulkApproval) MessageBox.Show(this,
+                $"사이트에서 구매글 단가 변경을 확인했습니다.\n\n{job.Server} · {job.ListingNumber}\n" +
+                $"{current:N0}원 → {desired:N0}원", "사이트 가격 반영 완료");
+            return true;
         }
         catch (OperationCanceledException)
         {
