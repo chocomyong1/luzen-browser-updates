@@ -8,7 +8,7 @@ const main = fs.readFileSync(path.join(__dirname, '../AppSource/MainForm.cs'), '
 const automation = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.cs'), 'utf8');
 const index = automation.indexOf('private void BuildAutoRegistrationTab()');
 const end = automation.indexOf('private void ConfigureAutoGrid()', index);
-assert(index >= 0 && end > index, '자동등록 목록 도구막대를 찾지 못함');
+assert(index >= 0 && end > index, '등록 현황 화면을 찾지 못함');
 const autoTab = automation.slice(index, end);
 
 // The host and child form must expose ONE navigation layer and ONE run-control set.
@@ -28,24 +28,22 @@ assert(automation.includes('RowCount = 1') &&
 assert(main.includes('systemMenu.Items.Add("A 기본"') &&
   main.includes('systemMenu.Items.Add("B VPN"') && main.includes('systemMenu.Items.Add("C VPN"'),
   '시스템 전환 드롭다운이 사라짐');
-assert(main.includes('"내 등록글 불러오기"') && main.includes('_module.ImportMyRegisteredListingsFromHeaderAsync()'),
-  '기존 물품 불러오기가 통합 상단에서 사라짐');
-assert(!/MakeButton\("(?:자동등록 시작|일시정지|중지)"/.test(autoTab),
-  '안쪽 목록 도구막대에 중복 실행 제어가 있음');
+assert(main.includes('moreMenu.Items.Add("내 등록글 불러오기"') &&
+  main.includes('_module.ImportMyRegisteredListingsFromHeaderAsync()') &&
+  !main.includes('AddToolButton(bar, "내 등록글 불러오기"'),
+  '등록글 불러오기는 상단 관리 드롭다운에만 있어야 함');
 
-// Existing features are not deleted: only their presentation is regrouped.
-for (const caption of ['+ 새 물품', '같은 가격 선택',
-  '일괄수정', '가격 변경 예약', '더보기 ▾']) {
-  assert(autoTab.includes(`MakeButton("${caption}"`), `${caption} UI가 사라짐`);
-}
-assert((autoTab.match(/MakeButton\("/g) || []).length === 5,
-  '자동등록 현황 화면에 주요 버튼이 다섯 개를 초과함');
-for (const action of ['선택 물품 편집', '조회 전체선택', '선택 해제', '선택 물품 자동 ON', '선택 물품 자동 OFF'])
-  assert(autoTab.includes(`batchMenu.Items.Add("${action}"`), `${action} 메뉴가 사라짐`);
-assert(!autoTab.includes('MakeButton("조회 전체선택"') && !autoTab.includes('MakeButton("선택 해제"'),
-  '조회/선택 관리 버튼은 보조 메뉴에서만 보여야 함');
+// The monitoring tab is only a status table. Editors and actions have one home.
+assert(autoTab.includes('_autoTab.Controls.Add(_autoGrid)') &&
+  autoTab.includes('EditAutoSelectedJob()') &&
+  !autoTab.includes('MakeButton(') && !autoTab.includes('_autoTab.Controls.Add(buttons)'),
+  '등록 현황은 버튼 줄 없이 표와 더블클릭 편집 이동만 제공해야 함');
 assert.match(automation, /private Control BuildSegmentedNavigation\(\)/,
   '윈도우 기본 탭 대신 사용자 지정 세그먼트 메뉴가 있어야 함');
+const navigation = automation.slice(automation.indexOf('private Control BuildSegmentedNavigation()'), index);
+assert(navigation.includes('var pages = new[] { _autoTab, _itemTab }') &&
+  !navigation.includes('"고급 설정"'),
+  '고급 설정은 일반 탭에 표시하지 않아야 함');
 assert.match(automation, /_editorTabs\.Location = new Point\(-4, -hiddenNativeHeader\)/,
   '기본 WinForms 탭 헤더가 노출되면 안 됨');
 assert.match(automation, /_log\.Visible = false/,
@@ -53,13 +51,13 @@ assert.match(automation, /_log\.Visible = false/,
 assert.match(main, /TextRenderer\.MeasureText\(label, button\.Font\)/,
   '상단 실행 버튼의 글자가 잘리면 안 됨');
 const itemToolbar = automation.slice(automation.indexOf('private void BuildJobTab()'), automation.indexOf('private void ConfigureJobsGrid()', automation.indexOf('private void BuildJobTab()')));
-assert(itemToolbar.includes('ActionButton("같은 가격 선택"') && itemToolbar.includes('ActionButton("가격 반영 예약"'),
-  '편집 탭 일괄 가격 동선이 사라짐');
+for (const caption of ['+ 새 물품', '같은 가격 선택', '일괄수정', '가격 반영 예약', '더보기 ▾'])
+  assert(itemToolbar.includes(`ActionButton("${caption}"`), `물품 편집의 ${caption} 버튼이 사라짐`);
 assert(itemToolbar.includes('selectionTools.Items.Add("CSV 가져오기"') &&
   itemToolbar.includes('selectionTools.Items.Add("표 넓게 보기/복원"'),
   '보조 도구 메뉴에서 CSV 또는 표 넓게 보기가 사라짐');
-assert(autoTab.includes('SetBatchEnabled(true)') && autoTab.includes('SetBatchEnabled(false)'),
-  '일괄 자동 ON/OFF 경로가 사라짐');
+assert(itemToolbar.includes('SetBatchEnabled(true)') && itemToolbar.includes('SetBatchEnabled(false)'),
+  '편집 탭 일괄 자동 ON/OFF 경로가 사라짐');
 assert(main.includes('"판매글 추가"') && main.includes('AddNewListing("판매등록")'),
   '판매글 신규 등록 메뉴가 사라짐');
 assert(main.includes('"구매글 추가"') && main.includes('AddNewListing("구매등록")'),
@@ -85,4 +83,4 @@ assert.match(automation, /bottom\.SizeChanged \+=.*FitBottomHeight\(\)/,
 assert.match(automation, /AutoScroll = false, WrapContents = true/,
   '상세 편집 버튼이 고정 높이에서 잘릴 위험');
 
-console.log('PASS: navigation, single run control, grouped batch actions and preserved routes');
+console.log('PASS: monitoring-only status page, editing actions grouped and preserved routes');
