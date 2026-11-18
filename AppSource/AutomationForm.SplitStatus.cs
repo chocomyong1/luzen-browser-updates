@@ -15,6 +15,36 @@ internal sealed partial class AutomationForm
 
     public bool IsAutomationRunning => _schedulerRunning;
 
+    // Read-only snapshot created on the WinForms UI thread. No site request,
+    // registration, or account change is triggered by Telegram.
+    public string TelegramStatusLine
+    {
+        get
+        {
+            string state = _system == "B" && _schedulerRunning &&
+                (_bConnectionRecheckRunning || _bConnectionRecoveryUtc > DateTime.UtcNow)
+                ? "VPN 복구 대기" :
+                _system != "B" && _schedulerRunning &&
+                (_ownedListRecoveryRecheckRunning || _ownedListRecoveryUtc > DateTime.UtcNow)
+                ? "관리목록 복구 대기" :
+                _schedulerRunning ? "자동 실행 중" : _busy ? "작업 중" : "중지/대기";
+            int enabled = _jobs.Count(job => job.Enabled && !job.RequiresReview);
+            int held = _jobs.Count(job => job.RequiresReview);
+            int prices = _jobs.Count(job => !string.IsNullOrWhiteSpace(job.PendingSitePriceTarget));
+            DateTime? last = _jobs.Where(job => job.LastSucceededUtc.HasValue)
+                .Select(job => job.LastSucceededUtc).OrderByDescending(t => t).FirstOrDefault();
+            string latest = last.HasValue ? last.Value.ToLocalTime().ToString("MM-dd HH:mm") : "기록 없음";
+            string route = _system == "B"
+                ? (_bConnectionRecheckRunning || _bConnectionRecoveryUtc > DateTime.UtcNow
+                    ? " · VPN 재검증 중" : DualSystemNetwork.IsRouteVerified("B") ? " · VPN IP 검증됨" : " · VPN 미확인")
+                : _system == "C"
+                    ? (DualSystemNetwork.IsRouteVerified("C") ? " · VPN IP 검증됨" : " · VPN 미확인") : "";
+            return $"{_system}: {state}{route}\n" +
+                $"   등록 대상 {enabled}/{_jobs.Count} · 가격 대기 {prices} · 확인 필요 {held}\n" +
+                $"   마지막 성공 {latest}";
+        }
+    }
+
     public string SplitStatusSummary
     {
         get

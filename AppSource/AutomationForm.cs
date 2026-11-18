@@ -2446,6 +2446,22 @@ internal sealed partial class AutomationForm : Form
             _ownedListRecoveryRun = check;
             try
             {
+                // Recover the WARP *local proxy* without changing VPN mode or
+                // altering A's route. Never reconnect while a submission is
+                // in flight: this branch runs only when _busy is false.
+                try
+                {
+                    var warp = await CloudflareWarpBoot.EnsureLocalProxyConnectedAsync(
+                        DualSystemNetwork.Load("B").ProxyUrl, check.Token);
+                    if (warp.Attempted)
+                        AppendLog("B WARP 로컬 프록시 재연결 요청 · IP와 관리목록 재검증 후에만 B 자동등록 재개");
+                }
+                catch (OperationCanceledException) when (check.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    AppendLog("B WARP 복구 명령 미실행: " + ex.GetType().Name + " · 기존 IP 재확인 계속");
+                }
+                if (!_schedulerRunning) return;
                 await DualSystemNetwork.VerifyBRouteAsync(check.Token);
                 if (await VerifyOwnedListReadableAsync(check.Token) && _schedulerRunning)
                 {

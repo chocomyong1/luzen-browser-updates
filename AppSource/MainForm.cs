@@ -105,6 +105,7 @@ internal sealed partial class MainForm : Form
             _status.Text = "  자동등록 현황 · 물품등록 탭은 별도 편집 화면으로 전환됩니다.";
             AppUpdateService.ReportStartupReady();
             _updateTimer.Start();
+            StartTelegramStatusPolling();
             _ = InitializeWindowsBootAsync();
         };
         _updateTimer.Tick += async (_, _) =>
@@ -121,7 +122,7 @@ internal sealed partial class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { CancelBootBRetry(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
+        FormClosing += (_, _) => { CancelBootBRetry(); StopTelegramStatusPolling(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
     private bool CanInstallUpdateAcrossSystems =>
