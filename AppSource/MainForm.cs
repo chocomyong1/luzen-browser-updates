@@ -249,6 +249,8 @@ internal sealed partial class MainForm : Form
         moreMenu.Items.Add("C VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("C"));
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("선택 1건 조회시험", null, async (_, _) => await _module.ProbeSelectedRepostFromHeaderAsync());
+        moreMenu.Items.Add("신규글 입력시험 (미제출)", null,
+            async (_, _) => await _module.TestSelectedNewRegistrationFromHeaderAsync());
         var traceMenuItem = new ToolStripMenuItem("수정 요청 기록");
         traceMenuItem.Click += async (_, _) => await _module.ToggleSiteTraceFromHeaderAsync(traceMenuItem);
         moreMenu.Items.Add(traceMenuItem);
