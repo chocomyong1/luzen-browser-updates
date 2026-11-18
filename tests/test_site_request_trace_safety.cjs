@@ -6,6 +6,7 @@ const read = file => fs.readFileSync(path.join(__dirname, '../AppSource', file),
 const trace = read('AutomationForm.SiteRequestTrace.cs');
 const ui = read('AutomationForm.cs');
 const price = read('AutomationForm.SitePriceEdit.cs');
+const observer = read('SitePriceSubmitObserver.cs');
 
 assert.match(ui, /siteTraceButton\.Click \+= async .*ToggleSiteRequestTraceAsync\(siteTraceButton\)/);
 assert.match(ui, /actions\.Controls\.Add\(siteTraceButton\)/);
@@ -22,13 +23,28 @@ assert.match(trace, /!ItemManiaAccountStore\.IsOfficialSite\(uri\)/);
 assert.match(trace, /method is not \("GET" or "POST" or "PUT" or "PATCH"\)/);
 assert.match(trace, /method == "GET" && !Regex\.IsMatch/);
 assert.match(trace, /pass\|cookie\|token\|secret\|auth\|csrf\|session/);
+assert.match(trace, /Content-Disposition:/);
+assert.match(trace, /match\.Groups\[1\]\.Value/);
+assert.match(trace, /multipart \? "멀티파트 필드 이름 미확인"/);
 assert.doesNotMatch(trace, /Clipboard\.SetText\(e\.ParameterObjectAsJson|AppendLog\(.*postData|request\.Headers/);
 assert.doesNotMatch(trace, /Network\.setRequestInterception|Fetch\.enable|\.click\(\)|\.submit\(\)/);
 assert.match(trace, /_web\.Bounds = new Rectangle\(12, 49,/);
 assert.match(trace, /_web\.Bounds = new Rectangle\(-20000, -20000, 1280, 900\)/);
-const safetyStart = price.indexOf('if (!_sitePriceSubmissionVerifiedFromNetwork)');
+assert.match(observer, /BuyReRegistrationPostPath = "\/myroom\/buy\/buy_re_reg_ok\.php"/);
+assert.match(observer, /Network\.requestWillBeSent/);
+assert.match(observer, /Network\.responseReceived/);
+assert.match(observer, /Network\.loadingFinished/);
+assert.match(observer, /Network\.loadingFailed/);
+assert.doesNotMatch(observer, /getRequestPostData|\.postData|\.headers|\.response\.body|Fetch\.enable/);
+const safetyStart = price.indexOf('using var submissionObserver = new SitePriceSubmitObserver(');
 const siteSubmit = price.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true)');
-assert(safetyStart >= 0 && siteSubmit > safetyStart);
-assert.match(price.slice(safetyStart, siteSubmit), /return false;/);
-assert.doesNotMatch(price.slice(0, safetyStart), /_sitePriceSubmissionVerifiedFromNetwork\s*=\s*true/);
-console.log('PASS passive first-party request capture, visible temporary browser and sanitized clipboard report');
+const finish = price.indexOf('await submissionObserver.WaitAsync(token)', siteSubmit);
+const readback = price.indexOf('await ConfirmChangedSitePriceAsync(job, desired, token)', siteSubmit);
+const checkpoint = price.indexOf('job.RequiresReview = true', safetyStart);
+assert(safetyStart >= 0 && safetyStart < checkpoint && checkpoint < siteSubmit);
+assert(siteSubmit < finish && finish < readback,
+  'The site POST must finish or time out before another page navigation starts');
+assert.match(price.slice(checkpoint, siteSubmit), /_config\.Save\(\)/,
+  'Crash-safe review checkpoint must be persisted before the actual POST');
+assert.match(price.slice(finish, readback), /if \(!observed\.RequestObserved\)/);
+console.log('PASS passive request trace and real submit-response observation before readback');
