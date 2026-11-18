@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -196,12 +197,18 @@ internal sealed partial class MainForm : Form
             Dock = DockStyle.Top, Height = 62, AutoScroll = true, WrapContents = false,
             BackColor = UiTheme.Surface, Padding = new Padding(15, 11, 9, 8)
         };
-        var logo = new PictureBox
+        var logo = new Label
         {
-            Image = Image.FromFile(Settings.Asset("09_536c8.png")),
-            Size = new Size(31, 31), SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 3, 8, 0)
+            Text = "L", Size = new Size(32, 32), TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 15F, FontStyle.Bold),
+            BackColor = UiTheme.Primary, ForeColor = Color.White,
+            Margin = new Padding(0, 3, 9, 0)
         };
+        using (var shape = new GraphicsPath())
+        {
+            shape.AddEllipse(0, 0, logo.Width - 1, logo.Height - 1);
+            logo.Region = new Region(shape);
+        }
         bar.Controls.Add(logo);
         bar.Controls.Add(new Label
         {
@@ -445,6 +452,10 @@ internal sealed partial class MainForm : Form
             Text = label, Size = new Size(width, 34), Margin = new Padding(2, 3, 4, 2)
         };
         UiTheme.StyleButton(button, tone);
+        // Korean button labels were visibly cut off after the larger font and
+        // round corners were applied. Size to actual rendered text + insets.
+        button.Width = Math.Max(width,
+            TextRenderer.MeasureText(label, button.Font).Width + button.Padding.Horizontal + 24);
         button.Click += (_, _) => action();
         parent.Controls.Add(button);
         return button;
