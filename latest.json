@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.70",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.70/LuzenBrowser_22.2.70_BinaryUpdate.zip",
-  "sha256": "1fe0f880ee63ed340e30f6c251847a882599e453dd853ddc91c68e9dc0e29554",
+  "version": "22.2.71",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.71/LuzenBrowser_22.2.71_BinaryUpdate.zip",
+  "sha256": "1530ee320b153b4101b2b18018829bfa78e8db90650865b89891a0b5a6aac1e2",
   "format": "binary",
-  "releaseNotes": "v22.2.70 A/B 관리목록 장애 자동 복구: 물품 행이 표시되지 않거나 관리목록 연결이 실패하면 다음 서버 글을 연속으로 실패시키지 않고 시스템 전체를 90초 대기시킵니다. 이후 2분 간격으로 공식 관리목록을 읽기 전용 재검사합니다. B는 별도 VPN IP 검증뿐 아니라 실제 관리목록 표시 확인까지 성공해야 재개하며, A/C도 실제 물품 목록이 다시 보일 때만 재개합니다. 사용자 일시정지·즉시 중지는 복구 검사도 취소합니다. 미확인 글은 재제출하지 않고 기존 등록번호·제목 정확 검증, 서버별 시간당 제한 및 A/B/C 계정 분리가 유지됩니다."
+  "releaseNotes": "v22.2.71 기존 등록글 제목 보호를 개별·일괄·통합 편집에 통일했습니다. 로컬 가격을 바꾸면 이전 사이트 가격 예약을 즉시 취소하고 새 예약 금액을 목록에 표시합니다. 시스템별 또는 A/B/C 통합 일괄수정에는 마지막 로컬 수정 되돌리기를 추가했습니다. 사이트 제출이 이미 진행됐거나 결과가 불확실하면 되돌리기를 차단합니다. 자동등록 순번·서버별 시간당 제한과 다음 순번 가격 반영 방식은 그대로 유지됩니다."
 }
