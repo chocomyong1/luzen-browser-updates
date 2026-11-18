@@ -77,6 +77,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'A+B simultaneous start and split-view guard test failed' }
           node tests/test_b_vpn_navigation_recovery.cjs
           if ($LASTEXITCODE -ne 0) { throw 'B VPN navigation recovery safety test failed' }
+          node tests/test_owned_list_recovery_guard.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'A/B/C managed-list recovery guard test failed' }
           node tests/test_integrated_abc_edit.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Combined A/B/C editing safety test failed' }
           node tests/test_telegram_unexpected_stop.cjs
@@ -119,15 +121,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.69'
+          $version = '22.2.70'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.69
-          path: LuzenBrowser_22.2.69_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.70
+          path: LuzenBrowser_22.2.70_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -135,7 +137,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.69'
+          $version = '22.2.70'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -147,7 +149,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.69 통합 편집에 전체·구매·판매 탭과 시스템 및 서버 필터를 추가했습니다. 필터를 조합해 표시된 물품에만 선택·일괄수정이 적용되며 서버 목록은 거래 방향과 시스템에 맞춰 바뀝니다. 기존 텔레그램 봇 연결을 이용해 작업 오류, B VPN·로그인 장애, 예약 가격 변경 보류, 예상치 못한 자동등록 중단을 알립니다. 같은 유형의 알림은 시스템당 15분 간격으로 제한하며 사용자가 누른 일시정지와 즉시 중지에는 알림을 보내지 않습니다. 자동등록의 기존 순번 및 시간당 제한, A/B/C 독립성이 유지됩니다.'
+            releaseNotes = 'v22.2.70 A/B 관리목록 장애 자동 복구: 물품 행이 표시되지 않거나 관리목록 연결이 실패하면 다음 서버 글을 연속으로 실패시키지 않고 시스템 전체를 90초 대기시킵니다. 이후 2분 간격으로 공식 관리목록을 읽기 전용 재검사합니다. B는 별도 VPN IP 검증뿐 아니라 실제 관리목록 표시 확인까지 성공해야 재개하며, A/C도 실제 물품 목록이 다시 보일 때만 재개합니다. 사용자 일시정지·즉시 중지는 복구 검사도 취소합니다. 미확인 글은 재제출하지 않고 기존 등록번호·제목 정확 검증, 서버별 시간당 제한 및 A/B/C 계정 분리가 유지됩니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
