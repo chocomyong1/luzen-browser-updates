@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.38",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.38/LuzenBrowser_22.2.38_BinaryUpdate.zip",
-  "sha256": "370938840421fbd388c01a68d34f43bfe1126ecb81170697e34a7e14922d12cf",
+  "version": "22.2.39",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.39/LuzenBrowser_22.2.39_BinaryUpdate.zip",
+  "sha256": "8753f4f393c0d01ecab99448a303f74689ac4b9376c9f30e223119ef64954a7a",
   "format": "binary",
-  "releaseNotes": "v22.2.38: 재등록 제출 결과가 불명확해도 전체 스케줄러를 중단하지 않고 해당 물품만 보류합니다. 자동 실행 중 보류 물품의 등록번호·제목·사이트 재등록 시각을 주기적으로 읽기 전용 확인하며, 성공이 검증된 글만 자동 해제합니다. 사이트가 명확히 거절한 글은 안전한 서버 간격 뒤 재시도합니다. 설정 및 물품 목록을 보존합니다."
+  "releaseNotes": "v22.2.39: B/C 별도 브라우저 프로필의 자동 로그인 전환 중 재등록 관리목록 접근 실패를 완화했습니다. 관리화면이 로그인·시작화면으로 이동하면 로그인 안정화 후 읽기 전용 재시도하며, 미제출은 재등록 오류로 집계하지 않고 30초 후 재시도합니다. 등록번호·제목 검증, 보류 보호, 설정과 물품 목록은 유지합니다."
 }
