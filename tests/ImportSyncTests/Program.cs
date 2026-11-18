@@ -108,6 +108,34 @@ internal static class Program
         Check(queued.Price == "93,000" && queued.PendingSitePriceTarget == "93000",
             "next-slot price reservation survives a site re-import");
 
+        // A common live scenario is six same-server listings edited together.
+        // Importing the signed-in My Room list during their wait must never
+        // replace any of the six individually reserved prices.
+        var sixQueued = Enumerable.Range(0, 6).Select(i =>
+        {
+            var job = Job("93,000");
+            job.ListingNumber = (2026070508123456L + i).ToString();
+            job.Server = "아브렐슈드";
+            job.Title = Title + " " + i;
+            job.PendingSitePriceTarget = "93000";
+            return job;
+        }).ToArray();
+        var sixRecords = sixQueued.Select(job =>
+        {
+            var record = Row("90,000");
+            record.ListingNumber = job.ListingNumber;
+            record.Server = job.Server;
+            record.Title = job.Title;
+            return record;
+        }).ToArray();
+        var sixPlan = MyListingsImport.Prepare(sixRecords, sixQueued, "A", "slshrn124");
+        Check(sixPlan.PriceObservations.Count == 6 &&
+            sixPlan.Updates.All(x => !x.UpdateVerifiedPrice),
+            "all six pending buy prices remain reserved across list refresh");
+        foreach (var update in sixPlan.Updates) update.Apply();
+        Check(sixQueued.All(job => job.Price == "93,000" && job.PendingSitePriceTarget == "93000"),
+            "all six distinct owned listing IDs retain their own reservations");
+
         var same = MyListingsImport.Prepare(new[] { Row("35,100") }, new[] { current }, "A", "slshrn124");
         Check(same.Updates.Count == 0, "equal prices not duplicated");
         var withoutCommas = MyListingsImport.Prepare(new[] { Row("35100") }, new[] { current }, "A", "slshrn124");
