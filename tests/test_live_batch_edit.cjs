@@ -9,7 +9,7 @@ const runner = read('AutomationForm.cs');
 
 assert.doesNotMatch(batch.split('private void ShowModernBatchEditor()')[1].split('_jobsGrid.EndEdit()')[0],
   /_schedulerRunning/);
-assert.match(batch, /_myListingsImportRunning \|\| \(_busy && _currentlyExecutingJob is null\)/);
+assert.match(batch, /_sitePriceBatchRunning \|\| _myListingsImportRunning \|\| \(_busy && _currentlyExecutingJob is null\)/);
 assert.match(batch, /if \(!_busy\) SaveSelectedJob\(false\)/);
 assert.match(batch, /ReferenceEquals\(x\.Item, _currentlyExecutingJob\)/);
 assert.match(batch, /foreach \(var \(item, _\) in immediate\) write\(item, value\)/);
