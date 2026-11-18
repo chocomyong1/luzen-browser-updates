@@ -23,13 +23,13 @@ assert.match(automation, /if \(step\.Action == "제출" && repostFromOwnedList\)
 // A second program may move the target to the newest page while we paginate.
 // Recheck the current first page READ-ONLY, then still require the exact row.
 const fallbackSearch = automation.split('private async Task<OwnedListRepostResult> LocateOwnedListRepostAsync(')[1]?.split('private async Task<OwnedListRepostResult> InspectOwnedListRepostAsync(')[0] || '';
-assert.match(fallbackSearch, /await NavigateOwnedListAsync\(baseUrl, token\);[\s\S]*?InspectOwnedListPageAsync\(job, token\)/);
+assert.match(fallbackSearch, /await NavigateOwnedListAsync\(baseUrl, token\);[\s\S]*?InspectOwnedListPageAsync\(job, token, requireRepostButton\)/);
 assert.match(fallbackSearch, /await NavigateOwnedListAsync\(next, token\)/);
 assert.match(fallbackSearch, /page\.Listings\.Count > 0 \|\| page\.IsEmptyList/);
 assert.match(fallbackSearch, /pageNotReady = page\.Listings\.Count == 0 && !page\.IsEmptyList/);
 assert.match(fallbackSearch, /등록번호는 확인했지만 저장된 제목이 현재 사이트와 다릅니다/);
 assert.match(fallbackSearch, /await Task\.Delay\(750, token\)/);
-assert.match(fallbackSearch, /if \(updated\.Status == "ready"\)/);
+assert.match(fallbackSearch, /if \(updated\.Status == "ready" \|\| \(!requireRepostButton && updated\.Status == "found"\)\)/);
 assert.doesNotMatch(fallbackSearch, /InspectOwnedListRepostAsync\(job, true, token\)/);
 assert.match(fallbackSearch, /_jobs\.Select\(j => j\.SourceListUrl\)/);
 assert.match(fallbackSearch, /MyListingsImport\.IsOwnedListUrl\(u\)/);
@@ -49,8 +49,11 @@ assert.match(cooldownRecovery, /job\.PendingRepostAttemptUtc = null/);
 assert.match(cooldownRecovery, /Math\.Max\(60, _config\.MinimumServerSeconds\)/);
 assert.doesNotMatch(cooldownRecovery, /PauseScheduler\(/);
 const uncertainSubmissionRecovery = automation.split('catch (Exception ex) when (submitted && _repostServerCooldownRejected)')[1]
-  ?.split('catch (Exception ex)')[1] || '';
-assert.match(uncertainSubmissionRecovery, /PauseScheduler\(/);
+  ?.split('catch (Exception ex)')[1]?.split('finally')[0] || '';
+assert.doesNotMatch(uncertainSubmissionRecovery, /PauseScheduler\(/);
+assert.match(uncertainSubmissionRecovery, /해당 물품은 사이트의 정확한 등록번호·재등록 시각을 백그라운드에서 검사합니다/);
+assert.match(uncertainSubmissionRecovery, /job\.RequiresReview = true/);
+assert.match(uncertainSubmissionRecovery, /submitted \? DateTime\.MaxValue/);
 // A native confirm from the owned list is allowed only in its armed exact-ID
 // context; a later positive alert from another OFFICIAL site path can close.
 assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(currentPage\)/);
@@ -66,7 +69,29 @@ assert.match(automation, /bool exactOwnedRepostConfirmed = flow\.Operation == "�
 assert.match(automation, /identityOk = flow\.Operation == "재등록" \?[\s\S]*?ListingIdentity\.IsConfirmedExisting\(identity, job\) :[\s\S]*?ListingIdentity\.IsConfirmedNew\(identity, job\)/);
 assert.match(automation, /job\.PendingRepostBeforeStamp = "";[\s\S]*?job\.PendingRepostAttemptUtc = null;/);
 assert.match(myListingsUi, /ReconcilePendingRepostsAsync\(cancellation\.Token\)/);
-assert.match(myListingsUi, /row\.Status != "ready" \|\| string\.IsNullOrWhiteSpace\(row\.Stamp\)/);
+// Uncertain items are reconciled in the background, one at a time, using
+// an exact ID/title match AND a changed server-side stamp. The method must
+// never assume an old (<2h) pending checkpoint is safe to repost.
+assert.match(automation, /await VerifyOneHeldListingInBackgroundAsync\(candidate\)/);
+const schedulerTick = automation.split('private async Task SchedulerTickAsync()')[1]
+  ?.split('private async Task VerifyOneHeldListingInBackgroundAsync')[0] || '';
+assert(schedulerTick.indexOf('await ExecuteJobAsync(job, false)') >= 0);
+assert(schedulerTick.indexOf('await ExecuteJobAsync(job, false)') <
+       schedulerTick.indexOf('await VerifyOneHeldListingInBackgroundAsync(candidate)'),
+  'do not delay a ready normal listing to inspect pending submissions');
+assert.match(automation, /_nextPendingReviewUtc = DateTime\.UtcNow\.AddMinutes\(2\)/);
+assert.match(automation, /if \(_busy \|\| !_schedulerRunning \|\| _myListingsImportRunning \|\| _pendingMyListingsImport\) return/);
+assert.match(automation, /await ReconcilePendingRepostsAsync\(cancellation\.Token, candidate\)/);
+assert.match(automation, /requireRepostButton \? false : null/);
+assert.match(automation, /_pendingReviewRun\?\.Cancel\(\)/);
+assert.match(automation, /Math\.Max\(60, _config\.MinimumServerSeconds\)/);
+const pendingReconcile = myListingsUi.split('private async Task<int> ReconcilePendingRepostsAsync(')[1]
+  ?.split('private sealed class MyListingsScan')[0] || '';
+assert.match(pendingReconcile, /ReferenceEquals\(j, onlyJob\)/);
+assert.doesNotMatch(pendingReconcile, /AddHours\(-2\)/);
+assert.match(pendingReconcile, /requireRepostButton: false/);
+assert.doesNotMatch(pendingReconcile, /InspectOwnedListRepostAsync\(job, true, token\)/);
+assert.match(myListingsUi, /row\.Status != "found" \|\| string\.IsNullOrWhiteSpace\(row\.Stamp\)/);
 assert.match(myListingsUi, /string\.Equals\(row\.Stamp, job\.PendingRepostBeforeStamp, StringComparison\.Ordinal\)/);
 assert.match(myListingsUi, /job\.RequiresReview = false;[\s\S]*?job\.LastStatus = "재등록 시각 변경 확인/);
 assert.match(models, /CharacterDisplay => string\.IsNullOrWhiteSpace\(Character\)/);

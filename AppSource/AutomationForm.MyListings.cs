@@ -180,14 +180,14 @@ internal sealed partial class AutomationForm
     // final alert. Never repost it again to find out. Revisit the exact owned
     // row and clear the hold only if its server-rendered timestamp changed
     // since the checkpoint saved BEFORE pressing the repost button.
-    private async Task<int> ReconcilePendingRepostsAsync(CancellationToken token)
+    private async Task<int> ReconcilePendingRepostsAsync(CancellationToken token, ListingJob? onlyJob = null)
     {
         int reconciled = 0;
         var pending = _jobs.Where(j => j.RequiresReview && j.PendingRepostAttemptUtc.HasValue &&
             !string.IsNullOrWhiteSpace(j.PendingRepostBeforeStamp) &&
             ListingIdentity.HasNumber(j.ListingNumber) &&
-            j.PendingRepostAttemptUtc.Value > DateTime.UtcNow.AddHours(-2))
-            .Take(15).ToList();
+            (onlyJob is null || ReferenceEquals(j, onlyJob)))
+            .Take(onlyJob is null ? 15 : 1).ToList();
         foreach (var job in pending)
         {
             token.ThrowIfCancellationRequested();
@@ -196,14 +196,17 @@ internal sealed partial class AutomationForm
             try
             {
                 await NavigateOwnedListAsync(url, token);
-                var row = await LocateOwnedListRepostAsync(job, token);
-                if (row.Status != "ready" || string.IsNullOrWhiteSpace(row.Stamp) ||
+                var row = await LocateOwnedListRepostAsync(job, token, requireRepostButton: false);
+                if (row.Status != "found" || string.IsNullOrWhiteSpace(row.Stamp) ||
                     string.Equals(row.Stamp, job.PendingRepostBeforeStamp, StringComparison.Ordinal))
                     continue;
                 job.RequiresReview = false;
                 job.InitialCompleted = true;
                 job.LastSucceededUtc = DateTime.UtcNow;
-                job.NextDueUtc = job.Enabled ? DateTime.UtcNow.AddMinutes(Math.Max(1, job.IntervalMinutes)) : DateTime.MaxValue;
+                // Keep a conservative quiet period after confirming a repost;
+                // the site's update may have happened moments before our read.
+                job.NextDueUtc = job.Enabled ?
+                    DateTime.UtcNow.AddSeconds(Math.Max(60, _config.MinimumServerSeconds)) : DateTime.MaxValue;
                 job.LastStatus = "재등록 시각 변경 확인 · 보류 자동 해제";
                 job.PendingRepostBeforeStamp = "";
                 job.PendingRepostAttemptUtc = null;

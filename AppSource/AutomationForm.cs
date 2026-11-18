@@ -99,6 +99,11 @@ internal sealed partial class AutomationForm : Form
     private CancellationTokenSource? _myListingsImportCancellation;
     private TaskCompletionSource<bool>? _myListingsImportCompletion;
     private CancellationTokenSource? _currentRun;
+    // Owned-list verification is read-only and must never overlap a submit.
+    // Check one held item periodically while the scheduler is otherwise idle.
+    private CancellationTokenSource? _pendingReviewRun;
+    private DateTime _nextPendingReviewUtc = DateTime.MaxValue;
+    private int _pendingReviewCursor;
     // Once a live submit begins, do not cancel its independent result probe.
     // The scheduler stops immediately; the one in-flight result is verified.
     private bool _submissionVerificationPending;
@@ -309,7 +314,7 @@ internal sealed partial class AutomationForm : Form
             int pending = _jobs.Count(j => j.RequiresReview);
             if (pending > 0)
             {
-                AppendLog($"주의: 결과 확인 대기 {pending}건. 사이트에서 실제 등록 여부 확인 후 보류 해제하세요.");
+                AppendLog($"주의: 결과 확인 대기 {pending}건. 자동 시작 후 사이트 등록시각을 백그라운드에서 검사합니다. 결과가 불명확한 글만 보류됩니다.");
                 foreach (var review in _jobs.Where(j => j.RequiresReview).Take(10))
                     AppendLog($"보류 사유: {review.Server} · {review.ListingNumber} · {review.LastStatus} (이전 실행 포함)");
                 if (pending > 10)
@@ -321,7 +326,7 @@ internal sealed partial class AutomationForm : Form
         _timer.Tick += async (_, _) => await SchedulerTickAsync();
         FormClosing += (_, _) =>
         {
-            _timer.Stop(); _currentRun?.Cancel();
+            _timer.Stop(); _currentRun?.Cancel(); _pendingReviewRun?.Cancel();
             _schedulerRunning = false;
             try { SaveAll(); } catch { }
         };
@@ -2017,22 +2022,29 @@ internal sealed partial class AutomationForm : Form
             return;
         }
         var enabled = _jobs.Where(WantsWork).ToList();
-        if (enabled.Count == 0) { MessageBox.Show(this, "자동 실행이 체크된 미완료 물품 또는 재등록 물품이 없습니다."); return; }
+        bool canCheckHeld = _jobs.Any(j => j.RequiresReview && j.PendingRepostAttemptUtc.HasValue &&
+            !string.IsNullOrWhiteSpace(j.PendingRepostBeforeStamp) &&
+            ListingIdentity.HasNumber(j.ListingNumber) && MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j)));
+        if (enabled.Count == 0 && !canCheckHeld)
+        { MessageBox.Show(this, "자동 실행할 물품이나 사이트에서 재검증할 수 있는 보류 물품이 없습니다."); return; }
         foreach (var job in enabled)
             if (!ValidateJob(job, false, out var error)) { MessageBox.Show(this, job.Title + ": " + error, "자동 시작 불가"); return; }
         _schedulerRunning = true; _timer.Start();
+        _nextPendingReviewUtc = DateTime.UtcNow.AddSeconds(15);
         // Old builds scheduled each item at a fixed 30-minute interval. Hourly
         // per-server allocation now controls the pace; remove old future times.
         foreach (var job in enabled)
             if (job.NextDueUtc != DateTime.MaxValue) job.NextDueUtc = DateTime.UtcNow;
         _config.Save();
         _state.Text = "자동 실행 중"; _state.ForeColor = Color.ForestGreen; RefreshAutoSummary();
-        AppendLog("스케줄러 시작: " + enabled.Count + "건, ID·서버별 시간당 " + _config.MaxSubmissionsPerHour + "회 제한");
+        AppendLog("스케줄러 시작: " + enabled.Count + "건, ID·서버별 시간당 " + _config.MaxSubmissionsPerHour + "회 제한" +
+            (canCheckHeld ? " · 보류 물품은 별도 안전 조회" : ""));
     }
 
     private void PauseScheduler()
     {
         _schedulerRunning = false; _timer.Stop();
+        _pendingReviewRun?.Cancel();
         _state.Text = "일시정지"; _state.ForeColor = Color.DarkGoldenrod; RefreshAutoSummary();
         AppendLog(_myListingsImportRunning ? "자동등록은 일시정지했습니다. '내 등록글 불러오기'는 계속 조회 중입니다. 중단하려면 [즉시 중지]를 누르세요."
             : _busy ? "일시정지. 진행 중인 작업 1건은 종료까지 기다립니다. 목록 불러오기를 누르면 종료 후 자동 조회합니다."
@@ -2042,6 +2054,7 @@ internal sealed partial class AutomationForm : Form
     private void StopScheduler()
     {
         _schedulerRunning = false; _timer.Stop();
+        _pendingReviewRun?.Cancel();
         if (!_submissionVerificationPending) _currentRun?.Cancel();
         _pendingMyListingsImport = false;
         if (_myListingsImportRunning)
@@ -2082,6 +2095,8 @@ internal sealed partial class AutomationForm : Form
     private async Task SchedulerTickAsync()
     {
         if (_busy || !_schedulerRunning) return;
+        // Normal posts take priority. A pending read-only check must never
+        // delay a different server that is already eligible to register.
         var jobs = _jobs.Where(x => WantsWork(x) && x.NextDueUtc <= DateTime.UtcNow)
                         .OrderBy(x => x.LastSucceededUtc ?? DateTime.MinValue)
                         .ThenBy(x => x.NextDueUtc).ToList();
@@ -2089,9 +2104,60 @@ internal sealed partial class AutomationForm : Form
         {
             if (!CanRunNow(job, out _)) continue;
             await ExecuteJobAsync(job, false);
-            break;
+            _jobsGrid.Refresh();
+            return;
+        }
+        if (DateTime.UtcNow >= _nextPendingReviewUtc)
+        {
+            // A read-only check cannot race an active registration. Rotate
+            // candidates to avoid starving one of several pending listings.
+            _nextPendingReviewUtc = DateTime.UtcNow.AddMinutes(2);
+            var held = _jobs.Where(j => j.RequiresReview && j.PendingRepostAttemptUtc.HasValue &&
+                !string.IsNullOrWhiteSpace(j.PendingRepostBeforeStamp) &&
+                ListingIdentity.HasNumber(j.ListingNumber) &&
+                MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j)))
+                .OrderBy(j => j.PendingRepostAttemptUtc).ToList();
+            if (held.Count > 0)
+            {
+                var candidate = held[_pendingReviewCursor++ % held.Count];
+                await VerifyOneHeldListingInBackgroundAsync(candidate);
+                return; // Resume ordinary registrations at the next tick.
+            }
         }
         _jobsGrid.Refresh();
+    }
+
+    private async Task VerifyOneHeldListingInBackgroundAsync(ListingJob candidate)
+    {
+        if (_busy || !_schedulerRunning || _myListingsImportRunning || _pendingMyListingsImport) return;
+        if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system)) return;
+        _busy = true;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        _pendingReviewRun = cancellation;
+        try
+        {
+            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
+            if (_autoLogin is not null)
+                await _autoLogin.WaitForLoginNavigationAsync(cancellation.Token);
+            AppendLog($"보류 자동 확인: {candidate.Server} · {candidate.ListingNumber} (조회만, 재등록 없음)");
+            await ReconcilePendingRepostsAsync(cancellation.Token, candidate);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            AppendLog("보류 자동 확인: 조회 시간이 초과되었거나 사용자가 작업을 중지했습니다. 다음 주기에 재검사합니다.");
+        }
+        catch (Exception ex)
+        {
+            AppendLog("보류 자동 확인: " + candidate.Server + " · 조회 실패(" + ex.GetType().Name + "). 다른 등록 작업은 계속합니다.");
+        }
+        finally
+        {
+            if (ReferenceEquals(_pendingReviewRun, cancellation)) _pendingReviewRun = null;
+            _busy = false;
+            _jobsGrid.Refresh();
+            RefreshAutoSummary();
+            DispatchQueuedMyListingsImport();
+        }
     }
 
     private async Task ExecuteJobAsync(ListingJob job, bool dryRun)
@@ -2367,7 +2433,7 @@ internal sealed partial class AutomationForm : Form
         {
             job.LastStatus = submitted ? "중지됨 (사이트 확인 필요)" : "중지됨";
             if (submitted) job.RequiresReview = true;
-            job.NextDueUtc = DateTime.UtcNow.AddMinutes(10);
+            job.NextDueUtc = submitted ? DateTime.MaxValue : DateTime.UtcNow.AddMinutes(10);
             AppendLog("작업 중지: " + job.Title + (submitted ? " / 제출이 진행되었을 수 있으니 중복 등록 전에 반드시 확인" : ""));
             AppendLog($"작업 중지 요약: {job.Server} · {job.ListingNumber} · " +
                 (submitted ? "결과 확인 필요" : "미제출"));
@@ -2391,15 +2457,13 @@ internal sealed partial class AutomationForm : Form
         {
             job.LastStatus = submitted ? "제출 결과 확인 필요" : "오류 (미제출)";
             if (submitted) job.RequiresReview = true;
-            job.NextDueUtc = DateTime.UtcNow.AddMinutes(10);
+            job.NextDueUtc = submitted ? DateTime.MaxValue : DateTime.UtcNow.AddMinutes(10);
             AppendLog("작업 오류: " + ex.Message);
             AppendLog($"{(flow.Operation == "재등록" ? "재등록 실패 요약:" : "등록 실패 요약:")} " +
                 $"{job.Server} · {job.ListingNumber} · {ex.Message}");
             if (_schedulerRunning && submitted)
-            {
-                PauseScheduler();
-                MessageBox.Show(this, "사이트 제출 후 결과가 불명확합니다. 중복 게시를 막기 위해 자동 실행을 일시정지했습니다.\n\n" + ex.Message, "결과 확인 필요", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
+                AppendLog("결과 확인이 필요한 물품 1건만 보류했습니다. 다른 정상 물품은 계속 등록하며 " +
+                    "해당 물품은 사이트의 정확한 등록번호·재등록 시각을 백그라운드에서 검사합니다.");
         }
         finally
         {
@@ -2446,7 +2510,8 @@ internal sealed partial class AutomationForm : Form
         return await LocateOwnedListRepostAsync(job, token);
     }
 
-    private async Task<OwnedListRepostResult> LocateOwnedListRepostAsync(ListingJob job, CancellationToken token)
+    private async Task<OwnedListRepostResult> LocateOwnedListRepostAsync(ListingJob job, CancellationToken token,
+        bool requireRepostButton = true)
     {
         string current = _web.Source?.AbsoluteUri ?? "";
         string expectedList = OwnedListUrlFor(job);
@@ -2489,7 +2554,7 @@ internal sealed partial class AutomationForm : Form
                 !visited.Add(next)) continue;
             if (!string.Equals(_web.Source?.AbsoluteUri, next, StringComparison.OrdinalIgnoreCase))
                 await NavigateOwnedListAsync(next, token);
-            var (row, page) = await InspectOwnedListPageAsync(job, token);
+            var (row, page) = await InspectOwnedListPageAsync(job, token, requireRepostButton);
             // ItemMania sometimes completes navigation before its SPA content
             // settles, or briefly redirects during account login. Recover via
             // read-only navigation and reinspection, never a speculative click.
@@ -2498,9 +2563,9 @@ internal sealed partial class AutomationForm : Form
                 AppendLog($"관리 목록 일시 이동 오류: {retry}/2회 안전 재조회 ({job.Server})");
                 await Task.Delay(900 * retry, token);
                 await NavigateOwnedListAsync(next, token);
-                (row, page) = await InspectOwnedListPageAsync(job, token);
+                (row, page) = await InspectOwnedListPageAsync(job, token, requireRepostButton);
             }
-            if (row.Status == "ready")
+            if (row.Status == "ready" || (!requireRepostButton && row.Status == "found"))
             {
                 if (!string.Equals(job.SourceListUrl, next, StringComparison.OrdinalIgnoreCase))
                 {
@@ -2538,8 +2603,8 @@ internal sealed partial class AutomationForm : Form
         try
         {
             await NavigateOwnedListAsync(baseUrl, token);
-            var (updated, _) = await InspectOwnedListPageAsync(job, token);
-            if (updated.Status == "ready")
+            var (updated, _) = await InspectOwnedListPageAsync(job, token, requireRepostButton);
+            if (updated.Status == "ready" || (!requireRepostButton && updated.Status == "found"))
             {
                 if (!string.Equals(job.SourceListUrl, baseUrl, StringComparison.OrdinalIgnoreCase))
                 {
@@ -2568,9 +2633,9 @@ internal sealed partial class AutomationForm : Form
     // event alone does not prove the listing table is ready to inspect.
     // Always remain read-only here; a mismatch is never permission to repost.
     private async Task<(OwnedListRepostResult Row, ExistingListingPage Page)> InspectOwnedListPageAsync(
-        ListingJob job, CancellationToken token)
+        ListingJob job, CancellationToken token, bool requireRepostButton = true)
     {
-        var row = await InspectOwnedListRepostAsync(job, false, token);
+        var row = await InspectOwnedListRepostAsync(job, requireRepostButton ? false : null, token);
         var page = new ExistingListingPage();
         if (row.Status != "not-found") return (row, page);
 
@@ -2596,7 +2661,7 @@ internal sealed partial class AutomationForm : Form
             if ((!pageNotReady && !idInParsedList) || attempt == 2) break;
 
             await Task.Delay(750, token);
-            row = await InspectOwnedListRepostAsync(job, false, token);
+            row = await InspectOwnedListRepostAsync(job, requireRepostButton ? false : null, token);
             if (row.Status != "not-found") return (row, page);
         }
 

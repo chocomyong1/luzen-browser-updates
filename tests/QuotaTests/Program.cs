@@ -104,6 +104,10 @@ internal static class Program
         Check(failed.Visible && failed.IsError, "count failed registration once");
         var cooldown = LogPresentation.Format("재등록 대기 요약: 아만 · 사이트 간격 제한");
         Check(cooldown.Visible && !cooldown.IsError, "explicit site cooldown is a normal wait, not a program error");
+        var pendingScan = LogPresentation.Format("보류 자동 확인: 카마인 · 2026070701984022 (조회만, 재등록 없음)");
+        Check(pendingScan.Visible && !pendingScan.IsError, "read-only pending reconciliation shown as routine progress");
+        var pendingReleased = LogPresentation.Format("보류 자동 해제: 정확한 등록번호의 사이트 재등록 시각 변경 확인");
+        Check(pendingReleased.Visible && !pendingReleased.IsError, "verified pending release is not an error");
         var admin = LogPresentation.Format("스케줄러 시작: 83건");
         Check(admin.Visible && !admin.IsError, "keep control events visible");
         Console.WriteLine("PASS independent hourly quotas, silent first baseline, later drift alerts, lower cap, pacing, dedup");
