@@ -224,12 +224,13 @@ internal sealed partial class MainForm : Form
         _systemPicker = AddToolButton(bar, "A 기본 ▾",
             () => systemMenu.Show(_systemPicker!, 0, _systemPicker!.Height), 105);
         AddToolbarDivider(bar);
-        AddToolButton(bar, "내 등록글 불러오기", () => _ = _module.ImportMyRegisteredListingsFromHeaderAsync(),
-            153, UiTheme.ButtonTone.Primary);
         AddToolButton(bar, "자동 시작", () => _module.StartAutomationFromHeader(), 92, UiTheme.ButtonTone.Success);
         AddToolButton(bar, "일시정지", () => _module.PauseAutomationFromHeader(), 85);
         AddToolButton(bar, "즉시 중지", () => _module.StopAutomationFromHeader(), 93, UiTheme.ButtonTone.Danger);
         var moreMenu = new ContextMenuStrip();
+        moreMenu.Items.Add("내 등록글 불러오기", null,
+            (_, _) => _ = _module.ImportMyRegisteredListingsFromHeaderAsync());
+        moreMenu.Items.Add(new ToolStripSeparator());
         var addSubmenu = new ToolStripMenuItem("새 물품 추가");
         addSubmenu.DropDownItems.Add("판매글 추가", null, (_, _) => AddNewListing("판매등록"));
         addSubmenu.DropDownItems.Add("구매글 추가", null, (_, _) => AddNewListing("구매등록"));
@@ -242,7 +243,7 @@ internal sealed partial class MainForm : Form
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("아이템매니아 계정", null, (_, _) => _module.OpenAccountSettings());
         moreMenu.Items.Add("시간당 등록 횟수 설정", null, (_, _) => _module.OpenHourlyLimitSettings());
-        moreMenu.Items.Add("고급 설정 · 사이트 연동", null, (_, _) => _module.ShowWorkflowSettings());
+        moreMenu.Items.Add("고급 설정", null, (_, _) => _module.ShowWorkflowSettings());
         moreMenu.Items.Add("텔레그램 알림 설정", null, (_, _) => _module.OpenTelegramSettings());
         moreMenu.Items.Add("B VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("B"));
         moreMenu.Items.Add("C VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("C"));
