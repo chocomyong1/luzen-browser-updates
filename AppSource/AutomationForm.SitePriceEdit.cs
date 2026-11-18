@@ -14,6 +14,9 @@ internal sealed partial class AutomationForm
     private string _sitePriceEditDialogWarning = "";
     private string _lastSitePriceEditFailure = "";
     private string _sitePriceReadbackNote = "";
+    // Intentionally false until the real site request/response protocol is
+    // audited. No UI, config or saved job can enable it.
+    private bool _sitePriceSubmissionVerifiedFromNetwork;
 
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
@@ -131,6 +134,20 @@ internal sealed partial class AutomationForm
                 MessageBox.Show(this, "이 물품은 확인 대기 상태입니다. 확인이 끝나기 전에는 사이트에 다시 제출하지 않습니다.",
                     "중복 가격 제출 차단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             _lastSitePriceEditFailure = "확인 대기 물품: 사이트 가격 재제출 차단";
+            return false;
+        }
+        // The observed 22.2.52 trial did not change the site's registered
+        // price. Do not spend further registration attempts by guessing which
+        // hidden site validation/HTTP request was missing. A passive request
+        // recorder is available in the toolbar for one manual site action.
+        if (!_sitePriceSubmissionVerifiedFromNetwork)
+        {
+            _lastSitePriceEditFailure = "실제 사이트 수정 요청 검증 전까지 자동 가격 제출 중단";
+            if (!bulkApproval) MessageBox.Show(this,
+                "사이트의 실제 수정 요청을 확인하기 전까지 자동 가격 제출을 일시 중단했습니다.\n\n" +
+                "상단의 '수정 요청 기록'에서 사이트 브라우저를 열고 한 건을 직접 수정하면 " +
+                "주소·요청 필드 이름·응답 상태만 확인할 수 있습니다. 계정 정보는 복사하지 않습니다.",
+                "자동 가격 제출 안전 중단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
         if (_schedulerRunning) PauseScheduler();
