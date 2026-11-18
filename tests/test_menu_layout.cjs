@@ -35,7 +35,7 @@ assert(!/MakeButton\("(?:자동등록 시작|일시정지|중지)"/.test(autoTab
 
 // Existing features are not deleted: only their presentation is regrouped.
 for (const caption of ['+ 물품 추가', '같은 가격 선택',
-  '선택 물품 일괄수정', '선택 가격 반영', '더보기 ▾']) {
+  '선택 물품 일괄수정', '가격 반영 예약', '더보기 ▾']) {
   assert(autoTab.includes(`MakeButton("${caption}"`), `${caption} UI가 사라짐`);
 }
 assert((autoTab.match(/MakeButton\("/g) || []).length === 5,
@@ -45,7 +45,7 @@ for (const action of ['선택 물품 편집', '조회 전체선택', '선택 해
 assert(!autoTab.includes('MakeButton("조회 전체선택"') && !autoTab.includes('MakeButton("선택 해제"'),
   '조회/선택 관리 버튼은 보조 메뉴에서만 보여야 함');
 const itemToolbar = automation.slice(automation.indexOf('private void BuildJobTab()'), automation.indexOf('private void ConfigureJobsGrid()', automation.indexOf('private void BuildJobTab()')));
-assert(itemToolbar.includes('ActionButton("같은 가격 선택"') && itemToolbar.includes('ActionButton("선택 가격 반영"'),
+assert(itemToolbar.includes('ActionButton("같은 가격 선택"') && itemToolbar.includes('ActionButton("가격 반영 예약"'),
   '편집 탭 일괄 가격 동선이 사라짐');
 assert(itemToolbar.includes('selectionTools.Items.Add("CSV 가져오기"') &&
   itemToolbar.includes('selectionTools.Items.Add("표 넓게 보기/복원"'),
