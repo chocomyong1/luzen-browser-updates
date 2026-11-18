@@ -263,6 +263,21 @@ internal static class SitePriceEdit
       // native submit control must agree. A character-name save cannot pass.
       if(formOwnedId&&siteSubmit.length===1){
         if(!a.submit)return result('ready','구매글 등록번호·현재 단가·frmBuy/ok_btn 재등록 제출 확인',old,1);
+        // The manually observed site submission is a multipart POST to this
+        // exact first-party URL. The form on the edit page has no static
+        // action; a synthetic .click() did not produce any POST in v22.2.56.
+        // Use native requestSubmit(), which performs real HTML constraint
+        // validation and preserves the submitter plus all current form fields.
+        // NEVER use form.submit(): it bypasses the site's submit handler.
+        const currentAction=String(form.getAttribute('action')||'').trim().split('?')[0];
+        if(currentAction&&!['buy_re_reg_ok.php','./buy_re_reg_ok.php',
+          '/myroom/buy/buy_re_reg_ok.php'].includes(currentAction))
+          return result('error','사이트 수정 폼의 제출 경로가 확인된 공식 경로와 다릅니다');
+        const currentMethod=String(form.getAttribute('method')||'').trim().toLowerCase();
+        if(currentMethod&&currentMethod!=='post')
+          return result('error','사이트 수정 폼의 전송 방식이 POST가 아닙니다');
+        if(typeof form.requestSubmit!=='function'||typeof form.setAttribute!=='function')
+          return result('error','브라우저가 안전한 기본 폼 제출을 지원하지 않습니다');
         if(money(priceInput.value)!==old)return result('error','제출 직전 사이트 단가가 달라졌습니다');
         const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
         if(!setter)return result('error','사이트 단가 변경을 지원하지 않는 입력칸입니다');
@@ -270,8 +285,29 @@ internal static class SitePriceEdit
         priceInput.dispatchEvent(new Event('input',{bubbles:true}));
         priceInput.dispatchEvent(new Event('change',{bubbles:true}));
         if(money(priceInput.value)!==desired)return result('error','단가 입력 확인에 실패했습니다');
-        siteSubmit[0].click();
-        return result('submitted','정확한 구매 재등록 제출 버튼 클릭 (목록에서 결과 재검증 필요)',desired,1);
+        // Native HTML validation can block a submit silently. Check without
+        // submitting and report only input NAMES, never other field values.
+        const invalid=[...(form.querySelectorAll?.(':invalid')||[])].filter(e=>e.willValidate!==false)
+          .map(e=>attr(e,'name')||attr(e,'id')||'이름없음').slice(0,10);
+        if(form.checkValidity?.()===false||invalid.length)
+          return result('error','사이트 폼 검증 실패 (버튼 클릭 전 중단). 입력칸: '+invalid.join(', '),old,invalid.length);
+        let submitCount=0,submitEvent=null;
+        const onSubmit=e=>{submitCount++;submitEvent=e};
+        form.addEventListener?.('submit',onSubmit,true);
+        try{
+          form.setAttribute('action','/myroom/buy/buy_re_reg_ok.php');
+          form.setAttribute('method','post');
+          form.setAttribute('enctype','multipart/form-data');
+          form.requestSubmit(siteSubmit[0]);
+        }
+        finally{
+          form.removeEventListener?.('submit',onSubmit,true);
+        }
+        // A native form-submit call is NOT evidence that the POST happened.
+        // C# independently waits for the audited network request and reads
+        // the owned-listing price before reporting actual success.
+        return result('submitted',`원본폼 제출시도:frmBuy, 제출이벤트:${submitCount}, `+
+          `사이트취소:${submitEvent?.defaultPrevented===true}, 현재경로:${location.pathname}`,desired,1);
       }
       const diag=`경로:${safe(location.pathname)}; 가격칸:${priceName}; 폼:${formName}/${formAction}; `+
         `폼 등록번호:${formOwnedId?'일치':'미확인'}; 제출후보:${siteSubmit.length}개; `+
