@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.68",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.68/LuzenBrowser_22.2.68_BinaryUpdate.zip",
-  "sha256": "f70c2a195822ffeec104ab09c045867e73bf4ea93c45264a2828b88f84e38236",
+  "version": "22.2.69",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.69/LuzenBrowser_22.2.69_BinaryUpdate.zip",
+  "sha256": "f0d304ce1a3127d019c698e1999633648fa8addca0e7c2164ae7c3c3fab24ec2",
   "format": "binary",
-  "releaseNotes": "v22.2.68 A/B/C 통합 물품 편집: 상단 통합 편집에서 세 시스템의 로컬 물품을 한 표에 모아 시스템별 검색·서버/가격 정렬·같은 가격 선택·다중 일괄수정을 할 수 있습니다. 가격은 원하는 경우 각 시스템의 기존 자동등록 순번과 시간당 제한에 따라 사이트 변경을 예약합니다. 자동등록 중 진행 중인 한 물품의 변경은 작업 종료 후 적용됩니다. 기존 사이트 등록글의 제목은 등록번호/제목 검증 실패를 막기 위해 통합 일괄 변경에서 제외합니다. 세 시스템의 계정/IP/작업 큐를 합치지 않고 C VPN 연결 전에도 로컬 물품 편집만 가능합니다."
+  "releaseNotes": "v22.2.69 통합 편집에 전체·구매·판매 탭과 시스템 및 서버 필터를 추가했습니다. 필터를 조합해 표시된 물품에만 선택·일괄수정이 적용되며 서버 목록은 거래 방향과 시스템에 맞춰 바뀝니다. 기존 텔레그램 봇 연결을 이용해 작업 오류, B VPN·로그인 장애, 예약 가격 변경 보류, 예상치 못한 자동등록 중단을 알립니다. 같은 유형의 알림은 시스템당 15분 간격으로 제한하며 사용자가 누른 일시정지와 즉시 중지에는 알림을 보내지 않습니다. 자동등록의 기존 순번 및 시간당 제한, A/B/C 독립성이 유지됩니다."
 }
