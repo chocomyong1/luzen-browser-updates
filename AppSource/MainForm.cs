@@ -14,6 +14,7 @@ internal sealed partial class MainForm : Form
     private readonly AutomationForm _moduleA;
     private readonly AutomationForm _moduleB;
     private readonly AutomationForm _moduleC;
+    private readonly Panel _workspaceBody = new() { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
     private AutomationForm _module => _activeSystem switch
     {
         "B" => _moduleB, "C" => _moduleC, _ => _moduleA
@@ -82,10 +83,12 @@ internal sealed partial class MainForm : Form
         _moduleC.ShareSiteQuotaWith(_moduleA);
 
         var top = BuildToolbar();
-        var body = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
+        var body = _workspaceBody;
         body.Controls.Add(_moduleA);
         body.Controls.Add(_moduleB);
         body.Controls.Add(_moduleC);
+        _moduleA.RequestSingleViewFromSplit += ExitSplitForEditor;
+        _moduleB.RequestSingleViewFromSplit += ExitSplitForEditor;
         var footer = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = UiTheme.SurfaceAlt };
         footer.Controls.Add(_status);
         footer.Controls.Add(_accountInfo);
@@ -119,7 +122,7 @@ internal sealed partial class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
+        FormClosing += (_, _) => { _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
     private bool CanInstallUpdateAcrossSystems =>
@@ -129,7 +132,8 @@ internal sealed partial class MainForm : Form
     {
         if (_systemPicker is not null)
             _systemPicker.Text = _activeSystem == "A" ? "A 기본 ▾" : $"{_activeSystem} VPN ▾";
-        _accountInfo.Text = $"시스템 {_activeSystem} · 계정별 분리   ";
+        _accountInfo.Text = _splitActive ? $"A+B 동시 현황 · 선택 {_activeSystem}   " :
+            $"시스템 {_activeSystem} · 계정별 분리   ";
     }
 
     private async Task SelectSystemAsync(string system)
@@ -184,9 +188,11 @@ internal sealed partial class MainForm : Form
             _moduleC.ShowAutomationView();
             _systemCShown = true;
         }
+        if (_splitActive && system == "C") DisableSplitView();
         _activeSystem = system;
         _module.BringToFront();
         RefreshSystemLabel();
+        if (_splitActive) RefreshSplitHeaders();
         _status.Text = $"  시스템 {system} 작업 화면 · 다른 시스템의 자동등록은 계속 실행됩니다.";
     }
 
@@ -224,10 +230,13 @@ internal sealed partial class MainForm : Form
         _systemPicker = AddToolButton(bar, "A 기본 ▾",
             () => systemMenu.Show(_systemPicker!, 0, _systemPicker!.Height), 105);
         AddToolbarDivider(bar);
-        AddToolButton(bar, "자동 시작", () => _module.StartAutomationFromHeader(), 92, UiTheme.ButtonTone.Success);
-        AddToolButton(bar, "일시정지", () => _module.PauseAutomationFromHeader(), 85);
-        AddToolButton(bar, "즉시 중지", () => _module.StopAutomationFromHeader(), 93, UiTheme.ButtonTone.Danger);
+        AddToolButton(bar, "자동 시작", () => _ = StartSelectedSystemsAsync(), 92, UiTheme.ButtonTone.Success);
+        AddToolButton(bar, "일시정지", PauseSelectedSystems, 85);
+        AddToolButton(bar, "즉시 중지", StopSelectedSystems, 93, UiTheme.ButtonTone.Danger);
+        _splitButton = AddToolButton(bar, "스플릿", () => _ = ToggleSplitViewAsync(), 88);
         var moreMenu = new ContextMenuStrip();
+        moreMenu.Items.Add(BuildAutoStartTargetsMenu());
+        moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("내 등록글 불러오기", null,
             (_, _) => _ = _module.ImportMyRegisteredListingsFromHeaderAsync());
         moreMenu.Items.Add(new ToolStripSeparator());
