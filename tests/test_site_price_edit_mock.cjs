@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../AppSource/SitePriceEdit.cs'), 'utf8');
+const automation = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.SitePriceEdit.cs'), 'utf8');
 const script = marker => {
   const markerStart = source.indexOf(`public const string ${marker} = """`);
   assert(markerStart >= 0);
@@ -172,6 +173,20 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(duplicate.clicked, 0);
   assert.equal(duplicate.prices[0].value, '10,000');
   console.log('PASS misleading character-name 수정하기 and duplicate buttons never click');
+}
+{
+  const many = editFormCase({finalText: ['저장', ...Array(56).fill('이용안내'), '수정하기']});
+  const diagnosis = many.evaluate(true);
+  assert.equal(diagnosis.status, 'diagnostic');
+  assert.equal(diagnosis.candidates, 58);
+  assert.match(diagnosis.message, /작업 후보\(뒤쪽 우선\)/);
+  assert.match(diagnosis.message, /#58 수정하기/);
+  assert.equal(many.clicked, 0);
+  assert.equal(many.inputEvents, 0);
+  assert.equal(many.prices[0].value, '10,000');
+  assert.match(automation, /Clipboard\.SetText\(diagnosis\)/);
+  assert.match(automation, /if \(form\.Status == "diagnostic"\)/);
+  console.log('PASS 58 controls: trailing edit candidate visible, copyable, no click');
 }
 {
   const wrongId = editFormCase({ id: '2026070508129999' });
