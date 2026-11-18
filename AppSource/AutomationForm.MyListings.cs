@@ -612,9 +612,13 @@ internal sealed partial class AutomationForm
         if (sawOfficialRedirect)
             throw new OwnedListLoginPendingException(
                 "로그인 전환 중 관리목록에 접근하지 못했습니다. 제출하지 않았으며 잠시 후 다시 조회합니다.");
-        if (_system == "B" && sawTransportFailure)
+        if (expectOwnedList && sawTransportFailure)
             throw new OwnedListConnectivityPendingException(
-                "B VPN을 통한 아이템매니아 관리목록 연결에 실패했습니다: " + lastError);
+                (_system == "B" ? "B VPN을 통한 " : _system + "의 ") +
+                "아이템매니아 관리목록 연결에 실패했습니다: " + lastError);
+        if (expectOwnedList)
+            throw new OwnedListConnectivityPendingException(
+                "관리목록 접속을 끝내 확인하지 못했습니다: " + lastError);
         throw new InvalidOperationException($"관리 페이지 이동을 {maxAttempts}번 시도했지만 실패했습니다. " + lastError);
     }
 }
