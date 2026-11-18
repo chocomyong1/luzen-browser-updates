@@ -1,0 +1,47 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const read = file => fs.readFileSync(path.join(__dirname, '..', 'AppSource', file), 'utf8');
+const main = read('MainForm.cs');
+const panel = read('MainForm.IntegratedEditor.cs');
+const split = read('MainForm.SplitView.cs');
+const edits = read('AutomationForm.IntegratedEditing.cs');
+const automation = read('AutomationForm.cs');
+
+assert.match(main, /_integratedButton = AddToolButton\(bar, "통합 편집", ToggleIntegratedEditor/);
+assert.match(main, /if \(_integratedVisible\) DisableIntegratedEditor\(\)/);
+assert.match(split, /if \(_integratedVisible\) DisableIntegratedEditor\(\)/);
+assert.match(panel, /A · B · C 통합 물품 편집/);
+assert.match(panel, /foreach \(string system in new\[\] \{ "A", "B", "C" \}\)/);
+assert.match(panel, /IntegratedOwner\(system\)\.IntegratedEditJobs/);
+assert.match(panel, /_workspaceBody\.Controls\.Add\(panel\)/);
+assert.match(panel, /_integratedSystemFilter\.Items\.AddRange\(new object\[\] \{ "전체", "A", "B", "C" \}\)/);
+assert.match(panel, /같은 가격 선택/);
+assert.match(panel, /row\.PriceAmount == reference\.PriceAmount/);
+assert.match(panel, /"Server" => row => row.Server/);
+assert.match(panel, /"PriceAmount" => row => row.PriceAmount/);
+assert.match(panel, /_integratedGrid\.CellDoubleClick/);
+assert.match(panel, /IntegratedOwner\(row\.System\)\.OpenIntegratedJob\(row\.Job\.Id\)/);
+assert.match(panel, /if \(row\.System is \("B" or "C"\) && !DualSystemNetwork\.IsRouteVerified\(row\.System\)\)/);
+
+// All three instances keep their original model, browser and scheduler.
+assert.match(edits, /internal IReadOnlyList<ListingJob> IntegratedEditJobs => _jobs\.ToList\(\)/);
+assert.match(edits, /ValidateIntegratedEdit\(IReadOnlyList<ListingJob> items/);
+assert.match(edits, /items\.Any\(item => !_jobs\.Contains\(item\)\)/);
+assert.match(edits, /_myListingsImportRunning \|\| _sitePriceBatchRunning/);
+assert.match(edits, /_currentlyExecutingJob is null/);
+assert.match(edits, /items\.Count > 20/);
+assert.match(edits, /!job\.ImportedFromSite \|\| job\.OriginalTradeSide != "구매" \|\| job\.RequiresReview/);
+assert.match(edits, /MyListingsImport\.IsOwnedListUrl\(OwnedListUrlFor\(job\)\)/);
+assert.match(edits, /items\.Select\(j => j\.SiteId\)\.Distinct/);
+assert.match(edits, /command\.Field == IntegratedEditField\.Title/);
+assert.match(edits, /items\.Any\(item => ListingIdentity\.HasNumber\(item\.ListingNumber\)\)/);
+assert.match(edits, /item\.PendingSitePriceTarget = command\.ReserveSitePrice \? value : ""/);
+assert.match(edits, /_deferredExecutingJobEdits\.Add\(\(\) => WriteIntegratedField\(job, command\)\)/);
+assert.match(edits, /_config\.Save\(\)/);
+assert.doesNotMatch(edits, /ExecuteStepAsync|CoreWebView2\.Navigate|InspectOwnedListRepostAsync\(.*true/);
+assert.match(panel, /foreach \(var group in groups\)[\s\S]*group\.Form\.ValidateIntegratedEdit/);
+assert.match(panel, /group\.Form\.ApplyIntegratedEdit\(group\.Jobs, command\)/);
+assert.match(automation, /if \(!string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)\)/);
+console.log('PASS one-grid A/B/C editing, per-system persistence, next-slot prices and in-flight protection');
