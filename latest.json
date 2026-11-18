@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.51",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.51/LuzenBrowser_22.2.51_BinaryUpdate.zip",
-  "sha256": "a8814fdfbef6601a0ad8726821f3903cc02556aaadb6e8878e6c16ad0a86682f",
+  "version": "22.2.52",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.52/LuzenBrowser_22.2.52_BinaryUpdate.zip",
+  "sha256": "69561e2d649578d3e0c67a5fa12174fee59fcc2ea6366df94d3849c7bf9b804d",
   "format": "binary",
-  "releaseNotes": "v22.2.51 가격 버튼 진단 개선: 사이트의 버튼이 58개 이상인 화면에서도 앞부분 메뉴 대신 수정·저장 후보와 화면 하단 컨트롤을 확인합니다. 진단 전문은 큰 팝업 대신 한 번의 확인으로 클립보드에 복사할 수 있습니다. 가격 입력·실제 제출 및 일괄 가격 변경은 계속 잠가 두며 기존 확인 대기 항목을 재시도하지 않습니다."
+  "releaseNotes": "v22.2.52 구매글 단가 반영 1건 시험 지원: 확인된 아이템매니아 구매 재등록 페이지 /myroom/buy/buy_re_reg.html의 frmBuy 폼, user_division_price 가격 입력칸, 같은 폼의 button#ok_btn.buy_re_reg[type=submit]만 제출하도록 제한합니다. 등록번호·기존 가격을 제출 직전 재검증하고, 결과 불확실 시 확인 대기·중복 제출 금지합니다. 판매글·일괄 가격 변경은 잠금 유지."
 }
