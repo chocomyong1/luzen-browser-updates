@@ -120,8 +120,8 @@ internal sealed partial class AutomationForm : Form
     private int? _siteReportedIdRemaining;
     private string _pickerMode = "";
     private readonly TabControl _editorTabs = new() { Dock = DockStyle.Fill };
-    private readonly TabPage _autoTab = new("자동등록 현황");
-    private readonly TabPage _itemTab = new("물품 목록 · 편집");
+    private readonly TabPage _autoTab = new("등록 현황");
+    private readonly TabPage _itemTab = new("물품 편집");
     private readonly TabPage _workflowTab = new("고급 설정");
     private readonly DataGridView _autoGrid = new()
     {
@@ -185,12 +185,10 @@ internal sealed partial class AutomationForm : Form
         _game.SelectedIndexChanged += (_, _) => UpdateServerOptions();
         _game.SelectedItem = GameServerCatalog.LostArk;
 
-        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = UiTheme.Canvas };
-        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1, BackColor = UiTheme.Canvas };
         outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(outer);
         outer.BringToFront();
-        outer.Controls.Add(BuildToolbar(), 0, 0);
         // Run WebView2 outside the visible client area. Never attach the site
         // to a user-facing pane; the business screens show only jobs and logs.
         // A real WinForms parent/handle is still available for WebView2 scripts.
@@ -220,7 +218,7 @@ internal sealed partial class AutomationForm : Form
             logSplitInitialized = true;
         };
         contentSplit.Panel1.Controls.Add(_editorTabs);
-        outer.Controls.Add(contentSplit, 0, 1);
+        outer.Controls.Add(contentSplit, 0, 0);
         var logPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         logPanel.Controls.Add(_log);
         var logHeader = new TableLayoutPanel
@@ -345,64 +343,57 @@ internal sealed partial class AutomationForm : Form
         };
     }
 
-    private Control BuildToolbar()
+    // The host owns the single run toolbar. No secondary toolbar is rendered
+    // above the tabs, so status and listing actions cannot be duplicated.
+    public Task ImportMyRegisteredListingsFromHeaderAsync() => ImportMyRegisteredListingsAsync();
+    public void StartAutomationFromHeader() => StartScheduler();
+    public void PauseAutomationFromHeader() => PauseScheduler();
+    public void StopAutomationFromHeader() => StopScheduler();
+    public Task ProbeSelectedRepostFromHeaderAsync() => ProbeSelectedRepostReadOnlyAsync();
+    public Task ToggleSiteTraceFromHeaderAsync(ToolStripItem menuItem) => ToggleSiteRequestTraceAsync(menuItem);
+    public bool SiteTraceIsActive => _siteRequestTraceActive;
+
+    public void OpenHourlyLimitSettings()
     {
-        var top = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
-        var actions = new FlowLayoutPanel
+        if (_busy || _schedulerRunning || _sitePriceBatchRunning)
         {
-            Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true,
-            Padding = new Padding(11, 7, 4, 2), BackColor = UiTheme.Surface
-        };
-        Button Btn(string label, EventHandler action, int width,
-            UiTheme.ButtonTone tone = UiTheme.ButtonTone.Neutral)
-        {
-            var b = new Button
-            {
-                Text = label, Width = width, Height = 31,
-                Margin = new Padding(2, 0, 5, 0)
-            };
-            UiTheme.StyleButton(b, tone);
-            b.Click += action;
-            actions.Controls.Add(b);
-            return b;
+            MessageBox.Show(this, "자동 실행 또는 사이트 작업을 중지한 뒤 등록 횟수를 변경하세요.", "시간당 등록 설정");
+            return;
         }
-        Btn("내 등록글 불러오기", async (_, _) => await ImportMyRegisteredListingsAsync(), 158, UiTheme.ButtonTone.Primary);
-        var diagnostics = new ContextMenuStrip();
-        diagnostics.Items.Add("선택 1건 조회시험", null, async (_, _) => await ProbeSelectedRepostReadOnlyAsync());
-        var traceMenuItem = new ToolStripMenuItem("수정 요청 기록");
-        traceMenuItem.Click += async (_, _) => await ToggleSiteRequestTraceAsync(traceMenuItem);
-        diagnostics.Items.Add(traceMenuItem);
-        Button? diagnosticButton = null;
-        diagnosticButton = Btn("진단 도구 ▾", (_, _) => diagnostics.Show(diagnosticButton!, 0, diagnosticButton!.Height), 112);
-        actions.Controls.Add(new Panel
+        using var dialog = new Form
         {
-            Width = 1, Height = 23, BackColor = UiTheme.Border,
-            Margin = new Padding(10, 4, 10, 0)
-        });
-        Btn("자동 시작", (_, _) => StartScheduler(), 95, UiTheme.ButtonTone.Success);
-        Btn("일시정지", (_, _) => PauseScheduler(), 91);
-        Btn("즉시 중지", (_, _) => StopScheduler(), 93, UiTheme.ButtonTone.Danger);
-        actions.Controls.Add(new Label
+            Text = "ID·서버별 시간당 등록 횟수", StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false,
+            MinimizeBox = false, ShowInTaskbar = false, ClientSize = new Size(395, 170)
+        };
+        var number = new NumericUpDown
         {
-            Text = "현재 상태", AutoSize = true, ForeColor = UiTheme.Muted,
-            Padding = new Padding(13, 8, 4, 0)
-        });
-        _state.BackColor = UiTheme.WarningSurface;
-        _state.Padding = new Padding(9, 7, 9, 6);
-        actions.Controls.Add(_state);
-        actions.Controls.Add(new Panel
+            Minimum = 1, Maximum = 1000, Value = _hourLimit.Value,
+            Location = new Point(224, 32), Width = 118
+        };
+        dialog.Controls.Add(new Label
         {
-            Width = 1, Height = 23, BackColor = UiTheme.Border,
-            Margin = new Padding(11, 4, 8, 0)
+            Text = "ID·서버별 시간당 최대 등록", AutoSize = true,
+            Location = new Point(22, 37)
         });
-        AddInline(actions, "ID·서버별 시간당", _hourLimit);
-        actions.Controls.Add(new Label
+        dialog.Controls.Add(number);
+        dialog.Controls.Add(new Label
         {
-            Text = "회", AutoSize = true, ForeColor = UiTheme.Muted,
-            Padding = new Padding(0, 8, 0, 0)
+            Text = "같은 서버는 최소 21초 간격을 유지합니다.", AutoSize = true,
+            ForeColor = UiTheme.Muted, Location = new Point(23, 77)
         });
-        top.Controls.Add(actions);
-        return top;
+        var ok = new Button
+        {
+            Text = "저장", Width = 98, Height = 32, Location = new Point(244, 115),
+            DialogResult = DialogResult.OK
+        };
+        UiTheme.StyleButton(ok, UiTheme.ButtonTone.Primary);
+        dialog.Controls.Add(ok);
+        dialog.AcceptButton = ok;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        _hourLimit.Value = number.Value;
+        SaveAll();
+        RefreshAutoSummary();
     }
 
     private static void AddInline(FlowLayoutPanel panel, string label, Control control)
@@ -746,7 +737,7 @@ internal sealed partial class AutomationForm : Form
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand
             };
-            UiTheme.StyleButton(b, name == "선택 물품 일괄수정" ?
+            UiTheme.StyleButton(b, name == "선택 가격 반영" ?
                 UiTheme.ButtonTone.Primary : UiTheme.ButtonTone.Neutral);
             b.Width = Math.Max(width, TextRenderer.MeasureText(name, b.Font).Width + b.Padding.Horizontal + 22);
             b.Click += (_, _) => click();
@@ -754,29 +745,21 @@ internal sealed partial class AutomationForm : Form
             return b;
         }
         MakeButton("+ 물품 추가", 104, AddListing);
-        MakeButton("선택 물품 편집", 125, EditAutoSelectedJob);
         MakeButton("같은 가격 선택", 125, SelectSamePriceListings);
         MakeButton("선택 물품 일괄수정", 150, BulkEditSelected);
         MakeButton("선택 가격 반영", 129, () => _ = ApplySelectedSitePricesAsync());
         var batchMenu = new ContextMenuStrip();
+        batchMenu.Items.Add("선택 물품 편집", null, (_, _) => EditAutoSelectedJob());
         batchMenu.Items.Add("조회 전체선택", null, (_, _) => SetVisibleBatchSelection(true));
         batchMenu.Items.Add("선택 해제", null, (_, _) => SetVisibleBatchSelection(false));
         batchMenu.Items.Add(new ToolStripSeparator());
         batchMenu.Items.Add("선택 물품 자동 ON", null, (_, _) => SetBatchEnabled(true));
         batchMenu.Items.Add("선택 물품 자동 OFF", null, (_, _) => SetBatchEnabled(false));
         Button? batchButton = null;
-        batchButton = MakeButton("선택/설정 ▾", 116,
+        batchButton = MakeButton("더보기 ▾", 95,
             () => batchMenu.Show(batchButton!, 0, batchButton!.Height));
-        var help = new Label
-        {
-            Text = "1. 기준 물품 선택 후 같은 가격 선택   →   2. 일괄수정에서 가격 적용   →   3. 선택 가격 반영",
-            Dock = DockStyle.Top, Height = 25,
-            Padding = new Padding(12, 6, 0, 0), ForeColor = UiTheme.Muted,
-            BackColor = UiTheme.SurfaceAlt
-        };
         _autoGrid.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) EditAutoSelectedJob(); };
         _autoTab.Controls.Add(_autoGrid);
-        _autoTab.Controls.Add(help);
         _autoTab.Controls.Add(_autoSummary);
         _autoTab.Controls.Add(buttons);
     }
@@ -847,7 +830,9 @@ internal sealed partial class AutomationForm : Form
         if (_autoSummary.IsDisposed) return;
         int enabled = _jobs.Count(x => x.Enabled);
         int pending = _jobs.Count(x => x.RequiresReview);
-        _autoSummary.Text = $"총 {_jobs.Count}개   |   자동 실행 {enabled}개   |   확인 필요 {pending}개   |   작업 상태: {(_schedulerRunning ? "진행 중" : "중지/대기")}";
+        string state = _sitePriceBatchRunning ? _state.Text :
+            _schedulerRunning ? "자동 실행 중" : "중지/대기";
+        _autoSummary.Text = $"총 {_jobs.Count}개   |   자동 실행 {enabled}개   |   확인 필요 {pending}개   |   상태: {state}";
     }
 
     private void EditAutoSelectedJob()
@@ -958,12 +943,6 @@ internal sealed partial class AutomationForm : Form
         toolsPanel.Controls.Add(primary);
         split.Panel1.Controls.Add(toolsPanel);
         split.Panel1.Controls.Add(BuildSearchFilters());
-        split.Panel1.Controls.Add(new Label
-        {
-            Text = "같은 가격 선택 → 일괄수정(금액) → 선택 가격 반영 · 편집창 숨기기는 [더보기]",
-            Dock = DockStyle.Top, Height = 28, ForeColor = UiTheme.Muted,
-            BackColor = UiTheme.Surface, Padding = new Padding(12, 6, 0, 0)
-        });
 
         var right = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface };
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
