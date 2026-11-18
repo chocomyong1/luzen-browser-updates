@@ -52,6 +52,21 @@ internal sealed partial class AutomationForm
         {
             ApplySavedWidths(_jobsGrid, _columnPreferences.Jobs);
             ApplySavedWidths(_autoGrid, _columnPreferences.Auto);
+            // The long product title absorbs unused desktop width instead of
+            // leaving a large empty white column on wide monitors.
+            foreach (DataGridViewColumn col in _autoGrid.Columns)
+            {
+                if (col.DataPropertyName == "Title")
+                {
+                    col.MinimumWidth = 265;
+                    col.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+                    col.FillWeight = 180;
+                }
+                // These fields are available in the editor and through the
+                // explicit "additional columns" action, not always-on clutter.
+                if (col.DataPropertyName is "MinQuantity" or "MaxQuantity" or "IntervalMinutes")
+                    col.Visible = false;
+            }
         }
         finally { _readingColumnLayout = false; }
 
@@ -93,6 +108,7 @@ internal sealed partial class AutomationForm
         grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
         grid.ScrollBars = ScrollBars.Both;
         grid.EnableHeadersVisualStyles = false;
+        grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
         grid.ColumnHeadersHeight = 40;
         grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         grid.RowTemplate.Height = 36;
