@@ -180,6 +180,10 @@ internal static class SitePriceEdit
     // The screenshot supplied by the user shows a row labelled '구매금액'
     // containing both '1개당' and the actual unit-price input. Match the
     // current SITE price, never an arbitrary first numeric input.
+    // IMPORTANT: The site's character-name editor also has a '수정하기'
+    // button. Until the real price-submit control is independently verified,
+    // THIS SCRIPT IS READ-ONLY, regardless of a.submit. Never infer a submit
+    // action from a Korean button label alone.
     public const string EditFormScript = """
     (() => {
       const a=__ARG__;
@@ -220,38 +224,28 @@ internal static class SitePriceEdit
       const priceInput=matching[0];
       const form=priceInput.closest('form')||(forms.length===1?forms[0]:null);
       const root=form||document;
-      const buttonText=e=>String(e.innerText||e.value||'').replace(/\s+/g,'').trim();
-      const submitControls=scope=>[...scope.querySelectorAll('button,input[type="submit"],input[type="button"],a[onclick]')]
-        .filter(visible).filter(e=>{
-          return /^(재등록|수정|수정하기|변경|변경하기|저장|저장하기)$/.test(buttonText(e));
-        });
-      let buttons=submitControls(root);
-      // Some older templates place the footer outside the <form>. Only a
-      // SINGLE site-wide button with the exact submit label is acceptable.
-      if(buttons.length===0&&root!==document)buttons=submitControls(document);
-      // The edit form may also contain a separate '재등록' control. Prefer
-      // an unambiguous explicit edit action; never guess between duplicates.
-      const rank=t=>t==='수정하기'?5:t==='수정'?4:t==='변경하기'?3:
-        t==='변경'?2:t==='저장하기'?1:t==='저장'?1:0;
-      if(buttons.length>1){
-        const top=Math.max(...buttons.map(e=>rank(buttonText(e))));
-        buttons=buttons.filter(e=>rank(buttonText(e))===top);
-      }
-      if(buttons.length!==1)return result('error',buttons.length?
-        '동일 우선순위의 수정 제출 버튼이 여러 개라 중단했습니다: '+buttons.slice(0,5).map(e=>
-          buttonText(e)+'/'+String(e.tagName||'').toLowerCase()+'/'+String(e.type||'')+'/'+
-          String(e.id||'').slice(0,35)+'/'+String(e.getAttribute?.('onclick')||'').match(/^\s*[\w$]+/)?.[0]).join(' | '):
-        '재등록/수정 제출 버튼을 확인하지 못했습니다',old,buttons.length);
-      if(!a.submit)return result('ready','사이트 등록번호·현재 단가·수정 제출 버튼 확인',old,1);
-      if(money(priceInput.value)!==old)return result('error','제출 직전 현재 사이트 가격이 변경됐습니다');
-      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
-      if(!setter)return result('error','사이트 가격 입력을 지원하지 않는 화면입니다');
-      setter.call(priceInput,desired);
-      priceInput.dispatchEvent(new Event('input',{bubbles:true}));
-      priceInput.dispatchEvent(new Event('change',{bubbles:true}));
-      if(money(priceInput.value)!==desired)return result('error','사이트 입력칸 가격 변경에 실패했습니다');
-      buttons[0].click();
-      return result('submitted','사이트 수정 제출 버튼 클릭. 실제 변경 여부는 별도로 검사해야 합니다',desired,1);
+      const safe=s=>String(s||'').replace(/[\r\n|]/g,' ').replace(/\s+/g,' ').trim().slice(0,38);
+      const attr=(e,k)=>safe(e?.getAttribute?.(k));
+      const selector='button,input[type="submit"],input[type="button"],a[onclick],[role="button"]';
+      const controls=[...new Set([...root.querySelectorAll(selector),...document.querySelectorAll(selector)])]
+        .filter(visible);
+      const details=controls.slice(0,18).map((e,i)=>{
+        const label=safe(e.innerText||e.value||attr(e,'aria-label')||attr(e,'title'));
+        const handler=String(e.getAttribute?.('onclick')||'').match(/([\w$]+)\s*\(/)?.[1]||'-';
+        const row=e.closest?.('tr,[role="row"]');
+        const section=safe(row?.querySelector?.('th,[role="rowheader"],td:first-child')?.textContent)||'-';
+        const relation=form?(e.closest?.('form')===form?'같은폼':'다른영역'):'폼미확인';
+        return `${i+1}:${label||'-'}/${safe(e.tagName)}:${safe(e.type)}/${relation}/행:${section}/id:${safe(e.id)}/함수:${safe(handler)}`;
+      });
+      const formName=safe(form?.id||attr(form,'name'))||'-';
+      const formAction=safe(String(form?.getAttribute?.('action')||'').split('?')[0])||'-';
+      const path=safe(location.pathname);
+      const priceName=safe(priceInput.name||priceInput.id)||'-';
+      const diag=`경로:${path}; 가격칸:${priceName}; 폼:${formName}/${formAction}; `+
+        `버튼 ${controls.length}개: ${details.join(' | ')||'없음'}`;
+      // This is a hard safety interlock, not a dry-run branch that can be
+      // bypassed by submit=true. Inspect only; do not set a value or click.
+      return result('diagnostic','제출 차단(읽기 전용). '+diag.slice(0,1750),old,controls.length);
     })()
     """;
 }
