@@ -365,7 +365,11 @@ internal sealed partial class AutomationForm : Form
                     _web.CoreWebView2.Navigate("https://www.itemmania.com/");
                 }
             }
-            catch (Exception ex) { AppendLog("내부 사이트 엔진 시작 실패: " + ex.Message); }
+            catch (Exception ex)
+            {
+                AppendLog("내부 사이트 엔진 시작 실패: " + ex.Message);
+                NotifyAutomationIssue("내부 브라우저 시작 실패", ex.Message);
+            }
             AppendLog("V22: 자동 업데이트 준비 · 자동 헤더 일괄선택 · 조회 취소 후 실행");
             int pending = _jobs.Count(j => j.RequiresReview);
             if (pending > 0)
@@ -379,7 +383,24 @@ internal sealed partial class AutomationForm : Form
                 _state.ForeColor = Color.Firebrick;
             }
         };
-        _timer.Tick += async (_, _) => await SchedulerTickAsync();
+        _timer.Tick += async (_, _) =>
+        {
+            try { await SchedulerTickAsync(); }
+            catch (OperationCanceledException) when (!_schedulerRunning)
+            {
+                // User pressed pause/stop while an awaited operation was pending.
+            }
+            catch (Exception ex)
+            {
+                _schedulerRunning = false;
+                _timer.Stop();
+                _state.Text = "오류로 중지";
+                _state.ForeColor = Color.Firebrick;
+                RefreshAutoSummary();
+                AppendLog("자동등록 예기치 못한 중단: " + ex.Message);
+                NotifyAutomationIssue("자동등록 예기치 못한 중단", ex.Message);
+            }
+        };
         FormClosing += (_, _) =>
         {
             _sitePriceBatchCancellation?.Cancel();
@@ -2337,6 +2358,7 @@ internal sealed partial class AutomationForm : Form
             {
                 AppendLog("B VPN 연결 재확인 실패: " + ex.GetType().Name +
                     ". B 작업은 2분간 대기하며 A 작업에는 영향을 주지 않습니다.");
+                NotifyAutomationIssue("B VPN 연결 장애", "독립 IP 재확인 실패: " + ex.GetType().Name);
             }
             finally { _bConnectionRecheckRunning = false; }
             return;
@@ -2386,6 +2408,7 @@ internal sealed partial class AutomationForm : Form
                         _config.Save();
                         AppendLog($"예약 가격 수정 보류: {job.Server} · {job.ListingNumber} · " +
                             _lastSitePriceEditFailure + " · 다른 물품은 계속 등록합니다.");
+                        NotifyAutomationIssue("예약 가격 수정 보류", _lastSitePriceEditFailure, job);
                     }
                     _jobsGrid.Refresh(); _autoGrid.Refresh(); RefreshAutoSummary();
                     return;
@@ -2453,10 +2476,17 @@ internal sealed partial class AutomationForm : Form
         if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
         {
             AppendLog($"{_system} 연결 확인 필요: 별도 IP 확인 전에는 등록/재등록을 실행하지 않습니다.");
+            if (_schedulerRunning) NotifyAutomationIssue($"{_system} VPN 연결 확인 필요",
+                "독립 외부 IP를 검증하지 못해 해당 시스템의 등록 작업을 실행하지 않았습니다.");
             return;
         }
         if (_busy) { AppendLog("이미 다른 물품 작업이 진행 중입니다."); return; }
-        if (!ValidateJob(job, dryRun, out var error)) { AppendLog("실행 거절: " + error); return; }
+        if (!ValidateJob(job, dryRun, out var error))
+        {
+            AppendLog("실행 거절: " + error);
+            if (_schedulerRunning && !dryRun) NotifyAutomationIssue("자동등록 설정 오류", error, job);
+            return;
+        }
         if (!dryRun && !CanRunNow(job, out var pacingReason))
         { AppendLog("실행 대기: " + pacingReason); return; }
         _busy = true;
@@ -2748,6 +2778,7 @@ internal sealed partial class AutomationForm : Form
             AppendLog($"{_system} 로그인 복구 대기: {job.Server} · {job.ListingNumber} · " +
                 "등록 작업은 제출되지 않았습니다. 30초 후 자동 재시도합니다.");
             AppendLog("안내: 사이트 로그인이 완료되지 않으면 내 계정의 로그인 상태를 확인하세요. " + ex.Message);
+            if (_schedulerRunning) NotifyAutomationIssue("사이트 로그인 복구 대기", ex.Message, job);
         }
         catch (OwnedListConnectivityPendingException ex) when (!submitted && _system == "B")
         {
@@ -2759,6 +2790,7 @@ internal sealed partial class AutomationForm : Form
             AppendLog($"B VPN 접속 대기: {job.Server} · {job.ListingNumber} · " + ex.Message);
             AppendLog("B 자동등록 전체를 90초 대기한 뒤 VPN의 독립 IP를 재확인합니다. " +
                 "실제 재등록 요청은 하지 않았으며 A는 계속 실행됩니다.");
+            if (_schedulerRunning) NotifyAutomationIssue("B VPN 접속 대기", ex.Message, job);
         }
         catch (OperationCanceledException)
         {
@@ -2792,6 +2824,7 @@ internal sealed partial class AutomationForm : Form
             AppendLog("작업 오류: " + ex.Message);
             AppendLog($"{(flow.Operation == "재등록" ? "재등록 실패 요약:" : "등록 실패 요약:")} " +
                 $"{job.Server} · {job.ListingNumber} · {ex.Message}");
+            if (!dryRun) NotifyAutomationIssue(submitted ? "제출 결과 확인 필요" : "등록 작업 오류", ex.Message, job);
             if (_schedulerRunning && submitted)
                 AppendLog("결과 확인이 필요한 물품 1건만 보류했습니다. 다른 정상 물품은 계속 등록하며 " +
                     "해당 물품은 사이트의 정확한 등록번호·재등록 시각을 백그라운드에서 검사합니다.");
