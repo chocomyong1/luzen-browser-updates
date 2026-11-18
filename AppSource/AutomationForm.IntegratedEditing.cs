@@ -1,0 +1,193 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Windows.Forms;
+
+namespace LuzenBrowserReplica;
+
+internal enum IntegratedEditField
+{
+    Price, Quantity, Title, Description, Character, IntervalMinutes, Enabled
+}
+
+internal readonly record struct IntegratedEditCommand(IntegratedEditField Field, string Value,
+    bool ReserveSitePrice = false);
+
+internal readonly record struct IntegratedEditResult(int Saved, int Deferred);
+
+internal sealed partial class AutomationForm
+{
+    // MainForm can read the same live jobs without duplicating a scheduler,
+    // browser profile or config. All changes go back to the owning system.
+    internal IReadOnlyList<ListingJob> IntegratedEditJobs => _jobs.ToList();
+
+    internal bool ValidateIntegratedEdit(IReadOnlyList<ListingJob> items,
+        IntegratedEditCommand command, out string problem)
+    {
+        problem = "";
+        if (items.Count == 0 || items.Distinct().Count() != items.Count ||
+            items.Any(item => !_jobs.Contains(item)))
+        {
+            problem = "선택한 물품이 이 시스템의 현재 목록에 없습니다.";
+            return false;
+        }
+        if (_myListingsImportRunning || _sitePriceBatchRunning ||
+            (_busy && _currentlyExecutingJob is null))
+        {
+            problem = "사이트 조회·가격 제출·기존 작업이 끝난 뒤 편집할 수 있습니다.";
+            return false;
+        }
+        string value = command.Value.Trim();
+        switch (command.Field)
+        {
+            case IntegratedEditField.Price:
+                if (!long.TryParse(value, out long price) || price < 1000 || price % 10 != 0)
+                    problem = "가격은 1,000원 이상, 10원 단위로 입력하세요.";
+                break;
+            case IntegratedEditField.Quantity:
+                if (!int.TryParse(value, out int amount) || amount < 1)
+                    problem = "수량은 1 이상으로 입력하세요.";
+                break;
+            case IntegratedEditField.Title:
+            case IntegratedEditField.Description:
+            case IntegratedEditField.Character:
+                if (value.Length == 0) problem = "빈 값으로 일괄 변경할 수 없습니다.";
+                break;
+            case IntegratedEditField.IntervalMinutes:
+                if (!int.TryParse(value, out int minutes) || minutes is < 1 or > 10080)
+                    problem = "재등록 주기는 1~10080분 사이여야 합니다.";
+                break;
+            case IntegratedEditField.Enabled:
+                if (value is not ("ON" or "OFF")) problem = "자동실행은 ON 또는 OFF를 선택하세요.";
+                else if (value == "ON" && items.Any(j => j.RequiresReview))
+                    problem = "확인 필요 물품은 자동실행을 켤 수 없습니다. 먼저 사이트 결과를 확인하세요.";
+                break;
+        }
+        if (problem.Length > 0) return false;
+
+        // A repost locates the exact live row by BOTH number and title.
+        // Replacing a posted title locally would make that row unfindable;
+        // the existing site editing flow must be used for live titles.
+        if (command.Field == IntegratedEditField.Title &&
+            items.Any(item => ListingIdentity.HasNumber(item.ListingNumber)))
+        {
+            problem = "기존 사이트 등록글의 제목은 여기서 변경할 수 없습니다. 사이트 제목과 불일치하면 재등록이 차단됩니다.";
+            return false;
+        }
+
+        if (!command.ReserveSitePrice) return true;
+        if (command.Field != IntegratedEditField.Price)
+        {
+            problem = "사이트 가격 예약은 가격 수정에서만 사용할 수 있습니다.";
+            return false;
+        }
+        // Identical guards as the existing single-system price editor.
+        if (items.Count > 20 || items.Any(job =>
+            !job.ImportedFromSite || job.OriginalTradeSide != "구매" || job.RequiresReview ||
+            !ListingIdentity.HasNumber(job.ListingNumber) ||
+            !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job))))
+        {
+            problem = "사이트 가격 예약은 확인된 본인 구매글만 시스템당 최대 20건까지 가능합니다.";
+            return false;
+        }
+        string accountId = ItemManiaAccountStore.Load(_system).UserId;
+        if (items.Select(j => j.SiteId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 1 ||
+            (!string.IsNullOrWhiteSpace(accountId) && items.Any(j =>
+                !string.Equals(j.SiteId, accountId, StringComparison.OrdinalIgnoreCase))) ||
+            items.GroupBy(j => (j.SiteId, j.ListingNumber)).Any(group => group.Count() > 1))
+        {
+            problem = "이 시스템에서 서로 다른 사이트 계정이 섞였거나 등록번호가 중복됐습니다.";
+            return false;
+        }
+        return true;
+    }
+
+    private static void WriteIntegratedField(ListingJob item, IntegratedEditCommand command)
+    {
+        string value = command.Value.Trim();
+        switch (command.Field)
+        {
+            case IntegratedEditField.Price:
+                item.Price = value;
+                item.PendingSitePriceTarget = command.ReserveSitePrice ? value : "";
+                break;
+            case IntegratedEditField.Quantity: item.Quantity = value; break;
+            case IntegratedEditField.Title: item.Title = value; break;
+            case IntegratedEditField.Description: item.Description = command.Value; break;
+            case IntegratedEditField.Character: item.Character = value; break;
+            case IntegratedEditField.IntervalMinutes: item.IntervalMinutes = int.Parse(value); break;
+            case IntegratedEditField.Enabled: item.Enabled = value == "ON"; break;
+        }
+    }
+
+    private static IntegratedEditCommand SnapshotIntegratedField(ListingJob item, IntegratedEditField field) =>
+        field switch
+        {
+            IntegratedEditField.Price => new(field, item.Price, !string.IsNullOrWhiteSpace(item.PendingSitePriceTarget)),
+            IntegratedEditField.Quantity => new(field, item.Quantity),
+            IntegratedEditField.Title => new(field, item.Title),
+            IntegratedEditField.Description => new(field, item.Description),
+            IntegratedEditField.Character => new(field, item.Character),
+            IntegratedEditField.IntervalMinutes => new(field, item.IntervalMinutes.ToString()),
+            _ => new(field, item.Enabled ? "ON" : "OFF")
+        };
+
+    internal IntegratedEditResult ApplyIntegratedEdit(IReadOnlyList<ListingJob> items,
+        IntegratedEditCommand command)
+    {
+        if (!ValidateIntegratedEdit(items, command, out var problem))
+            throw new InvalidOperationException(problem);
+
+        var immediate = items.Where(job => !ReferenceEquals(job, _currentlyExecutingJob)).ToList();
+        var deferred = items.Where(job => ReferenceEquals(job, _currentlyExecutingJob)).ToList();
+        var snapshots = immediate.Select(job => (Job: job,
+            Previous: SnapshotIntegratedField(job, command.Field),
+            Pending: job.PendingSitePriceTarget)).ToList();
+        int queuedBefore = _deferredExecutingJobEdits.Count;
+        try
+        {
+            foreach (var job in immediate) WriteIntegratedField(job, command);
+            foreach (var job in deferred)
+                _deferredExecutingJobEdits.Add(() => WriteIntegratedField(job, command));
+            _config.Jobs = _jobs.ToList();
+            _config.Save();
+        }
+        catch
+        {
+            foreach (var (job, previous, pending) in snapshots)
+            {
+                WriteIntegratedField(job, previous);
+                job.PendingSitePriceTarget = pending;
+            }
+            _deferredExecutingJobEdits.RemoveRange(queuedBefore,
+                _deferredExecutingJobEdits.Count - queuedBefore);
+            _config.Jobs = _jobs.ToList();
+            throw;
+        }
+        // Prevent a stale detail editor from writing its old values back.
+        _selected = null;
+        RefreshFilteredLists();
+        AppendLog($"통합 일괄수정: {_system} {items.Count}건 · {command.Field} · " +
+            (command.ReserveSitePrice ? "사이트 변경은 다음 자동등록 순번에 예약" : "로컬 설정 저장") +
+            (deferred.Count > 0 ? $" · 실행 중 {deferred.Count}건 작업 종료 후 적용" : ""));
+        return new IntegratedEditResult(immediate.Count, deferred.Count);
+    }
+
+    internal void OpenIntegratedJob(string id)
+    {
+        if (!_jobs.Any(job => job.Id == id)) return;
+        ShowItemRegistrationView();
+        RestoreEditorPanel();
+        if (!_filteredJobs.Any(job => job.Id == id)) ResetFiltersToAll();
+        RefreshFilteredLists(id);
+        foreach (DataGridViewRow row in _jobsGrid.Rows)
+        {
+            if (row.DataBoundItem is not ListingJob job || job.Id != id) continue;
+            _jobsGrid.ClearSelection();
+            row.Selected = true;
+            if (row.Cells.Count > 1) _jobsGrid.CurrentCell = row.Cells[1];
+            SelectCurrentJob();
+            break;
+        }
+    }
+}
