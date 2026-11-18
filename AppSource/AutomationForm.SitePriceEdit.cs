@@ -156,17 +156,13 @@ internal sealed partial class AutomationForm
             bool hasEditUrl = MyListingsImport.IsSafeDetailUrl(record.EditUrl, job.ListingNumber);
             if (hasDetailUrl || !hasEditUrl)
             {
-                AppendLog("실제 수정 화면 경로: 검증된 본인 등록글 상세 페이지 이동 · " + job.ListingNumber);
-                if (hasDetailUrl)
-                    await NavigateOwnedListAsync(record.ListingUrl, token);
-                else
+                AppendLog("실제 수정 화면 경로: 본인 등록글의 제목을 열고 상세 화면에서 수정하기 탐색 · " + job.ListingNumber);
+                var titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, false)));
+                if (titleLink.Status == "ready")
                 {
                     // My Room may render clickable titles without an href.
                     // Resolve the exact row by ID+title and click only its title.
-                    var titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                        SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, false)));
-                    if (titleLink.Status != "ready")
-                        throw new InvalidOperationException("목록의 물품 제목 링크를 확인하지 못했습니다: " + titleLink.Message);
                     try
                     {
                         titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
@@ -178,11 +174,26 @@ internal sealed partial class AutomationForm
                     {
                         AppendLog("제목 클릭 후 상세 페이지 이동 중 응답 종료: " + ex.GetType().Name);
                     }
+                    // A site popup can be transferred into our WebView2 a
+                    // moment later. If it did not navigate, use only the
+                    // already verified exact-ID detail URL as fallback.
+                    await Task.Delay(950, token);
+                    if (MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri) && hasDetailUrl)
+                    {
+                        AppendLog("제목 클릭 뒤 목록 유지: 등록번호가 포함된 상세 URL로 한 번 이동");
+                        await NavigateOwnedListAsync(record.ListingUrl, token);
+                    }
                 }
-                SitePriceEditResult detail = new();
-                for (int attempt = 0; attempt < 8; attempt++)
+                else if (hasDetailUrl)
                 {
-                    await Task.Delay(attempt == 0 ? 900 : 500, token);
+                    AppendLog("제목 링크 직접 클릭 불가: 등록번호 포함 상세 URL로 이동 · " + titleLink.Message);
+                    await NavigateOwnedListAsync(record.ListingUrl, token);
+                }
+                else throw new InvalidOperationException("목록 제목을 열지 못했고 정확한 상세 URL도 없습니다: " + titleLink.Message);
+                SitePriceEditResult detail = new();
+                for (int attempt = 0; attempt < 16; attempt++)
+                {
+                    await Task.Delay(attempt == 0 ? 1100 : 650, token);
                     if (!IsAllowedCurrentPage())
                         throw new InvalidOperationException("상세 화면이 아이템매니아 공식 사이트를 벗어났습니다");
                     detail = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
@@ -190,7 +201,8 @@ internal sealed partial class AutomationForm
                     if (detail.Status == "ready") break;
                 }
                 if (detail.Status != "ready")
-                    throw new InvalidOperationException("등록글 상세 화면에서 수정하기를 확인하지 못했습니다: " + detail.Message);
+                    throw new InvalidOperationException("등록글 상세 화면에서 수정하기를 확인하지 못했습니다 (현재 경로: " +
+                        (_web.Source?.AbsolutePath ?? "없음") + "): " + detail.Message);
                 try
                 {
                     detail = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
