@@ -11,6 +11,7 @@ internal sealed partial class AutomationForm
 {
     private string _armedSitePriceEditNumber = "";
     private string _sitePriceEditDialogWarning = "";
+    private string _lastSitePriceEditFailure = "";
 
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
@@ -64,22 +65,30 @@ internal sealed partial class AutomationForm
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
         if (_schedulerRunning) PauseScheduler();
         int finished = 0;
+        string stoppedAt = "";
         foreach (var job in targets)
         {
-            if (!await ApplySitePriceAsync(job, true)) break;
+            if (!await ApplySitePriceAsync(job, true))
+            {
+                stoppedAt = $"\n실패 물품: {job.Server} · {job.ListingNumber}\n" +
+                    (_lastSitePriceEditFailure.Length > 0 ? _lastSitePriceEditFailure : "원인 미확인 (오류 로그 확인)");
+                break;
+            }
             finished++;
         }
         MessageBox.Show(this, $"선택 {targets.Count}건 중 {finished}건 확인 완료.\n" +
             (finished == targets.Count ? "모든 물품을 확인했습니다." :
-                "확인하지 못한 물품이 있어 중단했습니다. 마지막 실행 기록을 확인하세요. 남은 글은 제출하지 않았습니다."),
+                "확인하지 못한 물품이 있어 중단했습니다. 남은 글은 제출하지 않았습니다." + stoppedAt),
             "사이트 일괄 가격 반영 결과", MessageBoxButtons.OK,
             finished == targets.Count ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
     }
 
     private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval)
     {
+        _lastSitePriceEditFailure = "";
         if (_myListingsImportRunning || _busy)
         {
+            _lastSitePriceEditFailure = "다른 등록·조회 작업이 진행 중입니다";
             if (!bulkApproval) MessageBox.Show(this, "등록글 조회·재등록 작업이 끝난 뒤 사이트 가격을 수정할 수 있습니다.", "사이트 가격 변경 대기");
             return false;
         }
@@ -88,12 +97,14 @@ internal sealed partial class AutomationForm
         if (job is null || !job.ImportedFromSite || !ListingIdentity.HasNumber(job.ListingNumber) ||
             !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job)))
         {
+            _lastSitePriceEditFailure = "본인 등록글의 등록번호·거래 방향을 확인할 수 없습니다";
             if (!bulkApproval) MessageBox.Show(this, "내 등록글 불러오기로 정확한 등록번호와 구매/판매 방향이 연결된 기존 물품만 사이트 가격을 변경할 수 있습니다.",
                 "수정 대상 확인");
             return false;
         }
         if (!TrySitePrice(job.Price, out var desired) || desired % 10 != 0)
         {
+            _lastSitePriceEditFailure = "변경 가격은 1,000원 이상, 10원 단위여야 합니다";
             if (!bulkApproval) MessageBox.Show(this, "변경할 단가는 1,000원 이상, 10원 단위로 입력해 주세요.", "가격 확인");
             return false;
         }
@@ -227,6 +238,8 @@ internal sealed partial class AutomationForm
         }
         catch (OperationCanceledException)
         {
+            _lastSitePriceEditFailure = submitted ? "제출 후 변경 여부를 확인하지 못했습니다. 중복 제출 금지" :
+                "수정 화면 확인 시간 초과 (제출 전 중단)";
             AppendLog("사이트 가격 수정 시간 초과. 제출 여부는 실행 기록에서 확인하세요.");
             if (!bulkApproval) MessageBox.Show(this, submitted ? "제출 결과를 확인하지 못했습니다. 해당 글은 확인 대기 상태입니다. 자동으로 다시 제출하지 않습니다." :
                 "수정 화면 확인 시간이 초과되어 제출하지 않았습니다.", "사이트 가격 확인");
@@ -234,6 +247,7 @@ internal sealed partial class AutomationForm
         }
         catch (Exception ex)
         {
+            _lastSitePriceEditFailure = ex.Message;
             AppendLog("사이트 가격 수정 중단: " + job.Server + " · " + job.ListingNumber + " · " + ex.Message);
             if (!bulkApproval) MessageBox.Show(this, ex.Message, submitted ? "가격 변경 결과 확인 필요" : "사이트 가격 수정 중단",
                 MessageBoxButtons.OK, submitted ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
