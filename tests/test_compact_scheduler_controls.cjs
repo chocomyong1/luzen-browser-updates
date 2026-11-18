@@ -8,15 +8,17 @@ const app = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.cs
 const main = fs.readFileSync(path.join(__dirname, '../AppSource/MainForm.cs'), 'utf8');
 const telegram = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.HourlyQuota.cs'), 'utf8');
 const models = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationModels.cs'), 'utf8');
-const start = app.indexOf('private Control BuildToolbar()');
-const finish = app.indexOf('private static void AddInline(', start);
+const start = main.indexOf('private Control BuildToolbar()');
+const finish = main.indexOf('private void AddNewListing(', start);
 assert(start !== -1 && finish > start, '실행 도구막대를 찾지 못함');
-const toolbar = app.slice(start, finish);
+const toolbar = main.slice(start, finish);
 
-assert(app.includes('outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 46))'),
-  '불필요한 조건 줄의 높이가 남아 있음');
-assert(toolbar.includes('AddInline(actions, "ID·서버별 시간당", _hourLimit)'),
-  '시간당 설정이 상단 제어에 통합되지 않음');
+assert(app.includes('RowCount = 1') && !app.includes('outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 46))'),
+  '불필요한 실행 줄이 남아 있음');
+assert(toolbar.includes('"시간당 등록 횟수 설정"') && app.includes('public void OpenHourlyLimitSettings()'),
+  '시간당 설정의 관리 메뉴 경로가 사라짐');
+for (const caption of ['자동 시작', '일시정지', '즉시 중지'])
+  assert(toolbar.includes(`AddToolButton(bar, "${caption}"`), `${caption} 버튼이 통합 상단에서 사라짐`);
 for (const oldInput of ['_serverLimit', '_serverDelay', '_host']) {
   assert(!toolbar.includes(oldInput), `숨겨야 할 입력칸 ${oldInput}이 남아 있음`);
   assert(!app.includes(`private readonly NumericUpDown ${oldInput}`) &&
