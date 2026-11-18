@@ -20,42 +20,41 @@ internal sealed partial class AutomationForm
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
 
-    // A local price Save is deliberately never hooked to this operation:
-    // SaveSelectedJob(false) is also called by selection changes and imports.
-    // Only the dedicated button may initiate a live site edit/re-registration.
-    private async Task ApplySelectedSitePriceAsync() => await ApplySitePriceAsync(null, false);
+    // Local Save never submits a price to ItemMania. An explicit action queues
+    // the change for this job's ordinary next automatic registration turn.
+    private async Task ApplySelectedSitePriceAsync()
+    {
+        if (_selected is null) return;
+        if (!_busy) SaveSelectedJob(false);
+        await ApplySelectedSitePricesAsync(new[] { _selected });
+    }
 
-    // A batch uses the same independently verified single-listing transaction.
-    // Never parallelize submissions: the WebView2 and server quota are shared.
+    // Reservation only: no WebView navigation, no POST, no forced scheduler
+    // pause and no additional hourly quota usage at the time of this click.
     private async Task ApplySelectedSitePricesAsync(IReadOnlyList<ListingJob>? explicitTargets = null,
         bool sitePriceConsentConfirmed = false)
     {
-        // The user may press Apply while a long read-only import is enriching
-        // details. Stop and await that import before any price readback/submit.
-        if (_myListingsImportRunning && !await CancelImportForManualRunAsync("사이트 가격 순차 반영")) return;
-        if (_myListingsImportRunning || _busy || _sitePriceBatchRunning || _siteRequestTraceActive)
+        if (_myListingsImportRunning && !await CancelImportForManualRunAsync("가격 변경 예약")) return;
+        if (_myListingsImportRunning || (_busy && _currentlyExecutingJob is null) || _sitePriceBatchRunning)
         {
-            MessageBox.Show(this, "진행 중인 조회·등록·기록 작업이 끝난 뒤 실행하세요.", "사이트 일괄 가격 반영");
+            MessageBox.Show(this, "사이트 제출·조회가 끝난 뒤 가격 변경을 예약하세요.", "가격 변경 예약");
             return;
         }
         _jobsGrid.EndEdit();
         _autoGrid.EndEdit();
-        if (explicitTargets is null) SaveSelectedJob(false);
-        // A batch editor may have changed the active search filter. Its frozen
-        // targets are still the exact originally checked objects, never new matches.
+        if (explicitTargets is null && !_busy) SaveSelectedJob(false);
         var targets = (explicitTargets ?? _filteredJobs.Where(j => j.SelectedForBulk).ToList()).ToList();
         if (targets.Count == 0)
         {
-            MessageBox.Show(this, "사이트 가격을 변경할 물품의 왼쪽 체크박스를 선택해 주세요.", "선택한 물품 없음");
+            MessageBox.Show(this, "가격을 변경할 물품의 왼쪽 체크박스를 선택해 주세요.", "선택한 물품 없음");
             return;
         }
         if (targets.Count > 20)
         {
-            MessageBox.Show(this, "안전을 위해 한 번에 최대 20개만 사이트에 반영할 수 있습니다. 조회 조건을 좁혀 나누어 실행하세요.",
-                "일괄 수정 수량 제한");
+            MessageBox.Show(this, "한 번에 최대 20개까지 가격을 예약할 수 있습니다. 나누어 선택해 주세요.", "예약 수량 제한");
             return;
         }
-        var invalid = targets.Where(j => !_jobs.Contains(j) || !j.SelectedForBulk ||
+        var invalid = targets.Where(j => !_jobs.Contains(j) ||
             !j.ImportedFromSite || j.OriginalTradeSide != "구매" || j.RequiresReview ||
             (j.LastStatus.Contains("가격", StringComparison.Ordinal) &&
              (j.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
@@ -74,117 +73,46 @@ internal sealed partial class AutomationForm
             MessageBox.Show(this, $"선택 물품 중 {invalid.Count}건은 본인 구매글·등록번호·가격 또는 확인 대기 상태가 유효하지 않습니다.\n" +
                 (duplicateIds ? "같은 사이트 ID의 등록번호가 중복된 항목도 있습니다.\n" : "") +
                 (accountMismatch || mixedAccounts ? "서로 다른 사이트 아이디가 섞였거나 현재 계정과 일치하지 않습니다.\n" : "") +
-                "안전한 구매글만 다시 선택해 주세요. 확인 대기 물품은 제출하지 않습니다.", "사이트 일괄 가격 반영 중단");
+                "안전한 구매글만 다시 선택해 주세요.", "가격 변경 예약 중단");
             return;
         }
-        var snapshots = targets.Select(job => (Job: job, job.SiteId, job.ListingNumber, job.Title, job.Price)).ToList();
         var preview = string.Join("\n", targets.Take(12).Select(j =>
             $"{j.Server} · {j.ListingNumber} → {j.Price}원"));
         if (targets.Count > 12) preview += $"\n외 {targets.Count - 12}건";
         if ((!sitePriceConsentConfirmed || explicitTargets is null) && MessageBox.Show(this,
-            $"선택한 {targets.Count}건의 가격을 아이템매니아 실제 등록글에 순서대로 반영할까요?\n\n{preview}\n\n" +
-            "각 물품의 등록번호·제목·현재 사이트 가격을 다시 확인하며, 한 건이라도 실패하거나 결과가 불확실하면 즉시 중단합니다.\n" +
-            "재등록 횟수·서버 간격 제한이 적용됩니다.",
-            "실제 사이트 가격 일괄 변경", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+            $"{targets.Count}개 글의 가격 변경을 예약할까요?\n\n{preview}\n\n" +
+            "지금은 사이트에 제출하지 않습니다. 각 글의 기존 자동등록 차례가 오면 가격을 수정합니다.\n" +
+            "자동등록은 멈추지 않으며 시간당 횟수·서버 간격 제한을 그대로 공유합니다.\n" +
+            "자동 OFF인 물품은 다시 ON할 때까지 대기합니다.",
+            "다음 자동등록 순번에 가격 변경", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-        if (_schedulerRunning) PauseScheduler();
-        _sitePriceBatchRunning = true;
-        _state.Text = $"사이트 가격 순차 반영 0/{targets.Count}건";
-        RefreshAutoSummary();
-        using var cancellation = new CancellationTokenSource();
-        _sitePriceBatchCancellation = cancellation;
-        int finished = 0;
-        string stoppedAt = "";
+
+        // Every reservation is tied to the exact saved listing object. There
+        // is intentionally no independent background batch or timer.
+        var before = targets.Select(j => (Job: j, j.PendingSitePriceTarget)).ToArray();
+        foreach (var job in targets)
+            job.PendingSitePriceTarget = job.Price.Replace(",", "", StringComparison.Ordinal).Trim();
         try
         {
-            foreach (var item in snapshots)
-            {
-                var job = item.Job;
-                _state.Text = $"사이트 가격 순차 반영 {finished + 1}/{targets.Count}건 확인 중";
-                RefreshAutoSummary();
-                cancellation.Token.ThrowIfCancellationRequested();
-                if (!IsUnchangedBatchTarget(item))
-                {
-                    stoppedAt = "\n선택한 물품의 등록번호·제목·가격·선택 상태가 도중에 바뀌어 제출하지 않았습니다.";
-                    break;
-                }
-                if (!await WaitForSitePriceBatchSpacingAsync(job, cancellation.Token))
-                {
-                    stoppedAt = $"\n서버 {job.Server}의 이번 시간 등록 횟수를 모두 사용해 중단했습니다.";
-                    break;
-                }
-                if (!IsUnchangedBatchTarget(item))
-                {
-                    stoppedAt = "\n대기 중 물품 정보가 바뀌어 남은 글을 제출하지 않았습니다.";
-                    break;
-                }
-                // The underlying single-item transaction independently checks
-                // the owned row, site form, current price and actual POST.
-                if (!await ApplySitePriceAsync(job, true))
-                {
-                    stoppedAt = $"\n실패 물품: {job.Server} · {job.ListingNumber}\n" +
-                        (_lastSitePriceEditFailure.Length > 0 ? _lastSitePriceEditFailure : "원인 미확인 (오류 로그 확인)");
-                    break;
-                }
-                finished++;
-                _state.Text = $"사이트 가격 순차 반영 {finished}/{targets.Count}건 완료";
-                RefreshAutoSummary();
-                AppendLog($"구매글 일괄 가격 반영: {finished}/{targets.Count}건 확인 완료");
-            }
+            _config.Jobs = _jobs.ToList();
+            _config.Save();
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
-            stoppedAt = "\n사용자가 [즉시 중지]를 눌러 남은 글의 제출을 취소했습니다.";
+            foreach (var (job, pending) in before) job.PendingSitePriceTarget = pending;
+            MessageBox.Show(this, "예약 저장에 실패했습니다. 변경을 취소했습니다.\n" + ex.Message,
+                "가격 변경 예약 실패", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
         }
-        finally
-        {
-            _sitePriceBatchRunning = false;
-            _sitePriceBatchCancellation = null;
-            _state.Text = "중지/대기";
-            RefreshAutoSummary();
-        }
-        MessageBox.Show(this, $"선택 {targets.Count}건 중 {finished}건 확인 완료.\n" +
-            (finished == targets.Count ? "모든 물품을 확인했습니다." :
-                "확인하지 못한 물품이 있어 중단했습니다. 남은 글은 제출하지 않았습니다." + stoppedAt),
-            "사이트 일괄 가격 반영 결과", MessageBoxButtons.OK,
-            finished == targets.Count ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        _jobsGrid.Refresh(); _autoGrid.Refresh(); RefreshAutoSummary();
+        AppendLog($"가격 변경 예약: {targets.Count}개 · 기존 자동등록 순번에 처리 (추가 제출 없음)");
     }
 
-    private bool IsUnchangedBatchTarget((ListingJob Job, string SiteId, string ListingNumber,
-        string Title, string Price) item) =>
-        _jobs.Contains(item.Job) && item.Job.SelectedForBulk &&
-        item.Job.SiteId == item.SiteId && item.Job.ListingNumber == item.ListingNumber &&
-        item.Job.Title == item.Title && item.Job.Price == item.Price &&
-        !item.Job.RequiresReview;
-
-    // Read-only quota check. Never wait past the next Korean hour; the user can
-    // deliberately start a new batch after inspecting fresh site state.
-    private async Task<bool> WaitForSitePriceBatchSpacingAsync(ListingJob job, CancellationToken token)
-    {
-        var now = DateTime.UtcNow;
-        var counter = HourlyServerQuota.Current(_config.ServerHourlyCounters, job, now);
-        if (HourlyServerQuota.Remaining(counter, _config.MaxSubmissionsPerHour) <= 0) return false;
-        string key = HourlyServerQuota.Key(job);
-        DateTime last = _config.LastServerAttemptUtc.TryGetValue(key, out var recent) ? recent :
-            _config.LastServerAttemptUtc.TryGetValue(job.Server, out var legacy) ? legacy : DateTime.MinValue;
-        DateTime allowedAt = HourlyServerQuota.NextAllowedUtc(last, now, counter,
-            _config.MaxSubmissionsPerHour, _config.MinimumServerSeconds);
-        if (allowedAt > now)
-        {
-            var delay = allowedAt - now + TimeSpan.FromMilliseconds(400);
-            if (allowedAt >= HourlyServerQuota.NextHourUtc(now)) return false;
-            _state.Text = $"{job.Server} 서버 간격 대기 · {Math.Ceiling(delay.TotalSeconds)}초";
-            RefreshAutoSummary();
-            AppendLog($"일괄 가격 반영 서버 간격 대기: {job.Server} · {Math.Ceiling(delay.TotalSeconds)}초 (즉시 중지 가능)");
-            await Task.Delay(delay, token);
-        }
-        token.ThrowIfCancellationRequested();
-        return CanRunNow(job, out _);
-    }
-
-    private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval)
+    private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval,
+        bool fromScheduler = false)
     {
         _lastSitePriceEditFailure = "";
+        if (fromScheduler && !_schedulerRunning) return false;
         if (_sitePriceBatchRunning && !bulkApproval)
         {
             MessageBox.Show(this, "선택 물품의 순차 가격 반영이 끝난 뒤 단건 수정할 수 있습니다.", "가격 변경 진행 중");
@@ -240,7 +168,7 @@ internal sealed partial class AutomationForm
         // POST goes to /myroom/buy/buy_re_reg_ok.php. We can observe that
         // *exact* first-party submission before navigating to the readback
         // list; the previous trial could cancel the POST by navigating early.
-        if (_schedulerRunning) PauseScheduler();
+        if (_schedulerRunning && !fromScheduler) PauseScheduler();
         _busy = true;
         _state.Text = "사이트 가격 수정 대상 확인 중";
         var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(3));
@@ -402,6 +330,8 @@ internal sealed partial class AutomationForm
             // Commit a crash-safe review checkpoint BEFORE touching the site.
             // A navigation can abort ExecuteScriptAsync after the site accepts;
             // never retry a submission when its result is uncertain.
+            if (fromScheduler && !_schedulerRunning)
+                throw new OperationCanceledException("자동등록이 중지되어 가격 제출을 시작하지 않았습니다.");
             if (!CanRunNow(job, out quotaReason)) throw new InvalidOperationException(quotaReason);
             var submittedAt = DateTime.UtcNow;
             HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
