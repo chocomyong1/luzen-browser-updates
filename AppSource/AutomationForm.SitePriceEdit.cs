@@ -25,6 +25,12 @@ internal sealed partial class AutomationForm
     // Never parallelize submissions: the WebView2 and server quota are shared.
     private async Task ApplySelectedSitePricesAsync()
     {
+        MessageBox.Show(this,
+            "실제 사이트의 '수정하기'가 캐릭터명 저장 버튼과 혼동될 수 있어 일괄 가격 변경을 일시 중단했습니다.\n\n" +
+            "현재 글의 '사이트 가격 버튼 진단'만 사용할 수 있으며 가격 입력·제출은 전혀 하지 않습니다.",
+            "사이트 일괄 가격 변경 안전 중단", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        return;
+#pragma warning disable CS0162 // Keep the batch workflow for re-enabling only after control verification.
         if (_myListingsImportRunning || _busy)
         {
             MessageBox.Show(this, "진행 중인 조회·등록 작업이 끝난 뒤 실행하세요.", "사이트 일괄 가격 반영");
@@ -81,6 +87,7 @@ internal sealed partial class AutomationForm
                 "확인하지 못한 물품이 있어 중단했습니다. 남은 글은 제출하지 않았습니다." + stoppedAt),
             "사이트 일괄 가격 반영 결과", MessageBoxButtons.OK,
             finished == targets.Count ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+#pragma warning restore CS0162
     }
 
     private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval)
@@ -143,12 +150,12 @@ internal sealed partial class AutomationForm
             }
             if (!CanRunNow(job, out var quotaReason))
                 throw new InvalidOperationException("가격 변경 시 등록 작업 간격을 확인해야 합니다. " + quotaReason);
-            var ask = $"아이템매니아의 실제 등록글 가격을 수정할까요?\n\n" +
+            var ask = $"아이템매니아 수정 화면의 버튼을 읽기 전용으로 진단할까요?\n\n" +
                 $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n제목: {job.Title}\n\n" +
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
-                "상세 화면의 '수정하기'로 이동해 가격을 변경하며 작업 횟수·서버별 간격 제한에 포함됩니다.\n" +
-                "확인된 이 글 하나에만 반영합니다.";
-            if (!bulkApproval && MessageBox.Show(this, ask, "실제 사이트 가격 수정", MessageBoxButtons.YesNo,
+                "이번 버전은 수정 화면의 버튼 연결 상태만 확인합니다.\n" +
+                "가격 입력·제출·재등록은 하지 않으며 등록 횟수도 차감하지 않습니다.";
+            if (!bulkApproval && MessageBox.Show(this, ask, "사이트 가격 버튼 안전 진단", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
 
             var record = records[0];
@@ -230,55 +237,16 @@ internal sealed partial class AutomationForm
                 if (!IsAllowedCurrentPage()) throw new InvalidOperationException("수정 화면이 아이템매니아 공식 사이트를 벗어났습니다.");
                 form = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), false)));
-                if (form.Status == "ready") break;
+                if (form.Status is "ready" or "diagnostic") break;
             }
+            if (form.Status == "diagnostic")
+                throw new InvalidOperationException("사이트 가격 제출은 안전 점검이 끝날 때까지 잠겨 있습니다. 가격이나 캐릭터명은 건드리지 않았습니다.\n\n" +
+                    "버튼 진단 결과 (오류 기록에서 복사 가능):\n" + form.Message);
             if (form.Status != "ready")
                 throw new InvalidOperationException("수정 페이지를 안전하게 확인하지 못했습니다: " + form.Message);
-
-            // Crash-safe checkpoint immediately before the site submission.
-            if (!CanRunNow(job, out quotaReason)) throw new InvalidOperationException(quotaReason);
-            var submittedAt = DateTime.UtcNow;
-            HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
-            _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
-            job.RequiresReview = true;
-            job.Enabled = false;
-            job.LastStatus = "사이트 가격 변경 제출 중: 결과 확인 필요";
-            job.NextDueUtc = DateTime.MaxValue;
-            _config.Jobs = _jobs.ToList();
-            _config.Save();
-            _armedSitePriceEditNumber = job.ListingNumber;
-            _sitePriceEditDialogWarning = "";
-            _submissionVerificationPending = true;
-            // At this point the site may accept the submission even if its
-            // navigation interrupts ExecuteScriptAsync. Never retry a click.
-            submitted = true;
-            try
-            {
-                var submit = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                    SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true)));
-                if (submit.Status != "submitted")
-                    AppendLog("사이트 가격 수정 제출 응답 불분명: " + submit.Message);
-            }
-            catch (Exception ex) { AppendLog("사이트 가격 수정 후 화면 전환: " + ex.GetType().Name + " (중복 제출하지 않음)"); }
-
-            _state.Text = "사이트 가격 변경 결과 확인 중";
-            var verified = await ConfirmChangedSitePriceAsync(job, desired, token);
-            if (!verified)
-                throw new InvalidOperationException("사이트에서 변경 단가를 확인하지 못했습니다. 중복 제출하지 않으며 해당 글만 확인 대기 상태로 둡니다." +
-                    (string.IsNullOrWhiteSpace(_sitePriceEditDialogWarning) ? "" : " 사이트 메시지: " + _sitePriceEditDialogWarning));
-            job.RequiresReview = previousReview;
-            job.Enabled = previousEnabled && !previousReview;
-            job.LastStatus = "사이트 가격 변경 확인: " + desired.ToString("N0") + "원";
-            job.LastSucceededUtc = DateTime.UtcNow;
-            job.InitialCompleted = true;
-            job.NextDueUtc = previousDue == DateTime.MaxValue ? previousDue :
-                new[] { previousDue, DateTime.UtcNow.AddMinutes(job.IntervalMinutes) }.Max();
-            _config.Jobs = _jobs.ToList();
-            _config.Save();
-            AppendLog($"✓ 사이트 단가 변경 확인: {job.Server} · {job.ListingNumber} · {current:N0}원 → {desired:N0}원");
-            if (!bulkApproval) MessageBox.Show(this, $"아이템매니아에서 가격 변경을 확인했습니다.\n\n" +
-                $"{job.Server} · {job.ListingNumber}\n{current:N0}원 → {desired:N0}원", "사이트 가격 반영 완료");
-            return true;
+            // Defense in depth: even an older page script reporting "ready"
+            // must never reach a live submission without an audited handler.
+            throw new InvalidOperationException("가격 제출 버튼의 실제 동작을 확인하지 못해 제출하지 않았습니다.");
         }
         catch (OperationCanceledException)
         {
