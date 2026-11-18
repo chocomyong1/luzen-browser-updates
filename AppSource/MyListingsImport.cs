@@ -50,6 +50,16 @@ internal sealed class ExistingListingMergeSummary
     public int Invalid { get; set; }
     public int WithoutUrl { get; set; }
     public List<ExistingListingUpdate> Updates { get; } = new();
+    public List<ExistingPriceObservation> PriceObservations { get; } = new();
+}
+
+internal sealed class ExistingPriceObservation
+{
+    public string ListingNumber { get; set; } = "";
+    public string Server { get; set; } = "";
+    public string SavedPrice { get; set; } = "";
+    public string SitePrice { get; set; } = "";
+    public string Note { get; set; } = "";
 }
 
 // Re-import normally fills only missing fields. The sole exception is price:
@@ -179,10 +189,6 @@ internal static class MyListingsImport
         return long.TryParse(raw.Replace(",", "", StringComparison.Ordinal), out _);
     }
 
-    private static bool SameImportedTitle(string? a, string? b) =>
-        string.Equals(Regex.Replace(Clean(a), @"\s+", ""), Regex.Replace(Clean(b), @"\s+", ""),
-            StringComparison.OrdinalIgnoreCase);
-
     public static ExistingListingMergeSummary Prepare(IEnumerable<ExistingListingRecord> records, IEnumerable<ListingJob> existing,
         string subId, string siteId)
     {
@@ -224,6 +230,22 @@ internal static class MyListingsImport
                 ListingJob? target = null;
                 if (!string.IsNullOrEmpty(numberKey)) existingRecords.TryGetValue(numberKey, out target);
                 if (target is null && !string.IsNullOrEmpty(urlKey)) existingRecords.TryGetValue(urlKey, out target);
+                bool exactNumber = target is not null && Regex.IsMatch(number, @"^\d{8,20}$") &&
+                    string.Equals(target.ListingNumber, number, StringComparison.Ordinal);
+                bool trustedPrice = exactNumber && CanTrustOwnedImport(row, number);
+                if (exactNumber && target is not null)
+                {
+                    string note = !target.ImportedFromSite ? "수동 등록 항목: 자동 가격 변경 제외"
+                        : !string.IsNullOrEmpty(target.OriginalTradeSide) && target.OriginalTradeSide != row.TradeSide
+                        ? "거래 방향 불일치"
+                        : !trustedPrice ? "사이트 가격 미확인 또는 관리목록 검증 실패"
+                        : "정확한 등록번호로 사이트 가격 확인";
+                    result.PriceObservations.Add(new ExistingPriceObservation
+                    {
+                        ListingNumber = number, Server = target.Server,
+                        SavedPrice = target.Price, SitePrice = Clean(row.Price, 30), Note = note
+                    });
+                }
                 if (target is not null && target.ImportedFromSite &&
                     (string.IsNullOrEmpty(target.OriginalTradeSide) ||
                      target.OriginalTradeSide == row.TradeSide))
@@ -238,12 +260,11 @@ internal static class MyListingsImport
                         (string.IsNullOrWhiteSpace(target.MaxQuantity) || target.MaxQuantity == "9999") &&
                         (target.MinQuantity != minFromSite || target.MaxQuantity != maxFromSite);
                     string verifiedPrice = Clean(row.Price, 30);
-                    // Never refresh by a shared URL or a similar title alone.
-                    // A verified 1:1 site ID + exact title prevents applying
-                    // another listing's price to an existing scheduled job.
-                    bool sameOwnedListing = CanTrustOwnedImport(row, number) &&
-                        string.Equals(target.ListingNumber, number, StringComparison.Ordinal) &&
-                        SameImportedTitle(target.Title, row.Title);
+                    // The 16-digit registration number, scoped to the signed-in
+                    // account and its OWN trade-side list, is the item identity.
+                    // Titles can change format (quantity prefix, punctuation)
+                    // without changing the listing. Never sync by title/URL alone.
+                    bool sameOwnedListing = trustedPrice;
                     bool priceChanged = sameOwnedListing &&
                         !string.Equals((target.Price ?? "").Replace(",", "", StringComparison.Ordinal).Trim(),
                             verifiedPrice.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);

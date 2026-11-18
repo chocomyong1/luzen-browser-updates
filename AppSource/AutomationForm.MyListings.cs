@@ -114,13 +114,28 @@ internal sealed partial class AutomationForm
             var account = ItemManiaAccountStore.Load(_system);
             var plan = MyListingsImport.Prepare(records, _jobs, _defaultSubId, account.UserId);
             var priceChanges = plan.Updates.Where(u => u.UpdateVerifiedPrice).ToList();
+            string selectedNumber = _selected?.ListingNumber ?? "";
+            var checkedPrices = plan.PriceObservations
+                .OrderByDescending(p => p.ListingNumber == selectedNumber)
+                .ThenByDescending(p => (p.SavedPrice ?? "").Replace(",", "", StringComparison.Ordinal) !=
+                    (p.SitePrice ?? "").Replace(",", "", StringComparison.Ordinal))
+                .Take(7).ToList();
+            string observedPrices = string.Join("\n", checkedPrices.Select(p =>
+                $"  {p.Server} · {p.ListingNumber} : 저장 {p.SavedPrice}원 / 사이트 " +
+                $"{(string.IsNullOrWhiteSpace(p.SitePrice) ? "가격 미확인" : p.SitePrice + "원")} ({p.Note})"));
+            if (plan.PriceObservations.Count > checkedPrices.Count)
+                observedPrices += $"\n  외 {plan.PriceObservations.Count - checkedPrices.Count}건";
+            string observedSection = plan.PriceObservations.Count > 0
+                ? $"\n\n기존 글 사이트 가격 비교 (선택 글 우선, {plan.PriceObservations.Count}건 중 일부):\n" + observedPrices
+                : "\n\n기존 등록번호와 일치하여 가격을 비교한 글이 없습니다.";
             if (plan.NewJobs.Count == 0 && plan.Updates.Count == 0)
             {
                 MessageBox.Show(this,
                     $"판매·구매 등록글 {records.Count}건 확인\n" +
                     $"이미 목록에 있음: {plan.Duplicates}건 / 정보 부족: {plan.Invalid}건\n\n" +
                     $"추가하거나 보완할 물품이 없습니다. 제출 결과 자동 확인: {reconciled}건\n" +
-                    "사이트에서 확인되지 않은 값은 빈칸으로 유지됩니다. 기존 글의 일정이나 제출 보류 상태는 변경하지 않았습니다.",
+                    "사이트에서 확인되지 않은 값은 빈칸으로 유지됩니다. 기존 글의 일정이나 제출 보류 상태는 변경하지 않았습니다." +
+                    observedSection,
                     "내 등록글 자동 조회");
                 return;
             }
@@ -134,8 +149,9 @@ internal sealed partial class AutomationForm
                 $"정보 부족: {plan.Invalid}건 / 일부 정보 미표시: {incomplete}건\n" +
                 $"개별 상세 URL 없는 글: {plan.WithoutUrl}건 (관리 목록에서 대상 행 확인 후 재등록 시도)\n\n" +
                 (priceChanges.Count > 0 ? "가격 변경 미리보기:\n" + pricePreview + "\n\n" : "") +
+                (plan.PriceObservations.Count > 0 ? "기존 글 사이트 가격 비교:\n" + observedPrices + "\n\n" : "") +
                 "새로 가져온 글은 '기존 글 재등록' 대상으로 저장하며 자동실행은 꺼 둡니다.\n" +
-                "등록번호·제목·계정·거래 방향이 일치하는 기존 글은 사이트 가격을 적용합니다.\n" +
+                "등록번호·계정·거래 방향이 일치하는 기존 글은 사이트 가격을 적용합니다.\n" +
                 "기존 글의 자동 실행 여부·시간 설정은 유지됩니다.\n" +
                 "등록번호·상세 URL·가격이 확인된 글은 불필요한 '확인 필요' 표시를 제거합니다.\n" +
                 "사이트에서 확인되지 않은 글과 제출 결과가 불분명한 글의 보류는 유지합니다.\n" +

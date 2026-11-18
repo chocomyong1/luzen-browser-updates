@@ -75,6 +75,8 @@ internal static class Program
         var plan = MyListingsImport.Prepare(new[] { Row() }, new[] { current }, "A", "slshrn124");
         Check(plan.NewJobs.Count == 0 && plan.Updates.Count == 1, "one existing job updated");
         Check(plan.Updates[0].UpdateVerifiedPrice && plan.Updates[0].Price == "35,100", "verified site price selected");
+        Check(plan.PriceObservations.Count == 1 && plan.PriceObservations[0].SavedPrice == "30,000" &&
+            plan.PriceObservations[0].SitePrice == "35,100", "site and saved prices independently auditable");
         var scheduled = current.NextDueUtc;
         plan.Updates[0].Apply();
         Check(current.Price == "35,100", "30,000 becomes 35,100");
@@ -87,8 +89,14 @@ internal static class Program
         Check(withoutCommas.Updates.Count == 0, "equivalent number formatting not changed");
 
         var mismatchedTitle = Row(); mismatchedTitle.Title = "다른 물품";
-        Check(MyListingsImport.Prepare(new[] { mismatchedTitle }, new[] { Job() }, "A", "slshrn124")
-            .Updates.Count == 0, "title mismatch blocks price overwrite");
+        var changedTitleJob = Job();
+        var sameIdChangedTitle = MyListingsImport.Prepare(new[] { mismatchedTitle },
+            new[] { changedTitleJob }, "A", "slshrn124");
+        Check(sameIdChangedTitle.Updates.Count == 1 && sameIdChangedTitle.Updates[0].UpdateVerifiedPrice,
+            "same exact registration ID permits price refresh despite title-format changes");
+        sameIdChangedTitle.Updates[0].Apply();
+        Check(changedTitleJob.Price == "35,100" && changedTitleJob.Title == Title,
+            "update price only, retain the user's existing title");
         var wrongSide = Row(); wrongSide.TradeSide = "판매";
         Check(MyListingsImport.Prepare(new[] { wrongSide }, new[] { Job() }, "A", "slshrn124")
             .Updates.Count == 0, "trade side mismatch blocks price overwrite");
@@ -99,8 +107,9 @@ internal static class Program
         Check(MyListingsImport.Prepare(new[] { Row() }, new[] { manuallyCreated }, "A", "slshrn124")
             .Updates.Count == 0, "manual jobs never overwritten");
         var invalidPrice = Row("35,,100");
-        Check(MyListingsImport.Prepare(new[] { invalidPrice }, new[] { Job() }, "A", "slshrn124")
-            .Updates.Count == 0, "invalid price never copied");
+        var invalid = MyListingsImport.Prepare(new[] { invalidPrice }, new[] { Job() }, "A", "slshrn124");
+        Check(invalid.Updates.Count == 0 && invalid.PriceObservations.Count == 1 &&
+            invalid.PriceObservations[0].Note.Contains("미확인"), "invalid price is diagnosed but never copied");
         Check(MyListingsImport.Prepare(new[] { Row() }, new[] { Job() }, "A", "different-account")
             .Updates.Count == 0, "account mismatch never overwrites");
         Console.WriteLine("PASS exact owned-listing price refresh; all mismatch and schedule guards");
