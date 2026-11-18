@@ -36,6 +36,11 @@ internal sealed class ListingJob
     public string Quantity { get; set; } = "1";
     public string Unit { get; set; } = "개";
     public string Price { get; set; } = "";
+    // Local price changes are not live submissions. Only an explicitly approved
+    // request is submitted at this job's NEXT ordinary automatic repost turn.
+    // Persist the exact desired amount separately so unrelated local edits
+    // cannot silently turn into a different site submission.
+    public string PendingSitePriceTarget { get; set; } = "";
     public string Description { get; set; } = "";
     public string Character { get; set; } = "";
     public string EntryUrl { get; set; } = ""; // 재등록 대상 본인 물품 URL (신규 등록 URL과 분리)
@@ -85,6 +90,8 @@ internal sealed class ListingJob
             if (RequiresReview) return "확인 필요";
             if (LastStatus == "실행 중") return "실행 중";
             if (LastStatus.StartsWith("제출 중", StringComparison.Ordinal)) return "제출 확인 중";
+            if (!string.IsNullOrWhiteSpace(PendingSitePriceTarget))
+                return Enabled ? "다음 순번에 가격 변경" : "가격 변경 대기 (자동 꺼짐)";
             if (LastStatus.Contains("오류", StringComparison.Ordinal) ||
                 LastStatus.Contains("실패", StringComparison.Ordinal)) return "오류";
             if (LastStatus.StartsWith("시험 완료", StringComparison.Ordinal)) return "시험 완료";
