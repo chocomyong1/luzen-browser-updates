@@ -62,8 +62,15 @@ internal sealed partial class AutomationForm
         };
         var close = new Button { Text = "닫기", Dock = DockStyle.Right, Width = 107, Margin = new Padding(8) };
         close.Click += (_, _) => window.Close();
+        var siteApply = new Button { Text = "선택 글 사이트 가격 반영", Dock = DockStyle.Right, Width = 198, Margin = new Padding(8) };
+        siteApply.Click += (_, _) =>
+        {
+            window.DialogResult = DialogResult.OK;
+            window.Close();
+        };
         footer.Controls.Add(result);
         footer.Controls.Add(close);
+        footer.Controls.Add(siteApply);
 
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = UiTheme.Surface };
         var table = new TableLayoutPanel
@@ -262,6 +269,7 @@ internal sealed partial class AutomationForm
         window.Controls.Add(footer);
         window.Controls.Add(header);
         UiTheme.ApplyControlStyles(window);
-        window.ShowDialog(this);
+        if (window.ShowDialog(this) == DialogResult.OK)
+            _ = ApplySelectedSitePricesAsync();
     }
 }
