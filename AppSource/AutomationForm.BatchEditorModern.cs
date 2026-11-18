@@ -47,17 +47,17 @@ internal sealed partial class AutomationForm
             ClientSize = new Size(870, 720), BackColor = UiTheme.Surface,
             MinimizeBox = false, MaximizeBox = true, ShowInTaskbar = false
         };
-        var header = new Panel { Dock = DockStyle.Top, Height = 89, BackColor = UiTheme.Navy };
+        var header = new Panel { Dock = DockStyle.Top, Height = 89, BackColor = UiTheme.Canvas };
         header.Controls.Add(new Label
         {
-            Text = $"선택 물품 {items.Count}건 일괄수정", Dock = DockStyle.Top, Height = 45,
+            Text = $"선택 물품 {items.Count}개 일괄수정", Dock = DockStyle.Top, Height = 45,
             Padding = new Padding(19, 13, 0, 0), Font = new Font(Font.FontFamily, 15, FontStyle.Bold),
-            ForeColor = Color.White
+            ForeColor = UiTheme.Text
         });
         header.Controls.Add(new Label
         {
-            Text = "가격 [적용]을 누르면 프로그램만 저장할지, 사이트에도 순서대로 반영할지 선택합니다.",
-            Dock = DockStyle.Bottom, Height = 38, ForeColor = Color.FromArgb(207, 225, 248),
+            Text = "가격은 물품의 다음 자동등록 순번에 예약할 수 있습니다. 자동등록은 멈추지 않습니다.",
+            Dock = DockStyle.Bottom, Height = 38, ForeColor = UiTheme.Muted,
             Padding = new Padding(19, 8, 0, 0)
         });
         var footer = new Panel { Dock = DockStyle.Bottom, Height = 64, BackColor = UiTheme.SurfaceAlt };
@@ -70,8 +70,7 @@ internal sealed partial class AutomationForm
         var close = new Button { Text = "닫기", Dock = DockStyle.Right, Width = 107, Margin = new Padding(8) };
         close.Click += (_, _) => window.Close();
         var changedPriceTargets = new List<ListingJob>();
-        bool sitePriceConsentConfirmed = false;
-        var siteApply = new Button { Text = "사이트에 순차 반영", Dock = DockStyle.Right,
+        var siteApply = new Button { Text = "다음 순번에 예약", Dock = DockStyle.Right,
             Width = 185, Margin = new Padding(8), Enabled = false };
         siteApply.Click += (_, _) =>
         {
@@ -155,6 +154,7 @@ internal sealed partial class AutomationForm
                 "일괄수정 적용", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
             var previous = active.Select(item => (Item: item, OldValue: read(item))).ToList();
+            var oldReservations = active.Select(item => (Item: item, item.PendingSitePriceTarget)).ToList();
             var immediate = previous.Where(x => !ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
             var deferred = previous.Where(x => ReferenceEquals(x.Item, _currentlyExecutingJob)).ToList();
             int deferredStart = _deferredExecutingJobEdits.Count;
@@ -169,6 +169,8 @@ internal sealed partial class AutomationForm
             catch (Exception ex)
             {
                 foreach (var (item, oldValue) in immediate) write(item, oldValue);
+                foreach (var (item, pending) in oldReservations)
+                    item.PendingSitePriceTarget = pending;
                 _deferredExecutingJobEdits.RemoveRange(deferredStart,
                     _deferredExecutingJobEdits.Count - deferredStart);
                 _config.Jobs = _jobs.ToList();
@@ -203,18 +205,16 @@ internal sealed partial class AutomationForm
             if (activePriceTargets.Count > 8) preview += $"\n외 {activePriceTargets.Count - 8}건";
             var siteChoice = MessageBox.Show(window,
                 $"선택 {activePriceTargets.Count}건을 {price:N0}원으로 변경합니다.\n\n{preview}\n\n" +
-                "[예] 프로그램 저장 + 실제 사이트에 차례로 반영\n" +
+                "[예] 프로그램 저장 + 각 글의 다음 자동등록 순번에 변경 예약\n" +
                 "[아니오] 프로그램 설정에만 저장 (사이트 변경 없음)\n" +
                 "[취소] 아무것도 변경하지 않음\n\n" +
-                "실제 사이트 반영은 구매글 최대 20건만 가능하며 21초 이상 서버 간격을 지킵니다. " +
-                "사이트 결과가 불분명하면 다음 글의 전송을 중단합니다.",
+                "지금 사이트에는 제출하지 않으며, 원래 자동등록의 시간당 제한과 순번을 사용합니다. " +
+                "각 글의 수정 결과가 불분명하면 그 글만 확인 대기로 전환합니다.",
                 "가격 일괄수정 방식 선택", MessageBoxButtons.YesNoCancel,
                 MessageBoxIcon.Warning, MessageBoxDefaultButton.Button3);
             if (siteChoice == DialogResult.Cancel) return;
             if (siteChoice == DialogResult.Yes)
             {
-                if (_busy || _sitePriceBatchRunning)
-                { Error("실제 제출 작업 중에는 사이트 가격 일괄 반영을 시작할 수 없습니다. 진행 중인 작업을 마친 후 다시 시도하세요."); return; }
                 if (activePriceTargets.Count > 20 || activePriceTargets.Any(j =>
                     !j.ImportedFromSite || j.OriginalTradeSide != "구매" || j.RequiresReview ||
                     !ListingIdentity.HasNumber(j.ListingNumber) ||
@@ -227,16 +227,21 @@ internal sealed partial class AutomationForm
                     activePriceTargets.GroupBy(j => (j.SiteId, j.ListingNumber)).Any(g => g.Count() > 1))
                 { Error("사이트 계정이 서로 다르거나 등록번호가 중복됩니다. 같은 아이디의 고유한 구매글만 선택해 주세요."); return; }
             }
-            if (ApplyField("가격", x => x.Price, (x, v) => x.Price = v, price.ToString(), confirmLocalSave: false))
+            if (ApplyField("가격", x => x.Price, (x, v) =>
+                {
+                    x.Price = v;
+                    // When this is the currently submitting job, ApplyField
+                    // defers BOTH values until the in-flight result concludes.
+                    x.PendingSitePriceTarget = siteChoice == DialogResult.Yes ? v : "";
+                }, price.ToString(), confirmLocalSave: false))
             {
                 changedPriceTargets = activePriceTargets;
-                siteApply.Enabled = !_busy && !_sitePriceBatchRunning;
-                sitePriceConsentConfirmed = siteChoice == DialogResult.Yes;
+                siteApply.Enabled = true;
                 result.Text = $"✓ {changedPriceTargets.Count}건 금액 저장 · " +
-                    (sitePriceConsentConfirmed ? "사이트 순차 반영 시작" : "사이트는 아직 변경되지 않음");
-                if (sitePriceConsentConfirmed)
+                    (siteChoice == DialogResult.Yes ? "다음 자동등록 순번에 가격 변경 예약" : "사이트는 아직 변경되지 않음");
+                if (siteChoice == DialogResult.Yes)
                 {
-                    window.DialogResult = DialogResult.OK;
+                    AppendLog($"가격 변경 예약: {changedPriceTargets.Count}개 · 각 물품의 다음 자동등록 순번에 반영");
                     window.Close();
                 }
             }
@@ -326,6 +331,6 @@ internal sealed partial class AutomationForm
         window.Controls.Add(header);
         UiTheme.ApplyControlStyles(window);
         if (window.ShowDialog(this) == DialogResult.OK)
-            _ = ApplySelectedSitePricesAsync(changedPriceTargets, sitePriceConsentConfirmed);
+            _ = ApplySelectedSitePricesAsync(changedPriceTargets);
     }
 }
