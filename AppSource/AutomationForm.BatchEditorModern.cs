@@ -62,7 +62,7 @@ internal sealed partial class AutomationForm
         };
         var close = new Button { Text = "닫기", Dock = DockStyle.Right, Width = 107, Margin = new Padding(8) };
         close.Click += (_, _) => window.Close();
-        var siteApply = new Button { Text = "선택 글 사이트 가격 반영", Dock = DockStyle.Right, Width = 198, Margin = new Padding(8) };
+        var siteApply = new Button { Text = "일괄 가격 변경 중단", Dock = DockStyle.Right, Width = 198, Margin = new Padding(8) };
         siteApply.Click += (_, _) =>
         {
             window.DialogResult = DialogResult.OK;
