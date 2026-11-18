@@ -26,7 +26,7 @@ internal static class CloudflareWarpBoot
     }
 
     // The installed vendor CLI is a fixed, trusted file under Program Files.
-    // Do not invoke a user-specified EXE/path, scripts, powershell, or a shell.
+    // Do not invoke a user-specified EXE/path or a command interpreter.
     private static string VendorCli()
     {
         string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
