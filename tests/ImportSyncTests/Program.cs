@@ -71,6 +71,18 @@ internal static class Program
 
     private static void Main()
     {
+        Check(MyListingsImport.CleanImportedTitle("[1개~9,995개] 10레벨 겁화 보석 구매합니다") ==
+            "10레벨 겁화 보석 구매합니다", "display quantity range is removed from title");
+        Check(MyListingsImport.CleanImportedTitle("[ 3개 ~ 9,999개 ] 10레벨 작열 구매") ==
+            "10레벨 작열 구매", "spaced split-trade prefix removed");
+        Check(MyListingsImport.CleanImportedTitle("10레벨 겁화 보석 구매합니다") ==
+            "10레벨 겁화 보석 구매합니다", "normal title stays unchanged");
+        var rangedRow = Row();
+        rangedRow.Title = "[1개~9,995개] " + Title;
+        var firstImport = MyListingsImport.Prepare(new[] { rangedRow }, Array.Empty<ListingJob>(), "A", "slshrn124");
+        Check(firstImport.NewJobs.Count == 1 && firstImport.NewJobs[0].Title == Title,
+            "new imports save the actual product title, not displayed quantity range");
+
         var current = Job();
         var plan = MyListingsImport.Prepare(new[] { Row() }, new[] { current }, "A", "slshrn124");
         Check(plan.NewJobs.Count == 0 && plan.Updates.Count == 1, "one existing job updated");
