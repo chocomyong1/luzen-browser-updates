@@ -103,24 +103,30 @@ function detailCase({ pageId = number, pageTitle = title, buttonCount = 1,
 }
 
 function editFormCase({ id = number, old = '10,000', priceFields = 1,
-  heading = '구매금액', finalText = '재등록', host = 'www.itemmania.com' } = {}) {
+  heading = '구매금액', finalText = '재등록', host = 'www.itemmania.com',
+  buttonHeading = '캐릭터명' } = {}) {
   let clicked = 0;
   const clickedLabels = [];
+  let inputEvents = 0;
   class HTMLInputElement {
     constructor(value) { this.value = value; this.type = 'text'; this.tagName = 'INPUT'; this.disabled = false; this.readOnly = false; this.isConnected = true; }
     set value(v) { this._value = v; }
     get value() { return this._value; }
     getClientRects() { return [1]; }
-    dispatchEvent() { return true; }
+    dispatchEvent() { inputEvents++; return true; }
     closest(name) { return name === 'form' ? form : null; }
   }
   const quantity = new HTMLInputElement('1');
   const prices = Array.from({ length: priceFields }, () => new HTMLInputElement(old));
   const buttons = (Array.isArray(finalText) ? finalText : [finalText]).map(label => ({
-    innerText: label, value: '', isConnected: true,
+    innerText: label, value: '', isConnected: true, tagName: 'BUTTON', type: 'button',
+    id: 'character-name-save', getAttribute: key => key === 'onclick' ? 'saveCharacterName()' : null,
+    closest: key => key === 'form' ? form : key.startsWith('tr,') ? nameRow : null,
     getClientRects: () => [1], click: () => {clicked++; clickedLabels.push(label);}
   }));
-  const form = { querySelectorAll: key => key.startsWith('button,') ? buttons : [] };
+  const nameRow = { querySelector: () => ({ textContent: buttonHeading }) };
+  const form = { id: 'edit-form', getAttribute: key => key === 'action' ? '/buy/edit_price.html' : null,
+    querySelectorAll: key => key.startsWith('button,') ? buttons : [] };
   const headingCell = { textContent: heading };
   const tr = { querySelector: key => key.startsWith('th,') ? headingCell : null,
     querySelectorAll: key => key === 'input' ? [quantity, ...prices] : [] };
@@ -128,6 +134,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const document = { querySelectorAll: key => key === 'form' ? [form] :
     key.startsWith('input[type="hidden"]') ? [hidden] :
     key.startsWith('tr,') ? [tr] :
+    key.startsWith('button,') ? buttons :
     key === 'input' ? [quantity, ...prices] : [] };
   const evaluate = (submit = true, expected = number, expectedOld = '10000') =>
     vm.runInNewContext(script('EditFormScript').replace('__ARG__', JSON.stringify({
@@ -137,26 +144,34 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
       location: { protocol: 'https:', hostname: host, pathname: '/buy/edit.html' },
       getComputedStyle: () => ({ visibility: 'visible' })
     }, { timeout: 1000 });
-  return { evaluate, get clicked() { return clicked; }, clickedLabels, prices };
+  return { evaluate, get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
+    clickedLabels, prices };
 }
 
 {
   const safe = editFormCase();
-  assert.equal(safe.evaluate(false).status, 'ready');
+  assert.equal(safe.evaluate(false).status, 'diagnostic');
   assert.equal(safe.clicked, 0);
-  assert.equal(safe.evaluate(true).status, 'submitted');
-  assert.equal(safe.prices[0].value, '35100');
-  assert.equal(safe.clicked, 1);
-  console.log('PASS exact owned listing and old price → submit only once');
+  assert.equal(safe.evaluate(true).status, 'diagnostic');
+  assert.equal(safe.prices[0].value, '10,000');
+  assert.equal(safe.inputEvents, 0);
+  assert.equal(safe.clicked, 0);
+  console.log('PASS exact owned listing and old price → read-only diagnosis, no submission');
 }
 {
   const mixed = editFormCase({finalText: ['재등록', '수정하기']});
-  assert.equal(mixed.evaluate(false).status, 'ready');
-  assert.equal(mixed.evaluate(true).status, 'submitted');
-  assert.deepEqual(mixed.clickedLabels, ['수정하기']);
+  assert.equal(mixed.evaluate(false).status, 'diagnostic');
+  const diagnostic = mixed.evaluate(true);
+  assert.equal(diagnostic.status, 'diagnostic');
+  assert.match(diagnostic.message, /캐릭터명/);
+  assert.match(diagnostic.message, /saveCharacterName/);
+  assert.equal(mixed.clicked, 0);
+  assert.equal(mixed.inputEvents, 0);
   const duplicate = editFormCase({finalText: ['수정하기', '수정하기']});
-  assert.equal(duplicate.evaluate(true).status, 'error');
+  assert.equal(duplicate.evaluate(true).status, 'diagnostic');
   assert.equal(duplicate.clicked, 0);
+  assert.equal(duplicate.prices[0].value, '10,000');
+  console.log('PASS misleading character-name 수정하기 and duplicate buttons never click');
 }
 {
   const wrongId = editFormCase({ id: '2026070508129999' });
