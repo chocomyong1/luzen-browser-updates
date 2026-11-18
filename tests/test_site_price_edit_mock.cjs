@@ -105,7 +105,11 @@ function detailCase({ pageId = number, pageTitle = title, buttonCount = 1,
 
 function editFormCase({ id = number, old = '10,000', priceFields = 1,
   heading = '구매금액', finalText = '재등록', host = 'www.itemmania.com',
-  buttonHeading = '캐릭터명' } = {}) {
+  buttonHeading = '캐릭터명', approvedSubmit = false,
+  pathname = approvedSubmit ? '/myroom/buy/buy_re_reg.html' : '/buy/edit.html',
+  formId = 'frmBuy', priceFieldName = 'user_division_price',
+  nativeSubmitCount = 1, submitId = 'ok_btn', submitClass = 'buy_re_reg',
+  includeFormId = true } = {}) {
   let clicked = 0;
   const clickedLabels = [];
   let inputEvents = 0;
@@ -119,6 +123,10 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   }
   const quantity = new HTMLInputElement('1');
   const prices = Array.from({ length: priceFields }, () => new HTMLInputElement(old));
+  for (const p of prices) {
+    p.name = priceFieldName;
+    p.getAttribute = key => key === 'name' ? p.name : null;
+  }
   const buttons = (Array.isArray(finalText) ? finalText : [finalText]).map(label => ({
     innerText: label, value: '', isConnected: true, tagName: 'BUTTON', type: 'button',
     id: 'character-name-save', getAttribute: key => key === 'onclick' ? 'saveCharacterName()' : null,
@@ -126,27 +134,49 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     getClientRects: () => [1], click: () => {clicked++; clickedLabels.push(label);}
   }));
   const nameRow = { querySelector: () => ({ textContent: buttonHeading }) };
-  const form = { id: 'edit-form', getAttribute: key => key === 'action' ? '/buy/edit_price.html' : null,
-    querySelectorAll: key => key.startsWith('button,') ? buttons : [] };
+  const nativeSubmits = Array.from({length: approvedSubmit ? nativeSubmitCount : 0}, () => ({
+    innerText: '재등록', value: '', isConnected: true, tagName: 'BUTTON', type: 'submit',
+    getAttribute: key => ({id: submitId, class: submitClass, type: 'submit'})[key] || null,
+    closest: key => key === 'form' ? form : null,
+    getClientRects: () => [1], click: () => {clicked++; clickedLabels.push('REAL_SITE_RE_REG');}
+  }));
+  const allButtons = [...buttons, ...nativeSubmits];
+  const hidden = { value: id, getAttribute: () => null };
+  const form = { tagName: 'FORM', getAttribute: key => ({
+    id: formId, action: '/myroom/buy/buy_re_reg_ok.html'
+  })[key] || null,
+    querySelectorAll: key => key === 'input[type="hidden"]' ? (includeFormId ? [hidden] : []) :
+      key === 'button[type="submit"]' ? nativeSubmits : key.startsWith('button,') ? allButtons : [] };
   const headingCell = { textContent: heading };
   const tr = { querySelector: key => key.startsWith('th,') ? headingCell : null,
     querySelectorAll: key => key === 'input' ? [quantity, ...prices] : [] };
-  const hidden = { value: id, getAttribute: () => null };
   const document = { querySelectorAll: key => key === 'form' ? [form] :
     key.startsWith('input[type="hidden"]') ? [hidden] :
     key.startsWith('tr,') ? [tr] :
-    key.startsWith('button,') ? buttons :
+    key.startsWith('button,') ? allButtons :
     key === 'input' ? [quantity, ...prices] : [] };
   const evaluate = (submit = true, expected = number, expectedOld = '10000') =>
     vm.runInNewContext(script('EditFormScript').replace('__ARG__', JSON.stringify({
       number: expected, oldPrice: expectedOld, newPrice: '35100', submit
     })), {
       document, HTMLInputElement, Event: class { constructor() {} },
-      location: { protocol: 'https:', hostname: host, pathname: '/buy/edit.html' },
+      location: { protocol: 'https:', hostname: host, pathname, search: '' },
       getComputedStyle: () => ({ visibility: 'visible' })
     }, { timeout: 1000 });
   return { evaluate, get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
     clickedLabels, prices };
+}
+
+{
+  const audited = editFormCase({approvedSubmit: true, finalText: ['저장', '수정하기']});
+  assert.equal(audited.evaluate(false).status, 'ready');
+  assert.equal(audited.clicked, 0);
+  assert.equal(audited.prices[0].value, '10,000');
+  assert.equal(audited.evaluate(true).status, 'submitted');
+  assert.equal(audited.prices[0].value, '35100');
+  assert.equal(audited.inputEvents, 2);
+  assert.deepEqual(audited.clickedLabels, ['REAL_SITE_RE_REG']);
+  console.log('PASS audited frmBuy buy_re_reg: only button#ok_btn.buy_re_reg submits');
 }
 
 {
@@ -187,6 +217,24 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.match(automation, /Clipboard\.SetText\(diagnosis\)/);
   assert.match(automation, /if \(form\.Status == "diagnostic"\)/);
   console.log('PASS 58 controls: trailing edit candidate visible, copyable, no click');
+}
+{
+  for (const change of [
+    {pathname:'/myroom/buy/buy_regist_view.html'},
+    {formId:'frmSell'},
+    {priceFieldName:'character_name'},
+    {submitId:'character_name_save'},
+    {submitClass:'btn_name_save'},
+    {nativeSubmitCount:2},
+    {includeFormId:false}
+  ]) {
+    const invalid = editFormCase({approvedSubmit:true, ...change});
+    assert.notEqual(invalid.evaluate(true).status, 'submitted', JSON.stringify(change));
+    assert.equal(invalid.clicked, 0);
+    assert.equal(invalid.inputEvents, 0);
+    assert.equal(invalid.prices[0].value, '10,000');
+  }
+  console.log('PASS wrong URL, form, price field, submit ID/class, duplicates and missing owned ID never submit');
 }
 {
   const wrongId = editFormCase({ id: '2026070508129999' });
