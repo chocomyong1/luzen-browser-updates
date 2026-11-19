@@ -2,7 +2,8 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const source = name => fs.readFileSync(path.join(__dirname, '..', 'AppSource', name), 'utf8');
+// Windows Git checkouts may use CRLF even when the local test runner uses LF.
+const source = name => fs.readFileSync(path.join(__dirname, '..', 'AppSource', name), 'utf8').replace(/\r\n/g, '\n');
 const runner = source('AutomationForm.cs');
 const login = source('ItemManiaLogin.cs');
 const status = source('AutomationForm.SplitStatus.cs');
