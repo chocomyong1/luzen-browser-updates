@@ -227,6 +227,8 @@ internal sealed partial class AutomationForm
                 job.RequiresReview = false;
                 job.InitialCompleted = true;
                 job.LastSucceededUtc = DateTime.UtcNow;
+                job.LastSiteAuditUtc = null;
+                job.SiteAuditMismatchCount = 0;
                 // Keep a conservative quiet period after confirming a repost;
                 // the site's update may have happened moments before our read.
                 job.NextDueUtc = job.Enabled ?

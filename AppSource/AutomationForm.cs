@@ -414,7 +414,7 @@ internal sealed partial class AutomationForm : Form
             _sitePriceBatchCancellation?.Cancel();
             _siteRequestTraceActive = false;
             DetachSiteTrace();
-            _timer.Stop(); _currentRun?.Cancel(); _pendingReviewRun?.Cancel();
+            _timer.Stop(); _currentRun?.Cancel(); _pendingReviewRun?.Cancel(); _siteAuditRun?.Cancel();
             _schedulerRunning = false;
             try { SaveAll(); } catch { }
         };
@@ -1418,7 +1418,7 @@ internal sealed partial class AutomationForm : Form
     public void ShowWorkflowSettings() => _editorTabs.SelectedTab = _workflowTab;
     public void StopAndSave()
     {
-        _timer.Stop(); _currentRun?.Cancel(); _schedulerRunning = false;
+        _timer.Stop(); _currentRun?.Cancel(); _siteAuditRun?.Cancel(); _schedulerRunning = false;
         try { SaveAll(); } catch { }
     }
 
@@ -1510,6 +1510,7 @@ internal sealed partial class AutomationForm : Form
             copy.PendingSitePriceTarget = ""; copy.PendingRepostBeforeStamp = ""; copy.PendingRepostAttemptUtc = null;
             copy.Enabled = false; copy.InitialCompleted = false; copy.RequiresReview = false;
             copy.NextDueUtc = DateTime.MinValue; copy.LastSucceededUtc = null;
+            copy.LastSiteAuditUtc = null; copy.SiteAuditMismatchCount = 0;
             copy.LastStatus = "복제됨 (자동 꺼짐)";
             _jobs.Add(copy);
         }
@@ -1546,6 +1547,7 @@ internal sealed partial class AutomationForm : Form
         job.PendingSitePriceTarget = ""; job.PendingRepostBeforeStamp = ""; job.PendingRepostAttemptUtc = null;
         job.InitialCompleted = false; job.RequiresReview = false;
         job.NextDueUtc = DateTime.MinValue; job.LastSucceededUtc = null; job.LastStatus = "대기"; job.Enabled = false;
+        job.LastSiteAuditUtc = null; job.SiteAuditMismatchCount = 0;
         _jobs.Add(job); _config.Jobs = _jobs.ToList(); _config.Save();
         RefreshFilterChoices(); RefreshFilteredLists(job.Id);
     }
@@ -2388,6 +2390,7 @@ internal sealed partial class AutomationForm : Form
     {
         _schedulerRunning = false; _timer.Stop();
         ConnectionRecoverySucceeded();
+        _siteAuditRun?.Cancel();
         _ownedListRecoveryRun?.Cancel();
         _pendingReviewRun?.Cancel();
         _state.Text = "일시정지"; _state.ForeColor = Color.DarkGoldenrod; RefreshAutoSummary();
@@ -2401,6 +2404,7 @@ internal sealed partial class AutomationForm : Form
         _sitePriceBatchCancellation?.Cancel();
         _schedulerRunning = false; _timer.Stop();
         ConnectionRecoverySucceeded();
+        _siteAuditRun?.Cancel();
         _ownedListRecoveryRun?.Cancel();
         _pendingReviewRun?.Cancel();
         if (!_submissionVerificationPending) _currentRun?.Cancel();
@@ -2669,6 +2673,11 @@ internal sealed partial class AutomationForm : Form
                 await VerifyOneHeldListingInBackgroundAsync(candidate);
                 return; // Resume ordinary registrations at the next tick.
             }
+        }
+        if (DateTime.UtcNow >= _nextSiteAuditUtc)
+        {
+            await AuditOneConfirmedListingAsync();
+            return;
         }
         _jobsGrid.Refresh();
     }
@@ -3021,6 +3030,8 @@ internal sealed partial class AutomationForm : Form
                             ? MyListingsImport.SellListingsUrl : MyListingsImport.BuyListingsUrl;
                 }
                 job.LastSucceededUtc = DateTime.UtcNow;
+                job.LastSiteAuditUtc = null;
+                job.SiteAuditMismatchCount = 0;
                 AppendLog("등록번호 확인: " + job.ListingNumber);
                 if (_siteReportedIdRemaining is int reportedRemaining)
                     ReconcileSiteQuota(job, reportedRemaining);

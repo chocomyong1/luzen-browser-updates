@@ -103,6 +103,12 @@ internal sealed partial class MainForm : Form
             _moduleA.ShowAutomationView();
             RefreshSystemLabel();
             _status.Text = "  자동등록 현황 · 물품등록 탭은 별도 편집 화면으로 전환됩니다.";
+            try
+            {
+                _moduleA.SaveListings(); _moduleB.SaveListings(); _moduleC.SaveListings();
+                UserSettingsSnapshots.CreateSnapshot("daily", daily: true);
+            }
+            catch (Exception ex) { _status.Text = "  일일 설정 백업 보류: " + ex.GetType().Name; }
             AppUpdateService.ReportStartupReady();
             _updateTimer.Start();
             StartTelegramStatusPolling();
@@ -277,6 +283,7 @@ internal sealed partial class MainForm : Form
         moreMenu.Items.Add("업데이트 확인 · 설치", null,
             (_, _) => _ = CheckForUpdateAsync(automatic: false, installImmediately: true));
         moreMenu.Items.Add("업데이트 주소 · 자동설치 설정", null, (_, _) => OpenUpdateSettingsDialog());
+        moreMenu.Items.Add("설정 백업·복원", null, (_, _) => OpenSettingsBackupDialog());
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("도움말", null, (_, _) => MessageBox.Show(this,
             "모서리·테두리를 끌어서 크기를 자유롭게 바꿀 수 있습니다.\n" +
@@ -448,6 +455,10 @@ internal sealed partial class MainForm : Form
                 return;
             }
             _status.Text = "  새 버전 설치 준비 · 프로그램을 안전하게 종료합니다.";
+            // A/B/C are idle here. Save any local edits and preserve a
+            // separate recovery point before changing application binaries.
+            _moduleA.SaveListings(); _moduleB.SaveListings(); _moduleC.SaveListings();
+            UserSettingsSnapshots.CreateSnapshot("pre-update");
             AppUpdateService.StartExternalInstaller(archive, manifest);
             _updateTimer.Stop();
             Close();

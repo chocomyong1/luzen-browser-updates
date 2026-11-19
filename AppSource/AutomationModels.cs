@@ -61,6 +61,10 @@ internal sealed class ListingJob
     public DateTime? PendingRepostAttemptUtc { get; set; }
     public DateTime NextDueUtc { get; set; } = DateTime.MinValue;
     public DateTime? LastSucceededUtc { get; set; }
+    // Read-only audit of the site's exact ID/title row. Never infer success
+    // from this date alone or resubmit a listing just because it is missing.
+    public DateTime? LastSiteAuditUtc { get; set; }
+    public int SiteAuditMismatchCount { get; set; }
     public string LastStatus { get; set; } = "대기";
     // Display the confirmed quantity together with its unit. Do not substitute
     // the new-listing default of 1 for a site import whose quantity is unknown.

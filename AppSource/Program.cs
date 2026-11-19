@@ -22,6 +22,21 @@ internal static class Program
             return;
         }
 
+        // The previous running process has already closed and saved its own
+        // state. Only now may a user-requested snapshot replace local config.
+        try
+        {
+            if (UserSettingsSnapshots.ApplyPendingRestoreOnStartup())
+                MessageBox.Show("설정 백업 복원이 끝났습니다.\n중복 등록 방지를 위해 자동등록은 꺼진 상태입니다. 사이트의 등록글을 확인한 뒤 다시 시작하세요.",
+                    "설정 복원 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("설정 복원을 완료하지 못해 안전하게 실행을 중단했습니다. 기존 백업은 유지됩니다.\n" + ex.Message,
+                "설정 복원 확인 필요", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
         // Single-user/local mode: the replica's own sign-in has no server-side
         // authentication, so open the actual main window immediately.
         // Keep previous service and display-name preferences where available.

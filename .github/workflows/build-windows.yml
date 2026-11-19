@@ -101,6 +101,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Separate channel/private status and delayed alerts test failed' }
           node tests/test_b_login_dom_stability.cjs
           if ($LASTEXITCODE -ne 0) { throw 'B login redirect and owned-list DOM readiness safety test failed' }
+          node tests/test_site_audit_backup_safety.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Missed-site-post audit and safe backup/restore test failed' }
           dotnet run --project tests/QuotaTests/QuotaTests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Hourly quota logic test failed' }
           dotnet run --project tests/ImportSyncTests/ImportSyncTests.csproj -c Release
@@ -139,15 +141,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.79'
+          $version = '22.2.80'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: luzen-browser-windows-v22.2.79
-          path: LuzenBrowser_22.2.79_BinaryUpdate.zip
+          name: luzen-browser-windows-v22.2.80
+          path: LuzenBrowser_22.2.80_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -155,7 +157,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.79'
+          $version = '22.2.80'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -167,7 +169,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.79 B 자동등록 관리목록 연결 안정화: 페이지 주소뿐 아니라 실제 물품 목록이 연속 2회 표시됐는지 확인한 뒤 진행합니다. 로그인 화면으로 돌아간 경우를 VPN 전송 오류와 구분하고, 자동 로그인 재시도 대기를 안전하게 단축했습니다. 실제 네트워크 장애일 때만 WARP 복구를 실행하고 기존 A/B/C 독립 경로와 미제출·중복 등록 방지 절차를 유지합니다.'
+            releaseNotes = 'v22.2.80 자동등록 사이트 시각 안전 감시: 확인된 등록번호·제목의 사이트 시각이 로컬 성공 기록과 두 번 어긋난 물품만 보류하며 자동 재제출하지 않습니다. A/B/C 설정을 일일 및 업데이트 전에 로컬 백업하고, 관리 메뉴에서 복원 예약을 지원합니다. 복원 후에는 자동등록을 끄고 사이트 확인을 요구합니다. 텔레그램 알림 중복 방지와 기존 VPN·로그인 복구는 유지합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

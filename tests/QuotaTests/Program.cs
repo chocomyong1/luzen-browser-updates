@@ -18,6 +18,20 @@ internal static class Program
 
     private static void Main()
     {
+        var auditNow = DateTime.UtcNow;
+        var auditedSuccess = auditNow.AddMinutes(-15);
+        string staleSiteStamp = auditedSuccess.ToLocalTime().AddMinutes(-90).ToString("MM-dd HH:mm");
+        string matchingSiteStamp = auditedSuccess.ToLocalTime().AddMinutes(-2).ToString("MM-dd HH:mm");
+        Check(SiteRepostAudit.IsClearlyOlderThanSuccess(staleSiteStamp, auditedSuccess, auditNow),
+            "repeated exact-row site date older than confirmed registration is detected");
+        Check(!SiteRepostAudit.IsClearlyOlderThanSuccess(matchingSiteStamp, auditedSuccess, auditNow),
+            "normal minute rounding after a successful repost is not an error");
+        Check(!SiteRepostAudit.IsClearlyOlderThanSuccess("", auditedSuccess, auditNow),
+            "missing site timestamp cannot trigger a false hold");
+        Check(!SiteRepostAudit.IsClearlyOlderThanSuccess("not-a-date", auditedSuccess, auditNow),
+            "unparseable site timestamp cannot trigger a false hold");
+        Check(!SiteRepostAudit.IsClearlyOlderThanSuccess(staleSiteStamp, auditNow.AddDays(-10), auditNow),
+            "old successes outside the observation window cannot be inferred");
         string notice = "19시까지 해당 ID로 17개 / IP에서 27개까지 추가등록 가능합니다. (추가등록 가능한 횟수에는 재등록도 포함됩니다.)";
         Check(HourlyServerQuota.ParseIdRemaining(notice) == 17, "parse ID, ignore IP");
         Check(HourlyServerQuota.ParseIdRemaining("IP에서 27개까지 추가등록 가능합니다") is null, "never use IP count");
