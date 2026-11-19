@@ -167,6 +167,15 @@ internal sealed class ItemManiaAutoLogin : IDisposable
     public bool IsLoginNavigationBusy => _checking ||
         DateTime.UtcNow - _lastLoginNavigationUtc < TimeSpan.FromSeconds(3);
 
+    // Only a definite login-required response from the official site should
+    // invalidate this throttle. A prior login click does not prove the session
+    // is still authenticated; the server may expire it minutes later.
+    public void ResetAfterOfficialLoginRejection()
+    {
+        _lastAttemptUtc = DateTime.MinValue;
+        _lastOpenLoginUtc = DateTime.MinValue;
+    }
+
     public async Task WaitForLoginNavigationAsync(CancellationToken token)
     {
         DateTime deadline = DateTime.UtcNow.AddSeconds(18);

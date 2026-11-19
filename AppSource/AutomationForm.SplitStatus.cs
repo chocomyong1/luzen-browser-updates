@@ -21,7 +21,9 @@ internal sealed partial class AutomationForm
     {
         get
         {
-            string state = _system == "B" && _schedulerRunning &&
+            string state = _schedulerRunning && _loginRecoveryPauseUntilUtc != DateTime.MinValue
+                ? "로그인 복구 대기" :
+                _system == "B" && _schedulerRunning &&
                 (_bConnectionRecheckRunning || _bConnectionRecoveryUtc > DateTime.UtcNow)
                 ? "VPN 복구 대기" :
                 _system != "B" && _schedulerRunning &&
@@ -51,7 +53,9 @@ internal sealed partial class AutomationForm
         {
             int enabled = _jobs.Count(job => job.Enabled);
             int pending = _jobs.Count(job => job.RequiresReview);
-            string state = _system == "B" && _schedulerRunning && _bConnectionRecheckRunning
+            string state = _schedulerRunning && _loginRecoveryPauseUntilUtc != DateTime.MinValue
+                ? "로그인 복구 대기" :
+                _system == "B" && _schedulerRunning && _bConnectionRecheckRunning
                 ? "VPN 연결 재확인 중" :
                 _system == "B" && _schedulerRunning && _bConnectionRecoveryUtc > DateTime.UtcNow
                 ? "VPN·관리목록 복구 대기" :

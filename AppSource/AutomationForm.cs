@@ -107,6 +107,7 @@ internal sealed partial class AutomationForm : Form
     // A signed-out B/C profile can redirect every managed-list request to
     // login. Do not make dozens of jobs race the same background sign-in.
     private DateTime _loginRecoveryPauseUntilUtc = DateTime.MinValue;
+    private bool _loginRecoveryRecheckRunning;
     private DateTime _ownedListRecoveryUtc = DateTime.MinValue;
     private bool _ownedListRecoveryRecheckRunning;
     private CancellationTokenSource? _ownedListRecoveryRun;
@@ -122,6 +123,7 @@ internal sealed partial class AutomationForm : Form
     private bool _repostSuccessAlertSeen;
     private string _repostDialogBlocked = "";
     private bool _repostServerCooldownRejected;
+    private bool _repostLoginRejected;
     private int? _siteReportedIdRemaining;
     private string _pickerMode = "";
     private readonly TabControl _editorTabs = new() { Dock = DockStyle.Fill };
@@ -978,6 +980,8 @@ internal sealed partial class AutomationForm : Form
         int scheduledPrices = _jobs.Count(x => !string.IsNullOrWhiteSpace(x.PendingSitePriceTarget));
         string state = _system == "B" && _schedulerRunning && _bConnectionRecheckRunning
             ? "B VPN 연결 재확인 중" :
+            _schedulerRunning && _loginRecoveryPauseUntilUtc != DateTime.MinValue
+            ? "사이트 로그인 복구 대기" :
             _system == "B" && _schedulerRunning && _bConnectionRecoveryUtc > DateTime.UtcNow
             ? "B VPN 연결 대기" : _sitePriceBatchRunning ? _state.Text :
             _schedulerRunning ? "자동 실행 중" : "중지/대기";
@@ -2434,7 +2438,41 @@ internal sealed partial class AutomationForm : Form
     {
         if (_busy || !_schedulerRunning) return;
         if (_myListingsImportRunning || _pendingMyListingsImport) return;
-        if (DateTime.UtcNow < _loginRecoveryPauseUntilUtc) return;
+        if (_loginRecoveryPauseUntilUtc != DateTime.MinValue)
+        {
+            if (_loginRecoveryRecheckRunning || DateTime.UtcNow < _loginRecoveryPauseUntilUtc) return;
+            _loginRecoveryRecheckRunning = true;
+            // The previous server response explicitly rejected authentication.
+            // A timer expiring is NOT proof of login. Require a fresh,
+            // read-only authenticated OWN-list page before ANY next submission.
+            _loginRecoveryPauseUntilUtc = DateTime.UtcNow.AddMinutes(2);
+            using var loginCheck = new CancellationTokenSource(TimeSpan.FromSeconds(65));
+            _ownedListRecoveryRun = loginCheck;
+            try
+            {
+                if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
+                    AppendLog($"{_system} 로그인 복구: 독립 IP 미확인, 제출 보류 유지");
+                else if (await VerifyOwnedListReadableAsync(loginCheck.Token) && _schedulerRunning)
+                {
+                    _loginRecoveryPauseUntilUtc = DateTime.MinValue;
+                    AppendLog($"{_system} 사이트 로그인과 본인 관리목록을 다시 확인했습니다. 다음 정상 순번부터 실행합니다.");
+                }
+                else if (_schedulerRunning)
+                    AppendLog($"{_system} 사이트 로그인 확인이 끝나지 않았습니다. 2분 후 읽기 전용 재확인합니다. 제출 없음.");
+            }
+            catch (OperationCanceledException) when (loginCheck.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                AppendLog($"{_system} 사이트 로그인 복구 확인 실패: {ex.GetType().Name}. 2분간 제출하지 않습니다.");
+                if (_schedulerRunning) NotifyAutomationIssue("사이트 로그인 복구 대기", ex.Message);
+            }
+            finally
+            {
+                if (ReferenceEquals(_ownedListRecoveryRun, loginCheck)) _ownedListRecoveryRun = null;
+                _loginRecoveryRecheckRunning = false;
+            }
+            return;
+        }
         if (_system == "B" && _bConnectionRecoveryUtc != DateTime.MinValue)
         {
             if (_bConnectionRecheckRunning || DateTime.UtcNow < _bConnectionRecoveryUtc) return;
@@ -2705,6 +2743,7 @@ internal sealed partial class AutomationForm : Form
         _armedOwnListRepost = "";
         _repostDialogBlocked = "";
         _repostServerCooldownRejected = false;
+        _repostLoginRejected = false;
         _repostSuccessAlertSeen = false;
         _siteReportedIdRemaining = null;
         _submissionVerificationPending = false;
@@ -3032,6 +3071,17 @@ internal sealed partial class AutomationForm : Form
         }
         catch (Exception ex)
         {
+            if (submitted && _repostLoginRejected)
+            {
+                // The site explicitly asked to log in AFTER the row-scoped
+                // repost click. Keep this one item held: the server's final
+                // state remains unproven. Stop other jobs until a fresh
+                // authenticated OWN-list read succeeds.
+                _loginRecoveryPauseUntilUtc = DateTime.UtcNow.AddSeconds(30);
+                _autoLogin?.ResetAfterOfficialLoginRejection();
+                AppendLog($"{_system} 로그인 세션 거절 감지: 다른 물품 제출도 중단하고 30초 후 관리목록을 재검증합니다. " +
+                    "해당 글은 등록시각 확인 전까지 다시 제출하지 않습니다.");
+            }
             job.LastStatus = submitted ? "제출 결과 확인 필요" : "오류 (미제출)";
             if (submitted) job.RequiresReview = true;
             job.NextDueUtc = submitted ? DateTime.MaxValue : DateTime.UtcNow.AddMinutes(10);
@@ -3039,7 +3089,7 @@ internal sealed partial class AutomationForm : Form
             AppendLog($"{(flow.Operation == "재등록" ? "재등록 실패 요약:" : "등록 실패 요약:")} " +
                 $"{job.Server} · {job.ListingNumber} · {ex.Message}");
             if (!dryRun) NotifyAutomationIssue(submitted ? "제출 결과 확인 필요" : "등록 작업 오류", ex.Message, job);
-            if (_schedulerRunning && submitted)
+            if (_schedulerRunning && submitted && !_repostLoginRejected)
                 AppendLog("결과 확인이 필요한 물품 1건만 보류했습니다. 다른 정상 물품은 계속 등록하며 " +
                     "해당 물품은 사이트의 정확한 등록번호·재등록 시각을 백그라운드에서 검사합니다.");
         }
@@ -3052,6 +3102,7 @@ internal sealed partial class AutomationForm : Form
             _armedOwnListRepost = "";
             _repostDialogBlocked = "";
             _repostServerCooldownRejected = false;
+            _repostLoginRejected = false;
             _repostSuccessAlertSeen = false;
             _siteReportedIdRemaining = null;
             _submissionVerificationPending = false;
@@ -3065,6 +3116,7 @@ internal sealed partial class AutomationForm : Form
             if (appliedDeferredEdits > 0)
                 AppendLog($"진행 중이던 물품의 일괄수정 {appliedDeferredEdits}개 항목을 작업 종료 후 적용했습니다.");
             _state.Text = !_schedulerRunning ? "중지/대기" :
+                _loginRecoveryPauseUntilUtc != DateTime.MinValue ? "사이트 로그인 복구 대기" :
                 _system == "B" && _bConnectionRecoveryUtc > DateTime.UtcNow ? "VPN·관리목록 복구 대기" :
                 _ownedListRecoveryUtc > DateTime.UtcNow ? "관리목록 복구 대기" : "자동 실행 중";
             _state.ForeColor = !_schedulerRunning ? Color.Maroon :
@@ -3350,13 +3402,16 @@ internal sealed partial class AutomationForm : Form
         var compactMessage = string.Concat(message.Where(c => !char.IsWhiteSpace(c)));
         bool officialCooldownAlert = officialDialog && e.Kind == CoreWebView2ScriptDialogKind.Alert &&
             compactMessage.Contains("해당서버에아직등록하실수없습니다", StringComparison.Ordinal);
+        bool officialLoginRejected = officialDialog && e.Kind == CoreWebView2ScriptDialogKind.Alert &&
+            (compactMessage.Contains("로그인후이용해주세요", StringComparison.Ordinal) ||
+             compactMessage.Contains("로그인이필요합니다", StringComparison.Ordinal));
         // The first confirm originates from the owned-list page. A subsequent
         // success alert may be dispatched by another official ItemMania page
         // after the repost handler navigates. That alert is safe to DISMISS,
         // but an unrelated second CONFIRM must never be approved automatically.
         bool officialRepostAlert = officialDialog && e.Kind == CoreWebView2ScriptDialogKind.Alert &&
             (message.Contains("재등록") || message.Contains("다시 등록"));
-        if (!officialDialog || (!ownListContext && !officialRepostAlert && !officialCooldownAlert))
+        if (!officialDialog || (!ownListContext && !officialRepostAlert && !officialCooldownAlert && !officialLoginRejected))
         {
             _repostDialogBlocked = "재등록 대상 목록 외부에서 확인창이 발생했습니다";
             AppendLog("재등록 확인창 출처 차단: 종류=" + e.Kind +
@@ -3370,6 +3425,14 @@ internal sealed partial class AutomationForm : Form
         var isUnsafe = unsafeWords.Any(x => message.Contains(x, StringComparison.OrdinalIgnoreCase));
         if (e.Kind == CoreWebView2ScriptDialogKind.Alert)
         {
+            if (officialLoginRejected)
+            {
+                _repostLoginRejected = true;
+                _repostDialogBlocked = "사이트 로그인 세션이 만료되었거나 인증이 거절됐습니다: " + text;
+                AppendLog("사이트 로그인 거절(재등록 결과 보류): " + text);
+                e.Accept(); // Dismiss only the informational alert, never a submit/confirm.
+                return;
+            }
             // The site's explicit server cooldown message proves no repost was
             // accepted. Other alerts remain ambiguous and still require review.
             if (officialCooldownAlert)

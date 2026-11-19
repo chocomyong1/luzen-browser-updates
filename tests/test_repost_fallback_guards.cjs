@@ -58,7 +58,7 @@ assert.match(uncertainSubmissionRecovery, /submitted \? DateTime\.MaxValue/);
 // context; a later positive alert from another OFFICIAL site path can close.
 assert.match(automation, /MyListingsImport\.IsOwnedListUrl\(currentPage\)/);
 assert.match(automation, /officialDialog && e\.Kind == CoreWebView2ScriptDialogKind\.Alert/);
-assert.match(automation, /!officialDialog \|\| \(!ownListContext && !officialRepostAlert && !officialCooldownAlert\)/);
+assert.match(automation, /!officialDialog \|\| \(!ownListContext && !officialRepostAlert && !officialCooldownAlert && !officialLoginRejected\)/);
 assert.match(automation, /job\.PendingRepostBeforeStamp = flow\.Operation == "재등록" \? preRepostStamp/);
 // Reposting a verified existing ID does not create a new ID. After the exact
 // owned row was clicked and the site independently confirmed success, keep

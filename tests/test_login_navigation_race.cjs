@@ -37,7 +37,9 @@ assert.match(login, /public async Task WaitForLoginNavigationAsync\(Cancellation
 assert.match(login, /_lastLoginNavigationUtc = DateTime\.UtcNow/);
 assert.match(automation, /await _autoLogin\.WaitForLoginNavigationAsync\(token\)/);
 assert.match(automation, /_autoLogin = new ItemManiaAutoLogin\(/);
-assert.match(automation, /if \(DateTime\.UtcNow < _loginRecoveryPauseUntilUtc\) return/);
+assert.match(automation, /if \(_loginRecoveryPauseUntilUtc != DateTime\.MinValue\)/);
+assert.match(automation, /_loginRecoveryRecheckRunning \|\| DateTime\.UtcNow < _loginRecoveryPauseUntilUtc/);
+assert.match(automation, /await VerifyOwnedListReadableAsync\(loginCheck\.Token\)/);
 const transient = automation.split('catch (OwnedListLoginPendingException ex) when (!submitted)')[1]?.split('catch (OperationCanceledException)')[0] || '';
 assert.match(transient, /job\.LastStatus = "로그인 전환 대기 \(미제출\)"/);
 assert.match(transient, /job\.NextDueUtc = _loginRecoveryPauseUntilUtc/);
