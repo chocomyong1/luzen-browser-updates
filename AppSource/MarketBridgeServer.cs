@@ -29,6 +29,10 @@ internal sealed class MarketBridgeRow
     public string Server { get; set; } = "";
     public string Level { get; set; } = "";
     public long Highest { get; set; }
+    // Explicitly populated by Gem Tracker v2.8.9.5+. Unlike the legacy
+    // Highest field, this proves the tracker excluded known owned listing IDs.
+    // Zero for older scripts: do not infer a competitor price from them.
+    public long CompetitorHighest { get; set; }
     public long Median { get; set; }
     public long? NormalMax { get; set; }
     public long? MyPrice { get; set; }
@@ -204,6 +208,8 @@ internal sealed class MarketBridgeServer : IDisposable
             if (row is null || string.IsNullOrWhiteSpace(row.Server) || row.Server.Length > 40 ||
                 row.Level is not ("8" or "9" or "10") ||
                 row.Highest is <= 0 or > 1_000_000_000 ||
+                row.CompetitorHighest is < 0 or > 1_000_000_000 ||
+                row.CompetitorHighest > row.Highest ||
                 row.Median is < 0 or > 1_000_000_000 ||
                 row.NormalMax is < 0 or > 1_000_000_000 ||
                 row.MyPrice is < 0 or > 1_000_000_000 ||

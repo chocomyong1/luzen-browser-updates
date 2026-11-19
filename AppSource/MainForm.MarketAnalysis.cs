@@ -100,7 +100,7 @@ internal sealed partial class MainForm
         RefreshMarketFilters();
         RefreshMarketGrid();
         RefreshSystemLabel();
-        _status.Text = "  시세 분석 · 독립 표본 기준 보수적 가격 추천 · 게시글 선택 후 명시적 승인 필요";
+        _status.Text = "  시세 분석 · 8·9레벨 경쟁가 +100원 / 10레벨 +1,000원 · 실제 적용은 개별 승인 후 다음 순번";
     }
 
     private void DisableMarketView()
@@ -239,17 +239,14 @@ internal sealed partial class MainForm
                 HeaderText = title, Width = width, SortMode = DataGridViewColumnSortMode.NotSortable
             });
         }
-        AddColumn("서버", 115);
-        AddColumn("레벨", 75);
-        AddColumn("추적 기준가", 115);
-        AddColumn("추천가", 120);
-        AddColumn("추천 판단", 160);
-        AddColumn("경쟁 최고가", 125);
-        AddColumn("가격 차이", 115);
-        AddColumn("일반 최고가", 125);
-        AddColumn("중앙값", 110);
-        AddColumn("고가 매물", 98);
-        AddColumn("표본", 110);
+        AddColumn("서버", 125);
+        AddColumn("레벨", 82);
+        AddColumn("추적 기준가", 138);
+        AddColumn("경쟁 최고가", 150);
+        AddColumn("추천가", 145);
+        AddColumn("가격 차이", 125);
+        AddColumn("추천 판단", 280);
+        AddColumn("경쟁 표본", 155);
         DarkScrollbarTheme.Attach(_marketGrid);
         layout.Controls.Add(_marketGrid, 0, 2);
 
@@ -258,8 +255,8 @@ internal sealed partial class MainForm
             Dock = DockStyle.Fill, BackColor = UiTheme.Surface,
             ForeColor = UiTheme.Muted, TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(13, 0, 8, 0),
-            Text = "※ 독립 표본 5그룹 이상 · 중앙값 중심(8그룹 이상이면 일반 최고가 일부 반영) · 1회 인상 최대 5%\n" +
-                   "   추천가 검토 → 정확한 본인 구매글을 직접 체크 → 승인. 실제 사이트 변경은 각 글의 다음 정상 순번에만 시도합니다."
+            Text = "※ 등록번호로 확인된 내 글 제외 · 8·9레벨 경쟁 최고가 +100원 / 10레벨 +1,000원\n" +
+                   "   디스코드 판매 시세·마진은 직접 확인하세요. 가격은 개별 승인 후 그 게시글의 다음 정상 순번에만 반영됩니다."
         }, 0, 3);
         view.Controls.Add(layout);
         _workspaceBody.Controls.Add(view);
@@ -298,27 +295,27 @@ internal sealed partial class MainForm
                 string price(long? value) => value is > 0 ? value.Value.ToString("N0") + "원" : "—";
                 string reference = row.Basis.Contains("미확인", StringComparison.Ordinal)
                     ? "미확인" : price(row.MyPrice);
-                long? gap = row.MyPrice is > 0 ? row.Highest - row.MyPrice.Value : null;
+                long? competitor = row.CompetitorHighest > 0 ? row.CompetitorHighest : null;
+                long? gap = row.MyPrice is > 0 && competitor.HasValue
+                    ? competitor.Value - row.MyPrice.Value : null;
                 string difference = gap.HasValue ? (gap > 0 ? "+" : "") + gap.Value.ToString("N0") + "원" : "—";
                 MarketAdvice advice = MarketPriceAdvisor.Evaluate(row, _marketReceivedUtc, DateTime.UtcNow);
                 string recommendation = price(advice.SuggestedPrice);
                 string decision = advice.Kind switch
                 {
                     MarketAdviceKind.Increase => "인상 검토 · " + advice.Confidence,
-                    MarketAdviceKind.Hold => "추적 기준 유지 · " + advice.Confidence,
+                    MarketAdviceKind.Hold => "기준가보다 낮음 · 수동 판단",
                     _ => advice.Reason
                 };
                 int index = _marketGrid.Rows.Add(row.Server, row.Level + "레벨", reference,
-                    recommendation, decision, price(row.Highest), difference,
-                    row.Distinct >= 5 ? price(row.NormalMax) : "표본 부족",
-                    price(row.Median), row.HighCount.ToString("N0") + "건",
+                    price(competitor), recommendation, difference, decision,
                     row.Distinct.ToString("N0") + "그룹 / " + row.Total.ToString("N0") + "건");
                 _marketGrid.Rows[index].Tag = row;
-                _marketGrid.Rows[index].Cells[4].ToolTipText = advice.Reason;
+                _marketGrid.Rows[index].Cells[6].ToolTipText = advice.Reason;
                 if (advice.Kind == MarketAdviceKind.Increase)
-                    _marketGrid.Rows[index].Cells[4].Style.ForeColor = UiTheme.Success;
+                    _marketGrid.Rows[index].Cells[6].Style.ForeColor = UiTheme.Success;
                 if (gap > 0)
-                    _marketGrid.Rows[index].Cells[6].Style.ForeColor = UiTheme.Warning;
+                    _marketGrid.Rows[index].Cells[5].Style.ForeColor = UiTheme.Warning;
             }
             _marketGrid.ClearSelection();
         }
@@ -336,8 +333,8 @@ internal sealed partial class MainForm
         MarketAdvice initial = MarketPriceAdvisor.Evaluate(selectedMarket, _marketReceivedUtc, DateTime.UtcNow);
         if (initial.Kind != MarketAdviceKind.Increase || initial.SuggestedPrice is not > 0)
         {
-            MessageBox.Show(this, $"현재 가격 인상을 추천하지 않습니다.\n{initial.Reason}\n" +
-                "표본이 부족하거나 기존 가격이 충분히 높으면 변경하지 않는 것이 기본입니다.",
+            MessageBox.Show(this, $"현재 인상 추천을 적용할 수 없습니다.\n{initial.Reason}\n" +
+                "추적 기준가가 경쟁 추천가보다 높은 경우에는 디스코드 판매 시세를 보고 통합 편집에서 직접 낮출 수 있습니다.",
                 "추천 보류", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -380,8 +377,8 @@ internal sealed partial class MainForm
         dialog.Controls.Add(new Label
         {
             Left = 21, Top = 16, Width = 815, Height = 86,
-            Text = $"추천가 {priceText}원  |  추적 기준가 {selectedMarket.MyPrice:N0}원  |  신뢰 {initial.Confidence}\n" +
-                   $"독립 {selectedMarket.Distinct}그룹 / {selectedMarket.Total}건 · 중앙값 {selectedMarket.Median:N0}원 · 일반 최고가 {selectedMarket.NormalMax:N0}원\n" +
+            Text = $"추천가 {priceText}원  |  추적 기준가 {selectedMarket.MyPrice:N0}원  |  {initial.Confidence}\n" +
+                   $"경쟁 최고가 {selectedMarket.CompetitorHighest:N0}원 + {(selectedMarket.Level == "10" ? "1,000" : "100")}원 · 디스코드 판매 시세와 마진은 직접 확인하세요.\n" +
                    "적용할 정확한 본인 구매글만 체크하세요. 처음에는 아무것도 선택하지 않습니다.",
             ForeColor = UiTheme.Text, Font = new Font(Font, FontStyle.Regular)
         });
@@ -397,7 +394,7 @@ internal sealed partial class MainForm
         dialog.Controls.Add(new Label
         {
             Left = 21, Top = 402, Width = 815, Height = 40,
-            Text = "⚠ 이미 예약된 가격·진행 중인 확인 대기 글은 덮어쓰지 않습니다.\n" +
+            Text = "⚠ 높은 경쟁가를 따라가면 마진이 줄 수 있습니다. 디스코드 시세를 확인하고 승인하세요.\n" +
                    "   승인 시 로컬 가격만 저장하고, 각 글의 다음 자동등록 순번에 사이트 가격을 수정합니다.",
             ForeColor = UiTheme.Muted
         });
@@ -430,7 +427,7 @@ internal sealed partial class MainForm
                 !MarketPriceAdvisor.SafeBuyPriceIncrease(currentPrice, proposedPrice)))
             {
                 MessageBox.Show(dialog,
-                    "선택한 글 중 이미 가격 변경이 예약됐거나, 가격이 바뀌었거나, 게시글별 인상폭이 5%를 넘는 글이 있습니다.\n" +
+                    "선택한 글 중 이미 가격 변경이 예약됐거나, 가격이 바뀌었거나, 현재가가 추천가 이상인 글이 있습니다.\n" +
                     "해당 글은 체크 해제하고 다시 검토하세요. 기존 예약을 덮어쓰거나 가격을 내리지 않습니다.",
                     "게시글 가격 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -496,7 +493,7 @@ internal sealed partial class MainForm
         }
         if (_marketSnapshot is null)
         {
-            _marketConnection.Text = "자동 연결 대기 · Firefox Gem Tracker v2.8.9.4 이상 필요";
+            _marketConnection.Text = "자동 연결 대기 · Firefox Gem Tracker v2.8.9.5 이상 필요";
             _marketConnection.ForeColor = UiTheme.Warning;
             _marketSummary.Text = "연결 코드 입력 불필요 · Firefox 구매 목록에서 추적기 실행 → 다음 정상 시세 검사 후 자동 표시 · 자동등록과 무관";
             return;
@@ -507,8 +504,7 @@ internal sealed partial class MainForm
             $"연결됨 · 마지막 수신 {_marketReceivedUtc.ToLocalTime():HH:mm:ss}";
         _marketConnection.ForeColor = stale ? UiTheme.Warning : UiTheme.Success;
         _marketSummary.Text =
-            $"관측 구매글 {_marketSnapshot.EligiblePosts:N0}건 · 서버/레벨 {_marketSnapshot.Rows.Count:N0}조합" +
-            $" · 고가 분리 {_marketSnapshot.Rows.Sum(row => row.HighCount):N0}건" +
+            $"관측 구매글 {_marketSnapshot.EligiblePosts:N0}건 · 경쟁 서버/레벨 {_marketSnapshot.Rows.Count:N0}조합 · 확인된 내 글은 경쟁 최고가에서 제외" +
             (stale ? " · ⚠ 현재 실시간 시세가 아닙니다. Firefox를 확인하세요." : " · 추적기 주기에 맞춰 관측");
     }
 }

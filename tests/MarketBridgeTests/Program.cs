@@ -59,7 +59,8 @@ string payload = JsonSerializer.Serialize(new
     ownPosts = 2,
     rows = new[]
     {
-        new { server = "카마인", level = "10", highest = 97000, median = 93000,
+        new { server = "카마인", level = "10", highest = 97000,
+            competitorHighest = 97000, median = 93000,
             normalMax = 96000, myPrice = 94000, distinct = 12, total = 19,
             highCount = 1, basis = "자동" }
     }
@@ -84,12 +85,15 @@ if (await SendAsync("{malformed", secret) != HttpStatusCode.UnprocessableEntity)
     throw new Exception("Malformed JSON was not rejected.");
 if (await SendAsync(payload.Replace("\"level\":\"10\"", "\"level\":\"42\""), secret) != HttpStatusCode.UnprocessableEntity)
     throw new Exception("Invalid gem level was not rejected.");
+if (await SendAsync(payload.Replace("\"competitorHighest\":97000", "\"competitorHighest\":98000"), secret) != HttpStatusCode.UnprocessableEntity)
+    throw new Exception("Competitor highest must not exceed the verified market highest.");
 
 if (await SendAsync(payload, pairedToken) != HttpStatusCode.NoContent)
     throw new Exception("Verified local market observation was not accepted.");
 MarketBridgeSnapshot actual = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
 if (actual.Rows.Count != 1 || actual.Rows[0].Server != "카마인" ||
-    actual.Rows[0].Highest != 97000 || actual.Rows[0].MyPrice != 94000)
+    actual.Rows[0].Highest != 97000 || actual.Rows[0].CompetitorHighest != 97000 ||
+    actual.Rows[0].MyPrice != 94000)
     throw new Exception("Aggregated market fields changed in transit.");
 
 Console.WriteLine("PASS VANTA automatic loopback-only pairing, CORS rejection, and read-only authenticated market payload");
