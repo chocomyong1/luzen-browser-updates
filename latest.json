@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.82",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.82/LuzenBrowser_22.2.82_BinaryUpdate.zip",
-  "sha256": "d475fb5c69359fd731384bbaa0baf8364728219ec7e73a543afc047f939262ca",
+  "version": "22.2.83",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.83/LuzenBrowser_22.2.83_BinaryUpdate.zip",
+  "sha256": "3d9c44d8e0f2eebeafa5ca935cc79fd656706ba336c871e8dffbb87e437f53dc",
   "format": "binary",
-  "releaseNotes": "v22.2.82 VANTA 리브랜딩: 새 이름·민트 V 아이콘·다크 화면 적용. 기존 업데이트 서버·실행 파일 이름·계정·A/B/C 등록 목록·자동등록 순서는 유지합니다."
+  "releaseNotes": "v22.2.83 VANTA 다크 테마 가독성 수정: A/B/C 통합 편집 표의 헤더·전체 행·교차 행·선택 행에 다크 배경과 선명한 글자색을 적용했습니다. 기존 등록·로그인·자동업데이트는 유지됩니다."
 }
