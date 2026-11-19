@@ -76,6 +76,7 @@ internal sealed partial class MainForm
     private void ToggleIntegratedEditor()
     {
         if (_integratedVisible) { DisableIntegratedEditor(); return; }
+        if (_marketVisible) DisableMarketView();
         if (_splitActive) DisableSplitView();
         EnableIntegratedEditor();
     }

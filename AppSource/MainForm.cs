@@ -98,6 +98,7 @@ internal sealed partial class MainForm : Form
         Controls.Add(footer);
         Controls.Add(_importProgressBanner);
         Controls.Add(top);
+        StartMarketBridge();
 
         Shown += (_, _) =>
         {
@@ -131,7 +132,7 @@ internal sealed partial class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { CancelBootBRetry(); StopTelegramStatusPolling(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _importProgressDismiss.Stop(); _importProgressClock.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
+        FormClosing += (_, _) => { CancelBootBRetry(); StopTelegramStatusPolling(); _marketStatusTimer.Stop(); _marketBridge?.Dispose(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _importProgressDismiss.Stop(); _importProgressClock.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
     private bool CanInstallUpdateAcrossSystems =>
@@ -141,7 +142,8 @@ internal sealed partial class MainForm : Form
     {
         if (_systemPicker is not null)
             _systemPicker.Text = _activeSystem == "A" ? "A 기본 ▾" : $"{_activeSystem} VPN ▾";
-        _accountInfo.Text = _integratedVisible ? "A/B/C 통합 물품 편집   " :
+        _accountInfo.Text = _marketVisible ? "시세 분석 · 읽기 전용   " :
+            _integratedVisible ? "A/B/C 통합 물품 편집   " :
             _splitActive ? $"A+B 동시 현황 · 선택 {_activeSystem}   " :
             $"시스템 {_activeSystem} · 계정별 분리   ";
     }
@@ -199,6 +201,7 @@ internal sealed partial class MainForm : Form
             _systemCShown = true;
         }
         if (_integratedVisible) DisableIntegratedEditor();
+        if (_marketVisible) DisableMarketView();
         if (_splitActive && system is ("A" or "B"))
         {
             SelectSplitSystem(system);
@@ -246,6 +249,7 @@ internal sealed partial class MainForm : Form
         AddToolButton(bar, "즉시 중지", StopSelectedSystems, 93, UiTheme.ButtonTone.Danger);
         _splitButton = AddToolButton(bar, "스플릿", () => _ = ToggleSplitViewAsync(), 88);
         _integratedButton = AddToolButton(bar, "통합 편집", ToggleIntegratedEditor, 105);
+        _marketButton = AddToolButton(bar, "시세 분석", ToggleMarketView, 96);
         var moreMenu = new ContextMenuStrip();
         moreMenu.Items.Add(BuildWindowsStartupMenu());
         moreMenu.Items.Add(BuildAutoStartTargetsMenu());
@@ -305,6 +309,7 @@ internal sealed partial class MainForm : Form
 
     private void AddNewListing(string operation)
     {
+        if (_marketVisible) DisableMarketView();
         _module.SelectRegistrationMode(operation);
         _module.AddListing();
         _status.Text = $"  시스템 {_activeSystem} · 새 {operation} 물품 편집";
