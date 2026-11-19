@@ -120,6 +120,12 @@ internal static class UiTheme
         }
         foreach (Control child in parent.Controls)
         {
+            if (child is DataGridView or RichTextBox or ScrollBar ||
+                child is ScrollableControl { AutoScroll: true } ||
+                child is TextBox { Multiline: true, ScrollBars: not ScrollBars.None })
+            {
+                DarkScrollbarTheme.Attach(child);
+            }
             switch (child)
             {
                 case Panel panel when panel.BackColor == Color.White:

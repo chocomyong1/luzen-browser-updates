@@ -240,6 +240,7 @@ internal sealed partial class MainForm
             AllowUserToResizeRows = false, ColumnHeadersHeight = 37,
             RowTemplate = { Height = 30 }
         };
+        DarkScrollbarTheme.Attach(_integratedGrid);
         _integratedGrid.Columns.Add(new DataGridViewCheckBoxColumn
         {
             Name = "Selected", HeaderText = "선택", DataPropertyName = "Selected", Width = 54,
