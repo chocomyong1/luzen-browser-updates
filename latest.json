@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.81",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.81/LuzenBrowser_22.2.81_BinaryUpdate.zip",
-  "sha256": "e6f97dfccbfeded8d51d5ec547eb2df7859c554684ee966355f42ed367331a6e",
+  "version": "22.2.82",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.82/LuzenBrowser_22.2.82_BinaryUpdate.zip",
+  "sha256": "d475fb5c69359fd731384bbaa0baf8364728219ec7e73a543afc047f939262ca",
   "format": "binary",
-  "releaseNotes": "v22.2.81 내 등록글 불러오기 진행 상태 개선: A/B/C 어느 화면에서도 상단에 조회 단계·페이지 수·상세정보 확인 건수·경과 시간·완료/실패 이유를 표시합니다. 불러오기 예약 대기 상태도 알 수 있으며 조회 취소 버튼으로 안전하게 중단합니다. 조회는 읽기 전용으로 유지하고 등록·재등록 제출은 하지 않습니다."
+  "releaseNotes": "v22.2.82 VANTA 리브랜딩: 새 이름·민트 V 아이콘·다크 화면 적용. 기존 업데이트 서버·실행 파일 이름·계정·A/B/C 등록 목록·자동등록 순서는 유지합니다."
 }
