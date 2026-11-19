@@ -18,7 +18,7 @@ assert.match(screen, /"통합 편집 열기"/);
 assert.match(screen, /추적기 자동 연결/);
 assert.match(screen, /연결 코드 입력 불필요/);
 assert.doesNotMatch(screen, /CopyMarketPairingToken|Clipboard\.SetText|Tampermonkey 'VANTA 연결 코드 설정'/);
-assert.match(screen, /실제 사이트 변경은 각 글의 다음 정상 순번에만 시도합니다/);
+assert.match(screen, /개별 승인 후 그 게시글의 다음 정상 순번에만 반영됩니다/);
 assert.match(screen, /TimeSpan age = DateTime\.UtcNow - _marketReceivedUtc/);
 assert.match(screen, /stale = age\.TotalSeconds > 120/);
 assert.match(integrated, /if \(_marketVisible\) DisableMarketView\(\)/);
