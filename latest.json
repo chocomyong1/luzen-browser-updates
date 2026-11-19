@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.77",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.77/LuzenBrowser_22.2.77_BinaryUpdate.zip",
-  "sha256": "dcd4b5cdacf8bc0ec0f4eaa2f70def942c800990ba4416b3500e234ee2cebdc8",
+  "version": "22.2.78",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.78/LuzenBrowser_22.2.78_BinaryUpdate.zip",
+  "sha256": "f2af71a0fcd6d64004449b7b9a49373e4fb3080b09c35bd6fcb65e6efd13f75a",
   "format": "binary",
-  "releaseNotes": "v22.2.77 재등록 버튼을 누른 뒤 사이트에서 로그인 후 이용해주세요 안내를 표시하면 해당 글의 결과 확인 보류를 유지하고, 해당 시스템의 다른 물품 제출도 잠시 중단합니다. 자동 로그인 재시도 제한을 안전하게 초기화한 다음 아이템매니아 본인 관리목록을 읽기 전용으로 다시 확인한 경우에만 다음 정상 순번부터 재개합니다. B VPN 독립 경로와 A/C 작업은 분리해 유지합니다. 기존 WARP 자동 복구와 텔레그램 현황 조회도 유지합니다."
+  "releaseNotes": "v22.2.78 텔레그램 오류 알림 채널과 개인 현황 조회 채팅을 분리했습니다. B VPN·로그인·관리목록의 일시적인 오류는 즉시 알리지 않고 읽기 전용 복구 확인이 2회 연속 실패했을 때만 알립니다. 반복 장애는 15분 내 한 번으로 묶고, 알림을 짧게 정리해 제출 전 대기와 제출 결과 확인 필요를 구분합니다. 기존 A/B/C 자동등록 및 제출 안전장치는 그대로 유지합니다."
 }
