@@ -30,7 +30,8 @@ internal sealed partial class MainForm
         _telegramStatusPolling = true;
         try
         {
-            var (token, chatId) = TelegramQuotaAlerts.Load();
+            var (token, _) = TelegramQuotaAlerts.Load();
+            string chatId = TelegramQuotaAlerts.LoadStatusChatId();
             if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(chatId)) return;
             int commands = await _telegramStatusReceiver.ReadStatusRequestsAsync(token, chatId);
             if (IsDisposed || Disposing) return;

@@ -2357,6 +2357,7 @@ internal sealed partial class AutomationForm : Form
                 }
                 return;
             }
+        ConnectionRecoverySucceeded(); // New run starts a fresh alert incident.
         _schedulerRunning = true; _timer.Start();
         _nextPendingReviewUtc = DateTime.UtcNow.AddSeconds(15);
         // Old builds scheduled each item at a fixed 30-minute interval. Hourly
@@ -2383,6 +2384,7 @@ internal sealed partial class AutomationForm : Form
     private void PauseScheduler()
     {
         _schedulerRunning = false; _timer.Stop();
+        ConnectionRecoverySucceeded();
         _ownedListRecoveryRun?.Cancel();
         _pendingReviewRun?.Cancel();
         _state.Text = "일시정지"; _state.ForeColor = Color.DarkGoldenrod; RefreshAutoSummary();
@@ -2395,6 +2397,7 @@ internal sealed partial class AutomationForm : Form
     {
         _sitePriceBatchCancellation?.Cancel();
         _schedulerRunning = false; _timer.Stop();
+        ConnectionRecoverySucceeded();
         _ownedListRecoveryRun?.Cancel();
         _pendingReviewRun?.Cancel();
         if (!_submissionVerificationPending) _currentRun?.Cancel();
@@ -2451,20 +2454,33 @@ internal sealed partial class AutomationForm : Form
             try
             {
                 if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
+                {
                     AppendLog($"{_system} 로그인 복구: 독립 IP 미확인, 제출 보류 유지");
+                    if (_schedulerRunning)
+                        ConnectionRecoveryProbeFailed("login", _system == "B" ? "B VPN 연결 장애" : "사이트 로그인 복구 대기",
+                            "독립 IP 검증이 완료되지 않았습니다.");
+                }
                 else if (await VerifyOwnedListReadableAsync(loginCheck.Token) && _schedulerRunning)
                 {
                     _loginRecoveryPauseUntilUtc = DateTime.MinValue;
+                    ConnectionRecoverySucceeded();
                     AppendLog($"{_system} 사이트 로그인과 본인 관리목록을 다시 확인했습니다. 다음 정상 순번부터 실행합니다.");
                 }
                 else if (_schedulerRunning)
+                {
                     AppendLog($"{_system} 사이트 로그인 확인이 끝나지 않았습니다. 2분 후 읽기 전용 재확인합니다. 제출 없음.");
+                    ConnectionRecoveryProbeFailed("login", "사이트 로그인 복구 대기", "로그인한 관리목록 표시를 확인하지 못했습니다.");
+                }
             }
-            catch (OperationCanceledException) when (loginCheck.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (loginCheck.IsCancellationRequested)
+            {
+                if (_schedulerRunning)
+                    ConnectionRecoveryProbeFailed("login", "사이트 로그인 복구 대기", "관리목록 읽기 전용 검사가 시간 초과되었습니다.");
+            }
             catch (Exception ex)
             {
                 AppendLog($"{_system} 사이트 로그인 복구 확인 실패: {ex.GetType().Name}. 2분간 제출하지 않습니다.");
-                if (_schedulerRunning) NotifyAutomationIssue("사이트 로그인 복구 대기", ex.Message);
+                if (_schedulerRunning) ConnectionRecoveryProbeFailed("login", "사이트 로그인 복구 대기", ex.Message);
             }
             finally
             {
@@ -2504,17 +2520,25 @@ internal sealed partial class AutomationForm : Form
                 if (await VerifyOwnedListReadableAsync(check.Token) && _schedulerRunning)
                 {
                     _bConnectionRecoveryUtc = DateTime.MinValue;
+                    ConnectionRecoverySucceeded();
                     AppendLog("B VPN 독립 IP와 본인 관리목록 표시를 모두 확인했습니다. 다음 정상 순번부터 재개합니다.");
                 }
                 else if (_schedulerRunning)
+                {
                     AppendLog("B VPN IP는 확인됐지만 관리목록이 표시되지 않아 2분 더 대기합니다. 제출 없음.");
+                    ConnectionRecoveryProbeFailed("B VPN", "B VPN 접속 대기", "관리목록 표시를 확인하지 못했습니다.");
+                }
             }
-            catch (OperationCanceledException) when (check.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (check.IsCancellationRequested)
+            {
+                if (_schedulerRunning)
+                    ConnectionRecoveryProbeFailed("B VPN", "B VPN 연결 장애", "VPN·관리목록 복구 검사가 시간 초과되었습니다.");
+            }
             catch (Exception ex)
             {
                 AppendLog("B VPN 연결 재확인 실패: " + ex.GetType().Name +
                     ". B 작업은 2분간 대기하며 A 작업에는 영향을 주지 않습니다.");
-                if (_schedulerRunning) NotifyAutomationIssue("B VPN 연결 장애", ex.Message);
+                if (_schedulerRunning) ConnectionRecoveryProbeFailed("B VPN", "B VPN 연결 장애", ex.Message);
             }
             finally
             {
@@ -2535,16 +2559,24 @@ internal sealed partial class AutomationForm : Form
                 if (await VerifyOwnedListReadableAsync(check.Token) && _schedulerRunning)
                 {
                     _ownedListRecoveryUtc = DateTime.MinValue;
+                    ConnectionRecoverySucceeded();
                     AppendLog($"{_system} 본인 관리목록 복구 확인 완료. 다음 정상 순번부터 재개합니다.");
                 }
                 else if (_schedulerRunning)
+                {
                     AppendLog($"{_system} 관리목록이 아직 표시되지 않아 2분 더 대기합니다. 제출 없음.");
+                    ConnectionRecoveryProbeFailed("owned list", "관리목록 복구 대기", "본인 관리목록 표시를 확인하지 못했습니다.");
+                }
             }
-            catch (OperationCanceledException) when (check.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (check.IsCancellationRequested)
+            {
+                if (_schedulerRunning)
+                    ConnectionRecoveryProbeFailed("owned list", "관리목록 복구 대기", "관리목록 검사가 시간 초과되었습니다.");
+            }
             catch (Exception ex)
             {
                 AppendLog($"{_system} 관리목록 복구 재확인 실패: " + ex.GetType().Name + ". 2분 뒤 다시 확인합니다.");
-                if (_schedulerRunning) NotifyAutomationIssue("관리목록 복구 대기", ex.Message);
+                if (_schedulerRunning) ConnectionRecoveryProbeFailed("owned list", "관리목록 복구 대기", ex.Message);
             }
             finally
             {
@@ -3014,12 +3046,14 @@ internal sealed partial class AutomationForm : Form
             // submit click. It is neither a posting failure nor an ambiguous
             // result requiring review; retry after login has time to settle.
             _loginRecoveryPauseUntilUtc = DateTime.UtcNow.AddSeconds(30);
+            BeginConnectionRecovery("login");
             job.LastStatus = "로그인 전환 대기 (미제출)";
             job.NextDueUtc = _loginRecoveryPauseUntilUtc;
             AppendLog($"{_system} 로그인 복구 대기: {job.Server} · {job.ListingNumber} · " +
                 "등록 작업은 제출되지 않았습니다. 30초 후 자동 재시도합니다.");
             AppendLog("안내: 사이트 로그인이 완료되지 않으면 내 계정의 로그인 상태를 확인하세요. " + ex.Message);
-            if (_schedulerRunning) NotifyAutomationIssue("사이트 로그인 복구 대기", ex.Message, job);
+            // First transient login redirect is recorded locally; Telegram
+            // warns only after consecutive read-only recovery probes fail.
         }
         catch (OwnedListConnectivityPendingException ex) when (!submitted && _system != "B")
         {
@@ -3027,23 +3061,25 @@ internal sealed partial class AutomationForm : Form
             // failures across otherwise unrelated servers. Do not mark a
             // submission attempt, disable the job, or change its identity.
             _ownedListRecoveryUtc = DateTime.UtcNow.AddSeconds(90);
+            BeginConnectionRecovery("owned list");
             job.NextDueUtc = _ownedListRecoveryUtc;
             job.LastStatus = "관리목록 표시 복구 대기 (미제출)";
             AppendLog($"{_system} 관리목록 복구 대기: {job.Server} · {job.ListingNumber} · " + ex.Message);
             AppendLog($"{_system} 자동등록 전체를 90초 기다렸다가 본인 관리목록이 표시되는지 읽기 전용으로 검사합니다. 제출 없음.");
-            if (_schedulerRunning) NotifyAutomationIssue("관리목록 표시 복구 대기", ex.Message, job);
+            // Do not alert on a single unrendered management page.
         }
         catch (OwnedListConnectivityPendingException ex) when (!submitted && _system == "B")
         {
             // HTTP 0 or an unrendered own-list is not a failed submission.
             // Pause *all B jobs* before doing a read-only VPN/IP recheck.
             _bConnectionRecoveryUtc = DateTime.UtcNow.AddSeconds(90);
+            BeginConnectionRecovery("B VPN");
             job.NextDueUtc = _bConnectionRecoveryUtc;
             job.LastStatus = "B VPN·관리목록 연결 재확인 대기 (미제출)";
             AppendLog($"B VPN 접속 대기: {job.Server} · {job.ListingNumber} · " + ex.Message);
             AppendLog("B 자동등록 전체를 90초 대기한 뒤 VPN의 독립 IP를 재확인합니다. " +
                 "실제 재등록 요청은 하지 않았으며 A는 계속 실행됩니다.");
-            if (_schedulerRunning) NotifyAutomationIssue("B VPN 접속 대기", ex.Message, job);
+            // A short VPN/login handoff should not flood Telegram.
         }
         catch (OperationCanceledException)
         {
@@ -3078,6 +3114,7 @@ internal sealed partial class AutomationForm : Form
                 // state remains unproven. Stop other jobs until a fresh
                 // authenticated OWN-list read succeeds.
                 _loginRecoveryPauseUntilUtc = DateTime.UtcNow.AddSeconds(30);
+                BeginConnectionRecovery("login");
                 _autoLogin?.ResetAfterOfficialLoginRejection();
                 AppendLog($"{_system} 로그인 세션 거절 감지: 다른 물품 제출도 중단하고 30초 후 관리목록을 재검증합니다. " +
                     "해당 글은 등록시각 확인 전까지 다시 제출하지 않습니다.");
