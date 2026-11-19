@@ -9,8 +9,31 @@ using System.Windows.Forms;
 
 namespace LuzenBrowserReplica;
 
+internal enum MyListingsImportPhase { Queued, Running, Completed, Failed, Cancelled }
+
 internal sealed partial class AutomationForm
 {
+    public event Action<string, MyListingsImportPhase>? MyListingsImportProgress;
+
+    private void ReportMyListingsImport(string status, MyListingsImportPhase phase = MyListingsImportPhase.Running)
+        => MyListingsImportProgress?.Invoke(status, phase);
+
+    public void CancelMyListingsImportFromHeader()
+    {
+        if (_pendingMyListingsImport)
+        {
+            _pendingMyListingsImport = false;
+            AppendLog("사용자 요청으로 대기 중이던 내 등록글 조회를 취소했습니다.");
+            ReportMyListingsImport("조회 예약 취소 · 등록 작업은 그대로 유지", MyListingsImportPhase.Cancelled);
+            return;
+        }
+        if (!_myListingsImportRunning) return;
+        _myListingsImportCancellation?.Cancel();
+        // Only the read-only importer owns the WebView during this phase.
+        try { _web.CoreWebView2?.Stop(); } catch { }
+        ReportMyListingsImport("조회 취소 중 · 현재 페이지 중단 대기");
+    }
+
     private async Task<bool> CancelImportForManualRunAsync(string purpose = "수동 실행")
     {
         if (!_myListingsImportRunning) return true;
@@ -58,6 +81,7 @@ internal sealed partial class AutomationForm
         if (_myListingsImportRunning)
         {
             AppendLog("내 등록글 조회가 이미 진행 중입니다. 중복 실행하지 않습니다.");
+            ReportMyListingsImport("이미 조회 중 · 아래 진행 상태를 확인하세요");
             return;
         }
         // The button is also a safe pause-and-import request.
@@ -70,8 +94,13 @@ internal sealed partial class AutomationForm
                 _state.Text = "목록 조회 예약 (진행 작업 종료 대기)";
                 _state.ForeColor = Color.DarkGoldenrod;
                 AppendLog("내 등록글 자동 조회 예약: 진행 중인 등록/재등록 작업이 끝나면 자동으로 조회합니다. 다시 누를 필요 없습니다.");
+                ReportMyListingsImport("등록 작업 종료 대기 · 끝나면 자동으로 목록 조회", MyListingsImportPhase.Queued);
             }
-            else AppendLog("내 등록글 자동 조회는 이미 예약되어 있습니다.");
+            else
+            {
+                AppendLog("내 등록글 자동 조회는 이미 예약되어 있습니다.");
+                ReportMyListingsImport("이미 조회 예약됨 · 현재 등록 작업 종료 대기", MyListingsImportPhase.Queued);
+            }
             return;
         }
         SaveSelectedJob(false);
@@ -83,11 +112,14 @@ internal sealed partial class AutomationForm
         _myListingsImportCompletion = completion;
         _state.Text = "내 판매·구매 등록글 자동 조회 중";
         _state.ForeColor = Color.DarkBlue;
+        ReportMyListingsImport("시작 · 아이템매니아 판매·구매 관리목록 연결 중");
         try
         {
             AppendLog("내 등록글 자동 불러오기 시작: 아이템매니아의 판매·구매 관리 페이지를 직접 조회합니다.");
             var scan = await ReadMyListingsPagesAsync(cancellation.Token);
+            ReportMyListingsImport($"목록 {scan.PagesVisited}페이지 확인 · {scan.Records.Count}건 수집 · 상세정보 확인 중");
             await EnrichImportedListingDetailsAsync(scan, cancellation.Token);
+            ReportMyListingsImport($"상세 확인 완료 · {scan.Records.Count}건 · 제출 결과 대조 중");
             int reconciled = await ReconcilePendingRepostsAsync(cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             var records = scan.Records;
@@ -104,6 +136,8 @@ internal sealed partial class AutomationForm
                     ? $"아이템매니아 관리 페이지로 이동하지 못했습니다 ({scan.NavigationFailures}페이지). 내부 브라우저의 로그인 상태와 사이트 접속을 확인한 뒤 다시 시도하세요.\n마지막 이동 오류: {scan.LastNavigationError}"
                     : "아이템매니아 관리 페이지에서 물품 행을 읽지 못했습니다. 사이트 구조가 달라졌거나 현재 계정에 등록글이 없을 수 있습니다.";
                 AppendLog("내 등록글 자동 조회 실패: " + reason);
+                ReportMyListingsImport("조회 실패 · " + (scan.LoginRequired ? "사이트 로그인 필요" :
+                    scan.NavigationFailures > 0 ? "관리 페이지 이동 실패" : "물품 행 확인 불가"), MyListingsImportPhase.Failed);
                 MessageBox.Show(this,
                     reason + "\n\n판매·구매 관리 페이지 자동 조회: " + scan.PagesVisited + "페이지" +
                     "\n상세 결과는 아래 실행 로그에서 확인할 수 있습니다." +
@@ -130,6 +164,7 @@ internal sealed partial class AutomationForm
                 : "\n\n기존 등록번호와 일치하여 가격을 비교한 글이 없습니다.";
             if (plan.NewJobs.Count == 0 && plan.Updates.Count == 0)
             {
+                ReportMyListingsImport($"조회 완료 · {records.Count}건 확인 · 추가/변경 없음", MyListingsImportPhase.Completed);
                 MessageBox.Show(this,
                     $"판매·구매 등록글 {records.Count}건 확인\n" +
                     $"이미 목록에 있음: {plan.Duplicates}건 / 정보 부족: {plan.Invalid}건\n\n" +
@@ -156,8 +191,13 @@ internal sealed partial class AutomationForm
                 "등록번호·상세 URL·가격이 확인된 글은 불필요한 '확인 필요' 표시를 제거합니다.\n" +
                 "사이트에서 확인되지 않은 글과 제출 결과가 불분명한 글의 보류는 유지합니다.\n" +
                 "불러오기만으로 사이트에 등록 또는 재등록하지 않습니다.\n\n물품 목록에 추가할까요?";
+            ReportMyListingsImport($"{records.Count}건 확인 · 추가 {plan.NewJobs.Count} / 갱신 {plan.Updates.Count} · 적용 여부 확인 대기");
             if (MessageBox.Show(this, confirm, "기존 등록글 가져오기", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question) != DialogResult.Yes) return;
+                MessageBoxIcon.Question) != DialogResult.Yes)
+            {
+                ReportMyListingsImport("조회 완료 · 사용자 선택으로 변경하지 않음", MyListingsImportPhase.Completed);
+                return;
+            }
             foreach (var update in plan.Updates) update.Apply();
             foreach (var item in plan.NewJobs) _jobs.Add(item);
             // The editor may still contain the PRE-import empty values. Clear
@@ -171,16 +211,19 @@ internal sealed partial class AutomationForm
             RefreshFilteredLists(plan.NewJobs.FirstOrDefault()?.Id ?? plan.Updates.First().Target.Id);
             ShowItemRegistrationView();
             AppendLog($"내 등록글 자동 조회 완료: {plan.NewJobs.Count}건 추가 · {plan.Updates.Count}건 정보 보완·갱신 (가격 {priceChanges.Count}건) · {plan.Duplicates}건 중복 제외 · 재등록 결과 확인 {reconciled}건");
+            ReportMyListingsImport($"완료 · {plan.NewJobs.Count}건 추가 / {plan.Updates.Count}건 갱신 (가격 {priceChanges.Count}건)", MyListingsImportPhase.Completed);
             if (!scan.CompletedAllPages)
                 AppendLog("주의: 일부 페이지를 읽지 못했거나 페이지 제한에 도달했습니다. 모든 등록글을 확인했다고 판단하지 마세요.");
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
             AppendLog("내 등록글 조회 취소 완료. 진행 중이던 조회만 중단했으며 기존 물품 데이터는 유지됩니다.");
+            ReportMyListingsImport("조회 취소 완료 · 저장된 물품 유지", MyListingsImportPhase.Cancelled);
         }
         catch (Exception ex)
         {
             AppendLog("등록글 자동 조회 실패: " + ex.GetType().Name + " / " + ex.Message);
+            ReportMyListingsImport("조회 실패 · " + ex.GetType().Name + " · 실행 기록 확인", MyListingsImportPhase.Failed);
             MessageBox.Show(this,
                 "등록글 자동 조회에 실패했습니다. 로그인된 아이템매니아 계정 또는 사이트 구조를 확인하세요.\n\n" + ex.Message,
                 "내 등록글 자동 조회", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -282,6 +325,7 @@ internal sealed partial class AutomationForm
             {
                 AppendLog("내 등록글 조회: " + (MyListingsImport.IsSellListUrl(url) ? "판매" : "구매") + " 목록 " + result.PagesVisited + "페이지");
                 _state.Text = $"내 등록글 조회 중 · {result.PagesVisited}페이지";
+                ReportMyListingsImport($"{(MyListingsImport.IsSellListUrl(url) ? "판매" : "구매")} 목록 {result.PagesVisited}페이지 연결 중 · 누적 {result.Records.Count}건");
                 await NavigateOwnedListAsync(url, token);
                 navigated = true;
                 ExistingListingPage page = new();
@@ -300,6 +344,7 @@ internal sealed partial class AutomationForm
                     result.LoginRequired = true;
                     result.CompletedAllPages = false;
                     AppendLog("관리 페이지에 로그인 필요 표시가 있습니다. 자동 로그인 상태를 한 번 더 확인합니다.");
+                    ReportMyListingsImport("사이트 로그인 확인 대기 · 연결 후 다시 조회");
                     if (retriedLogin.Add(url))
                     {
                         // Auto-login listens for page navigation; allow its
@@ -326,6 +371,7 @@ internal sealed partial class AutomationForm
                         : record.ListingUrl.Trim();
                     if (id.Length > 0 && ids.Add(id)) result.Records.Add(record);
                 }
+                ReportMyListingsImport($"목록 {result.PagesVisited}페이지 검사 · 누적 {result.Records.Count}건 수집");
                 foreach (var next in page.NextPageUrls.Take(30))
                     if (MyListingsImport.IsOwnedListUrl(next) && !seen.Contains(next)) urls.Enqueue(next);
             }
@@ -339,6 +385,7 @@ internal sealed partial class AutomationForm
                     result.LastNavigationError = ex.Message;
                 }
                 AppendLog("내 등록글 페이지 조회 오류: " + ex.GetType().Name + " / " + ex.Message);
+                ReportMyListingsImport($"페이지 {result.PagesVisited} 조회 오류 · 다음 목록 계속 확인 중");
             }
         }
         if (urls.Count > 0)
@@ -387,6 +434,7 @@ internal sealed partial class AutomationForm
             try
             {
                 _state.Text = $"내 등록글 상세 확인 중 · {offset + 1}/{batchSize}";
+                ReportMyListingsImport($"상세정보 확인 {offset + 1}/{batchSize}건 · 수집 {scan.Records.Count}건");
                 var detail = new ExistingListingRecord();
                 bool identityMatched = false;
                 // A visible detail page often omits the character/description

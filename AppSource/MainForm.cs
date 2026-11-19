@@ -81,6 +81,7 @@ internal sealed partial class MainForm : Form
         };
         _moduleB.ShareSiteQuotaWith(_moduleA);
         _moduleC.ShareSiteQuotaWith(_moduleA);
+        InitializeMyListingsProgressBanner();
 
         var top = BuildToolbar();
         var body = _workspaceBody;
@@ -94,6 +95,7 @@ internal sealed partial class MainForm : Form
         footer.Controls.Add(_accountInfo);
         Controls.Add(body);
         Controls.Add(footer);
+        Controls.Add(_importProgressBanner);
         Controls.Add(top);
 
         Shown += (_, _) =>
@@ -128,7 +130,7 @@ internal sealed partial class MainForm : Form
                 DateTime.UtcNow - _lastUpdateCheckUtc >= TimeSpan.FromHours(6))
                 await CheckForUpdateAsync(automatic: true);
         };
-        FormClosing += (_, _) => { CancelBootBRetry(); StopTelegramStatusPolling(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
+        FormClosing += (_, _) => { CancelBootBRetry(); StopTelegramStatusPolling(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _importProgressDismiss.Stop(); _importProgressClock.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
     private bool CanInstallUpdateAcrossSystems =>
@@ -252,8 +254,15 @@ internal sealed partial class MainForm : Form
         moreMenu.Items.Add(BuildWindowsStartupMenu());
         moreMenu.Items.Add(BuildAutoStartTargetsMenu());
         moreMenu.Items.Add(new ToolStripSeparator());
-        moreMenu.Items.Add("내 등록글 불러오기", null,
-            (_, _) => _ = _module.ImportMyRegisteredListingsFromHeaderAsync());
+        moreMenu.Items.Add("내 등록글 불러오기", null, async (_, _) =>
+        {
+            try { await _module.ImportMyRegisteredListingsFromHeaderAsync(); }
+            catch (Exception ex)
+            {
+                UpdateMyListingsProgress(_activeSystem, "조회 시작 실패 · " + ex.GetType().Name,
+                    MyListingsImportPhase.Failed);
+            }
+        });
         moreMenu.Items.Add(new ToolStripSeparator());
         var addSubmenu = new ToolStripMenuItem("새 물품 추가");
         addSubmenu.DropDownItems.Add("판매글 추가", null, (_, _) => AddNewListing("판매등록"));
