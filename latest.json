@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.79",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.79/LuzenBrowser_22.2.79_BinaryUpdate.zip",
-  "sha256": "46b7fb99c75b43dcaab5df47ee016ee0853d059f4e8d814db56c9471bd075cc2",
+  "version": "22.2.80",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.80/LuzenBrowser_22.2.80_BinaryUpdate.zip",
+  "sha256": "3d93095756bf44a6c91c8216392fc00985edeffa5e50ccc1cc5c06b74c15b163",
   "format": "binary",
-  "releaseNotes": "v22.2.79 B 자동등록 관리목록 연결 안정화: 페이지 주소뿐 아니라 실제 물품 목록이 연속 2회 표시됐는지 확인한 뒤 진행합니다. 로그인 화면으로 돌아간 경우를 VPN 전송 오류와 구분하고, 자동 로그인 재시도 대기를 안전하게 단축했습니다. 실제 네트워크 장애일 때만 WARP 복구를 실행하고 기존 A/B/C 독립 경로와 미제출·중복 등록 방지 절차를 유지합니다."
+  "releaseNotes": "v22.2.80 자동등록 사이트 시각 안전 감시: 확인된 등록번호·제목의 사이트 시각이 로컬 성공 기록과 두 번 어긋난 물품만 보류하며 자동 재제출하지 않습니다. A/B/C 설정을 일일 및 업데이트 전에 로컬 백업하고, 관리 메뉴에서 복원 예약을 지원합니다. 복원 후에는 자동등록을 끄고 사이트 확인을 요구합니다. 텔레그램 알림 중복 방지와 기존 VPN·로그인 복구는 유지합니다."
 }
