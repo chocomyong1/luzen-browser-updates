@@ -130,6 +130,23 @@ internal sealed class MarketBridgeServer : IDisposable
                 { await RespondAsync(stream, 431, "Headers Too Large", deadline.Token); return; }
 
                 string[] lines = Encoding.ASCII.GetString(buffer, 0, headerEnd).Split("\r\n");
+                // Tampermonkey pairs itself with the already-running VANTA instance.
+                // A custom header prevents ordinary websites from reading the secret:
+                // browser fetch would need a CORS preflight, which we never allow.
+                // Only the loopback host is accepted (also protects against DNS rebinding).
+                if (lines.Length > 0 && lines[0] == "GET /pair HTTP/1.1")
+                {
+                    if (Header(lines, "X-Vanta-Client") != "gem-tracker" ||
+                        Header(lines, "Host") != $"127.0.0.1:{ListeningPort}")
+                    { await RespondAsync(stream, 403, "Forbidden", deadline.Token); return; }
+                    byte[] body = JsonSerializer.SerializeToUtf8Bytes(new { protocol = 1, token = _token });
+                    byte[] response = Encoding.ASCII.GetBytes(
+                        $"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n" +
+                        $"Content-Length: {body.Length}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n");
+                    await stream.WriteAsync(response.AsMemory(), deadline.Token);
+                    await stream.WriteAsync(body.AsMemory(), deadline.Token);
+                    return;
+                }
                 if (lines.Length == 0 || lines[0] != "POST /market HTTP/1.1")
                 { await RespondAsync(stream, 404, "Not Found", deadline.Token); return; }
                 string? lengthHeader = Header(lines, "Content-Length");

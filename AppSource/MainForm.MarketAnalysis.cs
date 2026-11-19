@@ -12,7 +12,6 @@ internal sealed partial class MainForm
     private MarketBridgeServer? _marketBridge;
     private MarketBridgeSnapshot? _marketSnapshot;
     private DateTime _marketReceivedUtc = DateTime.MinValue;
-    private string _marketPairingToken = "";
     private string _marketBridgeError = "";
     private bool _marketVisible;
     private Panel? _marketView;
@@ -28,9 +27,9 @@ internal sealed partial class MainForm
     {
         try
         {
-            _marketPairingToken = MarketBridgeServer.LoadOrCreateToken(
+            string localToken = MarketBridgeServer.LoadOrCreateToken(
                 Path.Combine(Settings.UserDirectory, "vanta-market-bridge-token.txt"));
-            _marketBridge = new MarketBridgeServer(_marketPairingToken);
+            _marketBridge = new MarketBridgeServer(localToken);
             _marketBridge.SnapshotReceived += snapshot =>
             {
                 if (IsDisposed || Disposing || !IsHandleCreated) return;
@@ -160,7 +159,8 @@ internal sealed partial class MainForm
         _marketLevelFilter.SelectedIndex = 0;
         _marketLevelFilter.SelectedIndexChanged += (_, _) => RefreshMarketGrid();
         filters.Controls.Add(_marketLevelFilter);
-        filters.Controls.Add(IntegratedButton("연동 코드 복사", 145, CopyMarketPairingToken, primary: true));
+        filters.Controls.Add(new Label { Text = "● 추적기 자동 연결", AutoSize = true,
+            Padding = new Padding(8, 9, 12, 0), ForeColor = UiTheme.Success });
         filters.Controls.Add(IntegratedButton("통합 편집 열기", 143, () =>
         {
             DisableMarketView();
@@ -243,32 +243,6 @@ internal sealed partial class MainForm
         view.Visible = false;
     }
 
-    private void CopyMarketPairingToken()
-    {
-        if (_marketBridge is null || _marketPairingToken.Length != 64)
-        {
-            MessageBox.Show(this, "로컬 시세 연결 서버가 시작되지 않았습니다. 프로그램을 다시 실행해 주세요.",
-                "연동 코드 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-        try
-        {
-            Clipboard.SetText(_marketPairingToken);
-            MessageBox.Show(this,
-                "VANTA 연동 코드를 복사했어.\n\n" +
-                "1. Firefox의 아이템매니아 구매 목록 페이지를 엽니다.\n" +
-                "2. Tampermonkey 메뉴에서 'VANTA 연결 코드 설정'을 선택합니다.\n" +
-                "3. 복사한 코드를 붙여넣고 확인하세요.\n\n" +
-                "Gem Tracker v2.8.9.3 이상이 필요합니다. 이 코드는 다른 사람에게 공유하지 마세요.",
-                "시세 추적기 연결", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "클립보드 복사 실패: " + ex.GetType().Name,
-                "연동 코드 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-    }
-
     private void RefreshMarketFilters()
     {
         if (_marketServerFilter is null || _marketSnapshot is null) return;
@@ -327,9 +301,9 @@ internal sealed partial class MainForm
         }
         if (_marketSnapshot is null)
         {
-            _marketConnection.Text = "연동 대기 · Firefox Gem Tracker v2.8.9.3 이상 필요";
+            _marketConnection.Text = "자동 연결 대기 · Firefox Gem Tracker v2.8.9.4 이상 필요";
             _marketConnection.ForeColor = UiTheme.Warning;
-            _marketSummary.Text = "연동 코드 복사 → Tampermonkey 'VANTA 연결 코드 설정'에서 붙여넣기 · 로그인/자동등록과 무관";
+            _marketSummary.Text = "연결 코드 입력 불필요 · Firefox 구매 목록에서 추적기 실행 → 다음 정상 시세 검사 후 자동 표시 · 자동등록과 무관";
             return;
         }
         TimeSpan age = DateTime.UtcNow - _marketReceivedUtc;
