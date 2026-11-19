@@ -160,15 +160,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.2.85'
+          $version = '22.2.86'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.2.85
-          path: LuzenBrowser_22.2.85_BinaryUpdate.zip
+          name: vanta-windows-v22.2.86
+          path: LuzenBrowser_22.2.86_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -176,7 +176,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.2.85'
+          $version = '22.2.86'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -188,7 +188,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.2.85 VANTA 로스트아크 보석 시세 분석 탭 추가: Firefox Gem Tracker v2.8.9.3의 서버별 구매 시세 요약을 로컬 연결 코드로 받아 표시합니다. Gem Tracker 스크립트 별도 1회 업데이트 및 연동 코드 등록 필요. 사이트 가격은 다음 등록 순번에만 변경하며 기존 자동등록/텔레그램 알림은 유지됩니다.'
+            releaseNotes = 'v22.2.86 시세 추적기 자동 연결: Firefox Gem Tracker v2.8.9.4 이상이 실행되면 같은 PC의 VANTA와 연결 코드를 입력하지 않고 자동으로 연동합니다. Gem Tracker 스크립트는 별도 1회 업데이트가 필요합니다. 시세 관측은 읽기 전용이며 사이트 가격은 기존처럼 다음 등록 순번에만 변경됩니다. 기존 자동등록과 텔레그램 알림은 유지됩니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
