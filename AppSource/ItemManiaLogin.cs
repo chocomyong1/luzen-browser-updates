@@ -176,6 +176,17 @@ internal sealed class ItemManiaAutoLogin : IDisposable
         _lastOpenLoginUtc = DateTime.MinValue;
     }
 
+    // A verified redirect away from MY registered listings proves that the
+    // login state needs checking. The normal ten-minute submit throttle is
+    // too long for an expired session, but never retry bad credentials in a
+    // rapid loop: leave at least two minutes after a real login form submit.
+    public void ObserveOwnedListLoginRedirect()
+    {
+        if (DateTime.UtcNow - _lastAttemptUtc >= TimeSpan.FromMinutes(2))
+            _lastAttemptUtc = DateTime.MinValue;
+        // Keep the existing homepage/login-link throttle in place.
+    }
+
     public async Task WaitForLoginNavigationAsync(CancellationToken token)
     {
         DateTime deadline = DateTime.UtcNow.AddSeconds(18);

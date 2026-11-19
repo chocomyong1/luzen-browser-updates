@@ -501,7 +501,58 @@ internal sealed partial class AutomationForm
     // circuit-breaker and an independent proxy/IP recheck before more jobs.
     private sealed class OwnedListConnectivityPendingException : Exception
     {
-        public OwnedListConnectivityPendingException(string message) : base(message) { }
+        public bool TransportFailure { get; }
+        public OwnedListConnectivityPendingException(string message, bool transportFailure = false) : base(message)
+        {
+            TransportFailure = transportFailure;
+        }
+    }
+
+    // WebView2 navigation completion proves only that a document navigated.
+    // The site's managed-list DOM can still be loading or redirecting to
+    // login. Never treat the URL alone as a verified account/listing page.
+    private enum OwnedListPageReadiness { Ready, Redirected, NotRendered }
+
+    private async Task<OwnedListPageReadiness> WaitForOwnedListPageReadinessAsync(string url, CancellationToken token)
+    {
+        int verifiedReads = 0, wrongPageReads = 0;
+        for (int probe = 0; probe < 9; probe++)
+        {
+            token.ThrowIfCancellationRequested();
+            await Task.Delay(550, token);
+            if (_autoLogin?.IsLoginNavigationBusy == true)
+                await _autoLogin.WaitForLoginNavigationAsync(token);
+            try
+            {
+                string raw = await _web.CoreWebView2!.ExecuteScriptAsync(MyListingsImport.ExtractPageScript);
+                var page = MyListingsImport.DecodePage(raw);
+                bool correctPage = MyListingsImport.IsOwnedListUrl(page.PageUrl) &&
+                    MyListingsImport.IsSellListUrl(page.PageUrl) == MyListingsImport.IsSellListUrl(url);
+                if (page.LoginRequired) return OwnedListPageReadiness.Redirected;
+                if (!correctPage)
+                {
+                    verifiedReads = 0;
+                    if (++wrongPageReads >= 2) return OwnedListPageReadiness.Redirected;
+                    continue;
+                }
+                wrongPageReads = 0;
+                if (page.Listings.Count > 0 || page.IsEmptyList)
+                {
+                    // Require two consecutive DOM proofs; a short-lived URL
+                    // match during login navigation must never release a post.
+                    if (++verifiedReads >= 2) return OwnedListPageReadiness.Ready;
+                }
+                else verifiedReads = 0;
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception)
+            {
+                // A page transition can interrupt ExecuteScriptAsync. Wait
+                // for a stable document instead of treating it as VPN loss.
+                verifiedReads = 0;
+            }
+        }
+        return OwnedListPageReadiness.NotRendered;
     }
 
     private async Task NavigateOwnedListAsync(string url, CancellationToken token)
@@ -513,6 +564,7 @@ internal sealed partial class AutomationForm
         string lastError = "확인되지 않음";
         bool sawOfficialRedirect = false;
         bool sawTransportFailure = false;
+        bool sawUnrenderedList = false;
         // A different navigation (for example a login redirect) may finish
         // while the importer is waiting. Match Starting/Completed NavigationId
         // rather than accepting the first completion event from the WebView.
@@ -554,18 +606,35 @@ internal sealed partial class AutomationForm
                     if (!MyListingsImport.IsOfficialUrl(arrived))
                         throw new InvalidOperationException("조회 도중 공식 사이트를 벗어났습니다.");
                     if (expectOwnedList && MyListingsImport.IsOwnedListUrl(arrived) &&
-                        MyListingsImport.IsSellListUrl(arrived) == MyListingsImport.IsSellListUrl(url)) return;
+                        MyListingsImport.IsSellListUrl(arrived) == MyListingsImport.IsSellListUrl(url))
+                    {
+                        var readiness = await WaitForOwnedListPageReadinessAsync(url, token);
+                        if (readiness == OwnedListPageReadiness.Ready) return;
+                        if (readiness == OwnedListPageReadiness.Redirected)
+                        {
+                            sawOfficialRedirect = true;
+                            lastError = "관리목록이 로그인·시작 화면으로 전환됨 (미제출)";
+                        }
+                        else
+                        {
+                            sawUnrenderedList = true;
+                            lastError = "관리목록 주소는 열렸지만 물품 목록 표시가 완료되지 않음 (미제출)";
+                        }
+                    }
                     // A read-only detail probe needs to return to its exact
                     // official URL, not to a generic management/list page.
-                    if (!expectOwnedList && Uri.TryCreate(arrived, UriKind.Absolute, out var arrivedUri) &&
+                    else if (!expectOwnedList && Uri.TryCreate(arrived, UriKind.Absolute, out var arrivedUri) &&
                         Uri.TryCreate(url, UriKind.Absolute, out var requestedUri) &&
                         string.Equals(arrivedUri.GetLeftPart(UriPartial.Path), requestedUri.GetLeftPart(UriPartial.Path),
                             StringComparison.OrdinalIgnoreCase) &&
                         string.Equals(arrivedUri.Query, requestedUri.Query, StringComparison.Ordinal)) return;
-                    // A successful redirect to a login/home page is not a
-                    // successful navigation to the management list.
-                    sawOfficialRedirect = true;
-                    lastError = "관리목록 대신 로그인·시작 화면으로 이동함 (제출하지 않음)";
+                    else
+                    {
+                        // A successful redirect to a login/home page is not a
+                        // successful navigation to the management list.
+                        sawOfficialRedirect = true;
+                        lastError = "관리목록 대신 로그인·시작 화면으로 이동함 (제출하지 않음)";
+                    }
                 }
                 else
                 {
@@ -595,6 +664,7 @@ internal sealed partial class AutomationForm
                     // Let it submit and settle before navigating this WebView
                     // again; each retry stays strictly read-only.
                     AppendLog($"{_system} 로그인 전환 안정화 대기 (재등록 미제출)");
+                    _autoLogin.ObserveOwnedListLoginRedirect();
                     await _autoLogin.TryLoginAsync();
                     await Task.Delay(TimeSpan.FromSeconds(4), token);
                     try { await _autoLogin.WaitForLoginNavigationAsync(token); }
@@ -615,9 +685,10 @@ internal sealed partial class AutomationForm
         if (expectOwnedList && sawTransportFailure)
             throw new OwnedListConnectivityPendingException(
                 (_system == "B" ? "B VPN을 통한 " : _system + "의 ") +
-                "아이템매니아 관리목록 연결에 실패했습니다: " + lastError);
+                "아이템매니아 관리목록 연결에 실패했습니다: " + lastError, transportFailure: true);
         if (expectOwnedList)
             throw new OwnedListConnectivityPendingException(
+                sawUnrenderedList ? "관리목록 내용 표시가 안정되지 않았습니다 (미제출)" :
                 "관리목록 접속을 끝내 확인하지 못했습니다: " + lastError);
         throw new InvalidOperationException($"관리 페이지 이동을 {maxAttempts}번 시도했지만 실패했습니다. " + lastError);
     }

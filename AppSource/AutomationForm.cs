@@ -113,6 +113,9 @@ internal sealed partial class AutomationForm : Form
     private CancellationTokenSource? _ownedListRecoveryRun;
     private DateTime _bConnectionRecoveryUtc = DateTime.MinValue;
     private bool _bConnectionRecheckRunning;
+    // Rendering/login failures do not justify restarting an otherwise healthy
+    // WARP proxy. Repair the proxy only for a proven transport failure.
+    private bool _bRepairProxyOnRecovery;
     // Once a live submit begins, do not cancel its independent result probe.
     // The scheduler stops immediately; the one in-flight result is verified.
     private bool _submissionVerificationPending;
@@ -2498,28 +2501,35 @@ internal sealed partial class AutomationForm : Form
             _bConnectionRecoveryUtc = DateTime.UtcNow.AddMinutes(2);
             using var check = new CancellationTokenSource(TimeSpan.FromSeconds(65));
             _ownedListRecoveryRun = check;
+            bool verifiedBRoute = false;
             try
             {
                 // Recover the WARP *local proxy* without changing VPN mode or
                 // altering A's route. Never reconnect while a submission is
                 // in flight: this branch runs only when _busy is false.
-                try
+                if (_bRepairProxyOnRecovery)
                 {
-                    var warp = await CloudflareWarpBoot.EnsureLocalProxyConnectedAsync(
-                        DualSystemNetwork.Load("B").ProxyUrl, check.Token);
-                    if (warp.Attempted)
-                        AppendLog("B WARP 로컬 프록시 재연결 요청 · IP와 관리목록 재검증 후에만 B 자동등록 재개");
-                }
-                catch (OperationCanceledException) when (check.IsCancellationRequested) { throw; }
-                catch (Exception ex)
-                {
-                    AppendLog("B WARP 복구 명령 미실행: " + ex.GetType().Name + " · 기존 IP 재확인 계속");
+                    try
+                    {
+                        var warp = await CloudflareWarpBoot.EnsureLocalProxyConnectedAsync(
+                            DualSystemNetwork.Load("B").ProxyUrl, check.Token);
+                        if (warp.Attempted)
+                            AppendLog("B WARP 로컬 프록시 재연결 요청 · IP와 관리목록 재검증 후에만 B 자동등록 재개");
+                    }
+                    catch (OperationCanceledException) when (check.IsCancellationRequested) { throw; }
+                    catch (Exception ex)
+                    {
+                        AppendLog("B WARP 복구 명령 미실행: " + ex.GetType().Name + " · 기존 IP 재확인 계속");
+                    }
                 }
                 if (!_schedulerRunning) return;
                 await DualSystemNetwork.VerifyBRouteAsync(check.Token);
+                verifiedBRoute = true;
+                _bRepairProxyOnRecovery = false;
                 if (await VerifyOwnedListReadableAsync(check.Token) && _schedulerRunning)
                 {
                     _bConnectionRecoveryUtc = DateTime.MinValue;
+                    _bRepairProxyOnRecovery = false;
                     ConnectionRecoverySucceeded();
                     AppendLog("B VPN 독립 IP와 본인 관리목록 표시를 모두 확인했습니다. 다음 정상 순번부터 재개합니다.");
                 }
@@ -2536,6 +2546,9 @@ internal sealed partial class AutomationForm : Form
             }
             catch (Exception ex)
             {
+                // Route checks failing are true connectivity evidence;
+                // schedule a local-proxy repair for the next safe probe.
+                if (!verifiedBRoute) _bRepairProxyOnRecovery = true;
                 AppendLog("B VPN 연결 재확인 실패: " + ex.GetType().Name +
                     ". B 작업은 2분간 대기하며 A 작업에는 영향을 주지 않습니다.");
                 if (_schedulerRunning) ConnectionRecoveryProbeFailed("B VPN", "B VPN 연결 장애", ex.Message);
@@ -2681,6 +2694,7 @@ internal sealed partial class AutomationForm : Form
         await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
         if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(token);
         await NavigateOwnedListAsync(url, token);
+        int otherPageReads = 0;
         for (int attempt = 1; attempt <= 5; attempt++)
         {
             token.ThrowIfCancellationRequested();
@@ -2688,7 +2702,22 @@ internal sealed partial class AutomationForm : Form
             var raw = await _web.CoreWebView2.ExecuteScriptAsync(MyListingsImport.ExtractPageScript);
             var page = MyListingsImport.DecodePage(raw);
             if (page.LoginRequired)
+            {
+                _autoLogin?.ObserveOwnedListLoginRedirect();
+                if (_autoLogin is not null) await _autoLogin.TryLoginAsync();
                 throw new OwnedListLoginPendingException("재확인 도중 로그인 화면이 나타났습니다. 제출하지 않았습니다.");
+            }
+            if (!MyListingsImport.IsOwnedListUrl(page.PageUrl))
+            {
+                if (++otherPageReads >= 2)
+                {
+                    _autoLogin?.ObserveOwnedListLoginRedirect();
+                    if (_autoLogin is not null) await _autoLogin.TryLoginAsync();
+                    throw new OwnedListLoginPendingException("관리목록이 아닌 화면으로 이동했습니다. 로그인 복구가 필요합니다 (미제출).");
+                }
+                continue;
+            }
+            otherPageReads = 0;
             if (MyListingsImport.IsOwnedListUrl(page.PageUrl) &&
                 MyListingsImport.IsSellListUrl(page.PageUrl) == MyListingsImport.IsSellListUrl(url) &&
                 page.IsEmptyList)
@@ -3051,6 +3080,7 @@ internal sealed partial class AutomationForm : Form
             job.NextDueUtc = _loginRecoveryPauseUntilUtc;
             AppendLog($"{_system} 로그인 복구 대기: {job.Server} · {job.ListingNumber} · " +
                 "등록 작업은 제출되지 않았습니다. 30초 후 자동 재시도합니다.");
+            _autoLogin?.ObserveOwnedListLoginRedirect();
             AppendLog("안내: 사이트 로그인이 완료되지 않으면 내 계정의 로그인 상태를 확인하세요. " + ex.Message);
             // First transient login redirect is recorded locally; Telegram
             // warns only after consecutive read-only recovery probes fail.
@@ -3073,12 +3103,12 @@ internal sealed partial class AutomationForm : Form
             // HTTP 0 or an unrendered own-list is not a failed submission.
             // Pause *all B jobs* before doing a read-only VPN/IP recheck.
             _bConnectionRecoveryUtc = DateTime.UtcNow.AddSeconds(90);
+            _bRepairProxyOnRecovery = ex.TransportFailure;
             BeginConnectionRecovery("B VPN");
             job.NextDueUtc = _bConnectionRecoveryUtc;
             job.LastStatus = "B VPN·관리목록 연결 재확인 대기 (미제출)";
-            AppendLog($"B VPN 접속 대기: {job.Server} · {job.ListingNumber} · " + ex.Message);
-            AppendLog("B 자동등록 전체를 90초 대기한 뒤 VPN의 독립 IP를 재확인합니다. " +
-                "실제 재등록 요청은 하지 않았으며 A는 계속 실행됩니다.");
+            AppendLog($"B {(ex.TransportFailure ? "네트워크 연결" : "관리목록 표시")} 대기: {job.Server} · " +
+                "90초 후 안전 재확인 (미제출) · A는 계속 실행");
             // A short VPN/login handoff should not flood Telegram.
         }
         catch (OperationCanceledException)
@@ -3251,6 +3281,9 @@ internal sealed partial class AutomationForm : Form
                     $"{row.NumberRows}건, 제목 일치 행 {row.TitleRows}건. {row.Message}");
                 if (row.Message.Contains("관리 목록에 로그인해야 합니다", StringComparison.Ordinal))
                     throw new OwnedListLoginPendingException("관리 목록이 로그인 화면을 표시합니다. 사이트 로그인을 재확인합니다.");
+                if (IsUnexpectedOwnedListPageError(row))
+                    throw new OwnedListLoginPendingException(
+                        "관리목록 대신 다른 화면으로 이동했습니다. 사이트 로그인 상태를 복구합니다 (미제출).");
                 if (IsTransientOwnedListPageError(row))
                     throw new OwnedListConnectivityPendingException(
                         "내 등록글 관리목록이 정상 표시되지 않았습니다. 연결과 화면 로딩을 재확인합니다. " + row.Message);
@@ -3304,6 +3337,11 @@ internal sealed partial class AutomationForm : Form
         (result.Message.Contains("현재 화면이 내 판매·구매 등록글 목록이 아닙니다", StringComparison.Ordinal) ||
          result.Message.Contains("내 등록글 목록 화면이 아닙니다", StringComparison.Ordinal) ||
          result.Message.Contains("관리 목록의 물품 행이 끝내 표시되지 않았습니다", StringComparison.Ordinal));
+
+    private static bool IsUnexpectedOwnedListPageError(OwnedListRepostResult result) =>
+        result.Status == "error" &&
+        (result.Message.Contains("현재 화면이 내 판매·구매 등록글 목록이 아닙니다", StringComparison.Ordinal) ||
+         result.Message.Contains("내 등록글 목록 화면이 아닙니다", StringComparison.Ordinal));
 
     // The site renders its management rows asynchronously. A navigation-complete
     // event alone does not prove the listing table is ready to inspect.
