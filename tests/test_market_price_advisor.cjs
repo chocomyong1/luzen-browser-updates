@@ -29,6 +29,13 @@ assert.match(view, /MarketBridgeRow\? selectedRow = _marketGrid\.SelectedRows\.C
 assert.match(view, /current\.Server != selectedRow\.Server \|\| current\.Level != selectedRow\.Level/);
 assert.match(view, /gridRow\.Selected = true/);
 assert.match(view, /price\(competitor\), recommendation, difference, decision/);
+assert.doesNotMatch(view, /AddColumn\("경쟁 표본"/);
+assert.match(view, /AddColumn\("추천 - 기준", 125, 140, alignRight: true\)/);
+assert.match(view, /AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode\.Fill/);
+assert.match(view, /gridRow\.DefaultCellStyle\.BackColor = serverGroup % 2 == 0/);
+assert.match(view, /advice\.SuggestedPrice\.Value - row\.MyPrice\.Value/);
+assert.match(view, /MarketAdviceKind\.Increase => "↑ 인상 검토"/);
+assert.match(view, /gridRow\.Cells\[6\]\.ToolTipText = advice\.Reason/);
 assert.match(view, /choices\.Items\.Add\(option, false\)/);
 assert.match(view, /choices\.CheckedItems/);
 assert.match(view, /MessageBoxDefaultButton\.Button2/);

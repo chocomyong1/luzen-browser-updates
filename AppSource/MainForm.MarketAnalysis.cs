@@ -215,9 +215,10 @@ internal sealed partial class MainForm
             ReadOnly = true, MultiSelect = false, RowHeadersVisible = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             BackgroundColor = UiTheme.Surface, BorderStyle = BorderStyle.None,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             EnableHeadersVisualStyles = false, GridColor = UiTheme.Border,
             CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
-            ColumnHeadersHeight = 37, AllowUserToResizeRows = false,
+            ColumnHeadersHeight = 40, AllowUserToResizeRows = false,
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = UiTheme.SurfaceAlt, ForeColor = UiTheme.Text,
@@ -227,30 +228,38 @@ internal sealed partial class MainForm
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = UiTheme.Surface, ForeColor = UiTheme.Text,
-                SelectionBackColor = Color.FromArgb(38, 83, 77), SelectionForeColor = UiTheme.Text
+                SelectionBackColor = Color.FromArgb(38, 83, 77), SelectionForeColor = UiTheme.Text,
+                Padding = new Padding(6, 0, 6, 0)
             },
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = UiTheme.Canvas, ForeColor = UiTheme.Text,
                 SelectionBackColor = Color.FromArgb(38, 83, 77), SelectionForeColor = UiTheme.Text
             },
-            RowTemplate = { Height = 32 }
+            RowTemplate = { Height = 35 }
         };
-        void AddColumn(string title, int width)
+        void AddColumn(string title, int minimumWidth, float weight, bool alignRight = false)
         {
             _marketGrid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                HeaderText = title, Width = width, SortMode = DataGridViewColumnSortMode.NotSortable
+                HeaderText = title, MinimumWidth = minimumWidth, FillWeight = weight,
+                SortMode = DataGridViewColumnSortMode.NotSortable,
+                DefaultCellStyle = new DataGridViewCellStyle
+                {
+                    Alignment = alignRight ? DataGridViewContentAlignment.MiddleRight :
+                        DataGridViewContentAlignment.MiddleLeft
+                }
             });
         }
-        AddColumn("서버", 125);
-        AddColumn("레벨", 82);
-        AddColumn("추적 기준가", 138);
-        AddColumn("경쟁 최고가", 150);
-        AddColumn("추천가", 145);
-        AddColumn("가격 차이", 125);
-        AddColumn("추천 판단", 280);
-        AddColumn("경쟁 표본", 155);
+        AddColumn("서버", 95, 110);
+        AddColumn("레벨", 65, 70);
+        AddColumn("추적 기준가", 111, 130, alignRight: true);
+        AddColumn("경쟁 최고가", 116, 140, alignRight: true);
+        AddColumn("추천가", 111, 140, alignRight: true);
+        AddColumn("추천 - 기준", 125, 140, alignRight: true);
+        AddColumn("판단", 122, 160);
+        _marketGrid.Columns[0].DefaultCellStyle.Font = new Font("Segoe UI", 9.3F, FontStyle.Bold);
+        _marketGrid.Columns[4].DefaultCellStyle.Font = new Font("Segoe UI", 9.3F, FontStyle.Bold);
         _marketGrid.CellDoubleClick += (_, e) =>
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
@@ -267,8 +276,8 @@ internal sealed partial class MainForm
             Dock = DockStyle.Fill, BackColor = UiTheme.Surface,
             ForeColor = UiTheme.Muted, TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(13, 0, 8, 0),
-            Text = "※ 시세표 행 더블클릭 → 추천가 검토 · 등록번호로 확인된 내 글은 경쟁가에서 제외\n" +
-                   "   8·9레벨 +100원 / 10레벨 +1,000원 · 개별 승인 후 그 게시글의 다음 정상 순번에만 반영됩니다 (마진 직접 확인)."
+            Text = "※ 추천 - 기준 = 추천가에서 추적 기준가를 뺀 금액 · 행 더블클릭 → 추천가 검토\n" +
+                   "   8·9레벨 경쟁가 +100원 / 10레벨 +1,000원 · 개별 승인 후 그 게시글의 다음 정상 순번에만 반영됩니다 (마진 직접 확인)."
         }, 0, 3);
         view.Controls.Add(layout);
         _workspaceBody.Controls.Add(view);
@@ -305,6 +314,8 @@ internal sealed partial class MainForm
         try
         {
             _marketGrid.Rows.Clear();
+            string? previousServer = null;
+            int serverGroup = -1;
             foreach (MarketBridgeRow row in _marketSnapshot.Rows
                 .Where(row => (server == "전체" || row.Server == server) &&
                               (level == "전체" || level == row.Level + "레벨"))
@@ -315,26 +326,39 @@ internal sealed partial class MainForm
                 string reference = row.Basis.Contains("미확인", StringComparison.Ordinal)
                     ? "미확인" : price(row.MyPrice);
                 long? competitor = row.CompetitorHighest > 0 ? row.CompetitorHighest : null;
-                long? gap = row.MyPrice is > 0 && competitor.HasValue
-                    ? competitor.Value - row.MyPrice.Value : null;
-                string difference = gap.HasValue ? (gap > 0 ? "+" : "") + gap.Value.ToString("N0") + "원" : "—";
                 MarketAdvice advice = MarketPriceAdvisor.Evaluate(row, _marketReceivedUtc, DateTime.UtcNow);
                 string recommendation = price(advice.SuggestedPrice);
+                long? gap = row.MyPrice is > 0 && advice.SuggestedPrice.HasValue
+                    ? advice.SuggestedPrice.Value - row.MyPrice.Value : null;
+                string difference = gap.HasValue ? (gap > 0 ? "+" : "") + gap.Value.ToString("N0") + "원" : "—";
                 string decision = advice.Kind switch
                 {
-                    MarketAdviceKind.Increase => "인상 검토 · " + advice.Confidence,
-                    MarketAdviceKind.Hold => "기준가보다 낮음 · 수동 판단",
-                    _ => advice.Reason
+                    MarketAdviceKind.Increase => "↑ 인상 검토",
+                    MarketAdviceKind.Hold => "유지 · 수동 판단",
+                    _ => advice.Reason.StartsWith("시세 갱신", StringComparison.Ordinal) ? "갱신 대기" : "데이터 확인"
                 };
                 int index = _marketGrid.Rows.Add(row.Server, row.Level + "레벨", reference,
-                    price(competitor), recommendation, difference, decision,
-                    row.Distinct.ToString("N0") + "그룹 / " + row.Total.ToString("N0") + "건");
-                _marketGrid.Rows[index].Tag = row;
-                _marketGrid.Rows[index].Cells[6].ToolTipText = advice.Reason;
+                    price(competitor), recommendation, difference, decision);
+                DataGridViewRow gridRow = _marketGrid.Rows[index];
+                gridRow.Tag = row;
+                if (!string.Equals(previousServer, row.Server, StringComparison.Ordinal))
+                {
+                    serverGroup++;
+                    previousServer = row.Server;
+                }
+                gridRow.DefaultCellStyle.BackColor = serverGroup % 2 == 0 ? UiTheme.Canvas : UiTheme.Surface;
+                gridRow.Cells[0].Style.ForeColor = UiTheme.Primary;
+                gridRow.Cells[5].ToolTipText = "추천가 - 추적 기준가 (가격 변경은 별도 승인 필요)";
+                gridRow.Cells[6].ToolTipText = advice.Reason;
                 if (advice.Kind == MarketAdviceKind.Increase)
-                    _marketGrid.Rows[index].Cells[6].Style.ForeColor = UiTheme.Success;
+                {
+                    gridRow.Cells[4].Style.ForeColor = UiTheme.Primary;
+                    gridRow.Cells[6].Style.ForeColor = UiTheme.Warning;
+                }
+                else
+                    gridRow.Cells[6].Style.ForeColor = UiTheme.Muted;
                 if (gap > 0)
-                    _marketGrid.Rows[index].Cells[5].Style.ForeColor = UiTheme.Warning;
+                    gridRow.Cells[5].Style.ForeColor = UiTheme.Warning;
             }
             _marketGrid.ClearSelection();
             if (selectedRow is not null)
