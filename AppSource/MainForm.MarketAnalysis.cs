@@ -23,6 +23,7 @@ internal sealed partial class MainForm
     private ComboBox? _marketServerFilter;
     private ComboBox? _marketLevelFilter;
     private Button? _marketButton;
+    private bool _marketRefreshingFilters;
     private readonly System.Windows.Forms.Timer _marketStatusTimer = new() { Interval = 10000 };
 
     private sealed class MarketListingChoice
@@ -166,7 +167,10 @@ internal sealed partial class MainForm
         };
         _marketServerFilter.Items.Add("전체");
         _marketServerFilter.SelectedIndex = 0;
-        _marketServerFilter.SelectedIndexChanged += (_, _) => RefreshMarketGrid();
+        _marketServerFilter.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_marketRefreshingFilters) RefreshMarketGrid();
+        };
         filters.Controls.Add(_marketServerFilter);
         filters.Controls.Add(new Label { Text = "레벨", AutoSize = true,
             Padding = new Padding(0, 9, 4, 0), ForeColor = UiTheme.Muted });
@@ -247,6 +251,14 @@ internal sealed partial class MainForm
         AddColumn("가격 차이", 125);
         AddColumn("추천 판단", 280);
         AddColumn("경쟁 표본", 155);
+        _marketGrid.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+                _marketGrid.Rows[e.RowIndex].Tag is not MarketBridgeRow) return;
+            _marketGrid.ClearSelection();
+            _marketGrid.Rows[e.RowIndex].Selected = true;
+            ReviewSelectedMarketPrice(); // Opens review only; nothing is approved or submitted here.
+        };
         DarkScrollbarTheme.Attach(_marketGrid);
         layout.Controls.Add(_marketGrid, 0, 2);
 
@@ -255,8 +267,8 @@ internal sealed partial class MainForm
             Dock = DockStyle.Fill, BackColor = UiTheme.Surface,
             ForeColor = UiTheme.Muted, TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(13, 0, 8, 0),
-            Text = "※ 등록번호로 확인된 내 글 제외 · 8·9레벨 경쟁 최고가 +100원 / 10레벨 +1,000원\n" +
-                   "   디스코드 판매 시세·마진은 직접 확인하세요. 가격은 개별 승인 후 그 게시글의 다음 정상 순번에만 반영됩니다."
+            Text = "※ 시세표 행 더블클릭 → 추천가 검토 · 등록번호로 확인된 내 글은 경쟁가에서 제외\n" +
+                   "   8·9레벨 +100원 / 10레벨 +1,000원 · 개별 승인 후 그 게시글의 다음 정상 순번에만 반영됩니다 (마진 직접 확인)."
         }, 0, 3);
         view.Controls.Add(layout);
         _workspaceBody.Controls.Add(view);
@@ -270,10 +282,15 @@ internal sealed partial class MainForm
         string selected = _marketServerFilter.SelectedItem?.ToString() ?? "전체";
         var servers = _marketSnapshot.Rows.Select(row => row.Server)
             .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(server => server, StringComparer.CurrentCulture).ToList();
-        _marketServerFilter.Items.Clear();
-        _marketServerFilter.Items.Add("전체");
-        foreach (string server in servers) _marketServerFilter.Items.Add(server);
-        _marketServerFilter.SelectedItem = servers.Contains(selected) ? selected : "전체";
+        _marketRefreshingFilters = true;
+        try
+        {
+            _marketServerFilter.Items.Clear();
+            _marketServerFilter.Items.Add("전체");
+            foreach (string server in servers) _marketServerFilter.Items.Add(server);
+            _marketServerFilter.SelectedItem = servers.Contains(selected) ? selected : "전체";
+        }
+        finally { _marketRefreshingFilters = false; }
     }
 
     private void RefreshMarketGrid()
@@ -282,6 +299,8 @@ internal sealed partial class MainForm
         if (_marketGrid is null || _marketSnapshot is null) return;
         string server = _marketServerFilter?.SelectedItem?.ToString() ?? "전체";
         string level = _marketLevelFilter?.SelectedItem?.ToString() ?? "전체";
+        MarketBridgeRow? selectedRow = _marketGrid.SelectedRows.Count == 1
+            ? _marketGrid.SelectedRows[0].Tag as MarketBridgeRow : null;
         _marketGrid.SuspendLayout();
         try
         {
@@ -318,6 +337,16 @@ internal sealed partial class MainForm
                     _marketGrid.Rows[index].Cells[5].Style.ForeColor = UiTheme.Warning;
             }
             _marketGrid.ClearSelection();
+            if (selectedRow is not null)
+            {
+                foreach (DataGridViewRow gridRow in _marketGrid.Rows)
+                {
+                    if (gridRow.Tag is not MarketBridgeRow current ||
+                        current.Server != selectedRow.Server || current.Level != selectedRow.Level) continue;
+                    gridRow.Selected = true;
+                    break;
+                }
+            }
         }
         finally { _marketGrid.ResumeLayout(); }
     }
