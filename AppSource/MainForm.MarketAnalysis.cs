@@ -427,10 +427,10 @@ internal sealed partial class MainForm
             if (chosen.Any(choice => choice.Job.Price != choice.OriginalPrice ||
                 !string.IsNullOrWhiteSpace(choice.Job.PendingSitePriceTarget) ||
                 !long.TryParse((choice.Job.Price ?? "").Replace(",", ""), out long currentPrice) ||
-                currentPrice >= proposedPrice))
+                !MarketPriceAdvisor.SafeBuyPriceIncrease(currentPrice, proposedPrice)))
             {
                 MessageBox.Show(dialog,
-                    "선택한 글 중 이미 가격 변경이 예약됐거나, 가격이 바뀌었거나, 현재가가 추천가 이상인 글이 있습니다.\n" +
+                    "선택한 글 중 이미 가격 변경이 예약됐거나, 가격이 바뀌었거나, 게시글별 인상폭이 5%를 넘는 글이 있습니다.\n" +
                     "해당 글은 체크 해제하고 다시 검토하세요. 기존 예약을 덮어쓰거나 가격을 내리지 않습니다.",
                     "게시글 가격 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;

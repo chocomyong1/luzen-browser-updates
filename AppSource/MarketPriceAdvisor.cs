@@ -62,6 +62,12 @@ internal static class MarketPriceAdvisor
         return levels[0].Groups[1].Value == market.Level;
     }
 
+    // The tracked baseline may differ from an individual saved VANTA listing.
+    // Never approve a decrease or an increase above 5% for THAT specific post.
+    internal static bool SafeBuyPriceIncrease(long savedPrice, long proposal) =>
+        savedPrice >= 1000 && proposal > savedPrice && proposal % 10 == 0 &&
+        proposal <= savedPrice + savedPrice / 20;
+
     private static long RoundDown100(long value) => value / 100 * 100;
     private static long RoundUp100(long value) => (value + 99) / 100 * 100;
     private static MarketAdvice Wait(string reason) => new(MarketAdviceKind.Wait, null, reason, "—");

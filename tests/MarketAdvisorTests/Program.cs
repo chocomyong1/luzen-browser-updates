@@ -31,6 +31,12 @@ Expect(MarketAdviceKind.Increase, 91200, "Small but meaningful signal",
 Expect(MarketAdviceKind.Hold, 90000, "Ignore small gaps below 1 percent",
     sample.WithValues(median: 90300, normal: 91000));
 
+if (!MarketPriceAdvisor.SafeBuyPriceIncrease(90000, 94500) ||
+    MarketPriceAdvisor.SafeBuyPriceIncrease(80000, 94500) ||
+    MarketPriceAdvisor.SafeBuyPriceIncrease(95000, 94500) ||
+    MarketPriceAdvisor.SafeBuyPriceIncrease(90000, 94501))
+    throw new Exception("One approved recommendation exceeded the actual job's 5% price cap.");
+
 if (!MarketPriceAdvisor.MatchesBuyListing(sample, "로스트아크", "구매", "카마인", "10 10 10 레벨 겁화 구매합니다") ||
     !MarketPriceAdvisor.MatchesBuyListing(sample, "로스트아크", "구매", "카마인", "10레벨 작열 삽니다") ||
     MarketPriceAdvisor.MatchesBuyListing(sample, "로스트아크", "판매", "카마인", "10레벨") ||
