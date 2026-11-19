@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.84",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.84/LuzenBrowser_22.2.84_BinaryUpdate.zip",
-  "sha256": "8bbfb07c94b107e658c72cdc22fd6b3779000b8603efb0a3c4e7fe20c41e14c2",
+  "version": "22.2.85",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.85/LuzenBrowser_22.2.85_BinaryUpdate.zip",
+  "sha256": "2f72fe1de4d557ae8992b7d09d96fdd51226af60dc9aa234801bb5017d4c1f8e",
   "format": "binary",
-  "releaseNotes": "v22.2.84 VANTA 다크 스크롤바 적용: A/B 분할 화면의 등록 목록·실행 기록과 통합 편집 표 및 스크롤 가능한 입력 영역에 Windows 다크 스크롤바 테마를 적용했습니다. 기존 등록·로그인·자동업데이트는 유지됩니다."
+  "releaseNotes": "v22.2.85 VANTA 로스트아크 보석 시세 분석 탭 추가: Firefox Gem Tracker v2.8.9.3의 서버별 구매 시세 요약을 로컬 연결 코드로 받아 표시합니다. Gem Tracker 스크립트 별도 1회 업데이트 및 연동 코드 등록 필요. 사이트 가격은 다음 등록 순번에만 변경하며 기존 자동등록/텔레그램 알림은 유지됩니다."
 }
