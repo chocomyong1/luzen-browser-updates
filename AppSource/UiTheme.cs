@@ -5,23 +5,23 @@ using System.Windows.Forms;
 
 namespace LuzenBrowserReplica;
 
-// A calm, macOS-inspired Windows business UI. Styling only: this class never
+// VANTA's dark trading-workstation palette. Styling only: this class never
 // changes listing data, job selection, or any browser automation behavior.
 internal static class UiTheme
 {
-    public static readonly Color Canvas = Color.FromArgb(245, 245, 247);
-    public static readonly Color Surface = Color.White;
-    public static readonly Color SurfaceAlt = Color.FromArgb(249, 249, 251);
-    public static readonly Color Border = Color.FromArgb(226, 226, 232);
-    public static readonly Color Text = Color.FromArgb(29, 29, 31);
-    public static readonly Color Muted = Color.FromArgb(112, 112, 117);
-    public static readonly Color Navy = Color.FromArgb(34, 37, 45);
-    public static readonly Color Primary = Color.FromArgb(0, 122, 255);
-    public static readonly Color PrimaryHover = Color.FromArgb(0, 102, 219);
-    public static readonly Color Success = Color.FromArgb(35, 151, 89);
-    public static readonly Color Danger = Color.FromArgb(213, 69, 67);
-    public static readonly Color Warning = Color.FromArgb(164, 97, 23);
-    public static readonly Color WarningSurface = Color.FromArgb(255, 248, 234);
+    public static readonly Color Canvas = Color.FromArgb(16, 24, 32);
+    public static readonly Color Surface = Color.FromArgb(30, 41, 51);
+    public static readonly Color SurfaceAlt = Color.FromArgb(37, 52, 64);
+    public static readonly Color Border = Color.FromArgb(53, 70, 83);
+    public static readonly Color Text = Color.FromArgb(241, 245, 249);
+    public static readonly Color Muted = Color.FromArgb(145, 164, 174);
+    public static readonly Color Navy = Color.FromArgb(10, 17, 24);
+    public static readonly Color Primary = Color.FromArgb(87, 217, 173);
+    public static readonly Color PrimaryHover = Color.FromArgb(112, 233, 192);
+    public static readonly Color Success = Color.FromArgb(50, 205, 153);
+    public static readonly Color Danger = Color.FromArgb(240, 107, 112);
+    public static readonly Color Warning = Color.FromArgb(245, 183, 92);
+    public static readonly Color WarningSurface = Color.FromArgb(66, 50, 38);
 
     public enum ButtonTone { Neutral, Primary, Success, Danger, Dark }
 
@@ -61,32 +61,32 @@ internal static class UiTheme
         {
             case ButtonTone.Primary:
                 button.BackColor = Primary;
-                button.ForeColor = Color.White;
+                button.ForeColor = Canvas;
                 button.FlatAppearance.MouseOverBackColor = PrimaryHover;
                 break;
             case ButtonTone.Success:
                 button.BackColor = Success;
-                button.ForeColor = Color.White;
-                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(9, 109, 84);
+                button.ForeColor = Canvas;
+                button.FlatAppearance.MouseOverBackColor = PrimaryHover;
                 break;
             case ButtonTone.Danger:
                 button.BackColor = Danger;
-                button.ForeColor = Color.White;
-                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(165, 52, 58);
+                button.ForeColor = Canvas;
+                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(255, 137, 139);
                 break;
             case ButtonTone.Dark:
-                button.BackColor = Color.FromArgb(67, 71, 82);
-                button.ForeColor = Color.White;
-                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(82, 85, 97);
+                button.BackColor = Color.FromArgb(45, 65, 77);
+                button.ForeColor = Text;
+                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(59, 82, 93);
                 break;
             default:
-                button.BackColor = Color.FromArgb(237, 237, 241);
+                button.BackColor = SurfaceAlt;
                 button.ForeColor = Text;
-                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(224, 224, 230);
+                button.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 73, 85);
                 break;
         }
         button.FlatAppearance.MouseDownBackColor = tone == ButtonTone.Neutral
-            ? Color.FromArgb(213, 213, 220) : button.FlatAppearance.MouseOverBackColor;
+            ? Color.FromArgb(64, 86, 97) : button.FlatAppearance.MouseOverBackColor;
         RoundButton(button);
         // SizeChanged is essential: most form buttons are resized by their parent
         // after theme initialization, including on DPI changes.
@@ -111,17 +111,40 @@ internal static class UiTheme
 
     public static void ApplyControlStyles(Control parent)
     {
+        // Preserve explicitly colored status labels, but ensure unstyled
+        // WinForms controls inherit readable colors on the dark canvas.
+        if (parent is Form form)
+        {
+            form.BackColor = Canvas;
+            form.ForeColor = Text;
+        }
         foreach (Control child in parent.Controls)
         {
             switch (child)
             {
+                case Panel panel when panel.BackColor == Color.White:
+                    panel.BackColor = Surface;
+                    break;
+                case Label label when label.ForeColor == Color.Black ||
+                                      label.ForeColor == SystemColors.ControlText:
+                    label.ForeColor = Text;
+                    break;
+                case CheckBox check:
+                    check.ForeColor = Text;
+                    break;
+                case RadioButton radio:
+                    radio.ForeColor = Text;
+                    break;
                 case Button button:
                     StyleButton(button, ToneFor(button.Text));
                     break;
                 case TextBox input:
                     input.BorderStyle = BorderStyle.FixedSingle;
-                    if (!input.ReadOnly) input.BackColor = Surface;
+                    input.BackColor = input.ReadOnly ? SurfaceAlt : Surface;
                     input.ForeColor = Text;
+                    break;
+                case DataGridView grid when grid.BackgroundColor == Color.White:
+                    grid.BackgroundColor = Surface;
                     break;
                 case ComboBox combo:
                     combo.FlatStyle = FlatStyle.Flat;

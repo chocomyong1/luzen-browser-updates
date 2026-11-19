@@ -124,7 +124,7 @@ internal sealed partial class AutomationForm
         grid.DefaultCellStyle.BackColor = UiTheme.Surface;
         grid.DefaultCellStyle.ForeColor = UiTheme.Text;
         grid.DefaultCellStyle.Font = new Font("Segoe UI", 9.2F);
-        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(230, 242, 255);
+        grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(38, 83, 77);
         grid.DefaultCellStyle.SelectionForeColor = UiTheme.Text;
         grid.AlternatingRowsDefaultCellStyle.BackColor = UiTheme.Canvas;
         foreach (DataGridViewColumn col in grid.Columns)

@@ -134,7 +134,7 @@ internal sealed partial class AutomationForm
         {
             PlaceholderText = hint, Multiline = multiline,
             ScrollBars = multiline ? ScrollBars.Vertical : ScrollBars.None,
-            BackColor = Color.White
+            BackColor = UiTheme.Surface
         };
         ComboBox Choice(params string[] values)
         {
