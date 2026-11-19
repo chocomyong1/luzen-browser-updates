@@ -43,8 +43,8 @@ internal sealed partial class MainForm : Form
 
     public MainForm(ServerInfo server, string username)
     {
-        Text = "Luzen Browser | 물품 · 자동등록 관리";
-        Icon = new Icon(Settings.Asset("iBook1.ico"));
+        Text = "VANTA | 물품 · 자동등록 관리";
+        Icon = new Icon(Settings.Asset("VANTA.ico"));
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1040, 640);
         Size = new Size(1540, 860);
@@ -53,6 +53,7 @@ internal sealed partial class MainForm : Form
         MinimizeBox = true;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = UiTheme.Canvas;
+        ForeColor = UiTheme.Text;
         Font = new Font("Segoe UI", 9.5F);
 
         _moduleA = new AutomationForm(username, "A")
@@ -218,23 +219,18 @@ internal sealed partial class MainForm : Form
             Dock = DockStyle.Top, Height = 62, AutoScroll = true, WrapContents = false,
             BackColor = UiTheme.Surface, Padding = new Padding(15, 11, 9, 8)
         };
-        var logo = new Label
+        using var brandIcon = new Icon(Settings.Asset("VANTA.ico"), 32, 32);
+        var logo = new PictureBox
         {
-            Text = "L", Size = new Size(32, 32), TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 15F, FontStyle.Bold),
-            BackColor = UiTheme.Primary, ForeColor = Color.White,
+            Image = brandIcon.ToBitmap(), SizeMode = PictureBoxSizeMode.Zoom,
+            Size = new Size(32, 32), BackColor = UiTheme.Surface,
             Margin = new Padding(0, 3, 9, 0)
         };
-        using (var shape = new GraphicsPath())
-        {
-            shape.AddEllipse(0, 0, logo.Width - 1, logo.Height - 1);
-            logo.Region = new Region(shape);
-        }
         bar.Controls.Add(logo);
         bar.Controls.Add(new Label
         {
-            Text = "Luzen",
-            ForeColor = UiTheme.Text, Size = new Size(79, 36),
+            Text = "VANTA",
+            ForeColor = UiTheme.Text, Size = new Size(92, 36),
             Font = new Font("Segoe UI", 12F, FontStyle.Bold),
             Padding = new Padding(1, 6, 0, 0), Margin = new Padding(0, 0, 6, 0)
         });
@@ -331,6 +327,7 @@ internal sealed partial class MainForm : Form
             FormBorderStyle = FormBorderStyle.Sizable,
             MaximizeBox = false,
             BackColor = UiTheme.Surface,
+            ForeColor = UiTheme.Text,
             Font = Font
         };
         var layout = new TableLayoutPanel

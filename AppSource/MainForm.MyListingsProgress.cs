@@ -11,12 +11,12 @@ internal sealed partial class MainForm
     private readonly Panel _importProgressBanner = new()
     {
         Dock = DockStyle.Top, Height = 44, Visible = false,
-        BackColor = Color.FromArgb(233, 242, 255)
+        BackColor = UiTheme.SurfaceAlt
     };
     private readonly Label _importProgressText = new()
     {
         Dock = DockStyle.Fill, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft,
-        ForeColor = Color.FromArgb(31, 66, 105)
+        ForeColor = UiTheme.Text
     };
     private readonly ProgressBar _importProgressBar = new()
     {
@@ -25,7 +25,7 @@ internal sealed partial class MainForm
     private readonly Button _importProgressAction = new()
     {
         Dock = DockStyle.Fill, Text = "조회 취소", FlatStyle = FlatStyle.Flat,
-        BackColor = Color.White, ForeColor = Color.FromArgb(39, 88, 153)
+        BackColor = UiTheme.Surface, ForeColor = UiTheme.Primary
     };
     private readonly System.Windows.Forms.Timer _importProgressDismiss = new() { Interval = 25000 };
     private readonly System.Windows.Forms.Timer _importProgressClock = new() { Interval = 1000 };
@@ -95,10 +95,10 @@ internal sealed partial class MainForm
         _importProgressAction.Text = pending ? "조회 취소" : "닫기";
         _importProgressBanner.BackColor = phase switch
         {
-            MyListingsImportPhase.Failed => Color.FromArgb(255, 240, 236),
-            MyListingsImportPhase.Completed => Color.FromArgb(232, 248, 237),
-            MyListingsImportPhase.Cancelled => Color.FromArgb(242, 242, 245),
-            _ => Color.FromArgb(233, 242, 255)
+            MyListingsImportPhase.Failed => Color.FromArgb(67, 39, 44),
+            MyListingsImportPhase.Completed => Color.FromArgb(28, 65, 57),
+            MyListingsImportPhase.Cancelled => UiTheme.SurfaceAlt,
+            _ => UiTheme.SurfaceAlt
         };
         _importProgressBanner.Visible = true;
         _status.Text = $"  {system} 내 등록글 · {message}";

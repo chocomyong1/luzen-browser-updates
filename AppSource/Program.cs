@@ -18,7 +18,7 @@ internal static class Program
         if (!first)
         {
             if (!args.Contains("--windows-startup", StringComparer.OrdinalIgnoreCase))
-                MessageBox.Show("Luzen이 이미 실행 중입니다. 기존 창을 사용하세요.", "Luzen 실행 중");
+                MessageBox.Show("VANTA가 이미 실행 중입니다. 기존 창을 사용하세요.", "VANTA 실행 중");
             return;
         }
 

@@ -10,7 +10,7 @@ internal sealed partial class MainForm
     {
         using var dialog = new Form
         {
-            Text = "Luzen 설정 백업·복원", Width = 660, Height = 390,
+            Text = "VANTA 설정 백업·복원", Width = 660, Height = 390,
             StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false, Font = new Font("맑은 고딕", 9)
         };

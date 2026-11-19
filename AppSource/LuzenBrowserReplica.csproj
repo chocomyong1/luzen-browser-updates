@@ -9,7 +9,7 @@
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>LuzenBrowserReplica</AssemblyName>
     <RootNamespace>LuzenBrowserReplica</RootNamespace>
-    <ApplicationIcon>Assets\iBook1.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\VANTA.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
