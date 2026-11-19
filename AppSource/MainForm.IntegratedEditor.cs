@@ -149,6 +149,7 @@ internal sealed partial class MainForm
         _integratedSystemFilter = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList, Width = 112,
+            BackColor = UiTheme.SurfaceAlt, ForeColor = UiTheme.Text,
             Margin = new Padding(0, 7, 14, 0)
         };
         _integratedSystemFilter.Items.AddRange(new object[] { "전체", "A", "B", "C" });
@@ -166,6 +167,7 @@ internal sealed partial class MainForm
         _integratedServerFilter = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList, Width = 145,
+            BackColor = UiTheme.SurfaceAlt, ForeColor = UiTheme.Text,
             Margin = new Padding(0, 7, 14, 0)
         };
         _integratedServerFilter.Items.Add("전체");
@@ -178,6 +180,7 @@ internal sealed partial class MainForm
         _integratedSearch = new TextBox
         {
             Width = 266, Height = 30, PlaceholderText = "제목 · 사이트 ID · 등록번호 검색",
+            BackColor = UiTheme.SurfaceAlt, ForeColor = UiTheme.Text,
             Margin = new Padding(0, 7, 12, 0)
         };
         _integratedSearch.TextChanged += (_, _) => RefreshIntegratedGrid();
@@ -212,6 +215,28 @@ internal sealed partial class MainForm
             AllowUserToDeleteRows = false, MultiSelect = false, RowHeadersVisible = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             BackgroundColor = UiTheme.Surface, BorderStyle = BorderStyle.None,
+            EnableHeadersVisualStyles = false,
+            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            GridColor = UiTheme.Border,
+            ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
+            {
+                BackColor = UiTheme.SurfaceAlt, ForeColor = UiTheme.Text,
+                SelectionBackColor = UiTheme.SurfaceAlt, SelectionForeColor = UiTheme.Text,
+                Font = new Font("Segoe UI", 9.2F, FontStyle.Bold)
+            },
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                BackColor = UiTheme.Surface, ForeColor = UiTheme.Text,
+                SelectionBackColor = Color.FromArgb(38, 83, 77),
+                SelectionForeColor = UiTheme.Text,
+                Font = new Font("Segoe UI", 9.2F)
+            },
+            AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
+            {
+                BackColor = UiTheme.Canvas, ForeColor = UiTheme.Text,
+                SelectionBackColor = Color.FromArgb(38, 83, 77),
+                SelectionForeColor = UiTheme.Text
+            },
             AllowUserToResizeRows = false, ColumnHeadersHeight = 37,
             RowTemplate = { Height = 30 }
         };
