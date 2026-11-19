@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.89",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.89/LuzenBrowser_22.2.89_BinaryUpdate.zip",
-  "sha256": "e0348a65b057d8f095d97722a0d37186248b4192c6b5efd1b2d2449ce3c08641",
+  "version": "22.2.90",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.90/LuzenBrowser_22.2.90_BinaryUpdate.zip",
+  "sha256": "4cc628ccd31e70d9288ce20046231ad9495de19eb247d8eb1e1fe280c6e8d927",
   "format": "binary",
-  "releaseNotes": "v22.2.89 시세 분석 사용성 개선: 시세표의 서버·레벨 행을 더블클릭하면 추천가 검토창이 바로 열리고, 추적기 시세 갱신 시에도 기존 선택을 유지합니다. 서버 필터 목록을 갱신하면서 선택이 사라지는 현상도 해결했습니다. 추천은 명시적인 본인 구매글 선택 및 최종 승인 뒤에만 로컬에 저장되며, 사이트 가격 수정은 해당 글의 다음 정상 자동등록 순번에 적용됩니다. 기존 경쟁 최고가 기준 추천 및 자동등록·텔레그램 알림 유지. Gem Tracker v2.8.9.5 재설치 불필요."
+  "releaseNotes": "v22.2.90 시세표 가독성 개선: 필요 없는 경쟁 표본 열을 제거하고, 서버별로 줄 배경을 묶어 구별하며, 기준가·경쟁 최고가·추천가를 오른쪽 정렬하고 가로폭에 맞춰 표시합니다. 가격 차이는 경쟁가와의 차이가 아니라 추천가에서 추적 기준가를 뺀 금액으로 명확히 표시합니다. 판단 열은 인상 검토·유지·데이터 확인으로 줄이고 상세 사유는 마우스를 올리면 볼 수 있습니다. 실제 가격은 본인 구매글 선택 및 최종 승인 후 다음 정상 자동등록 순번에만 반영됩니다. Firefox Gem Tracker v2.8.9.5 재설치 불필요."
 }
