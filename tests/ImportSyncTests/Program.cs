@@ -76,6 +76,8 @@ internal static class Program
             "10레벨 겁화 보석 구매합니다", "display quantity range is removed from title");
         Check(MyListingsImport.CleanImportedTitle("[ 3개 ~ 9,999개 ] 10레벨 작열 구매") ==
             "10레벨 작열 구매", "spaced split-trade prefix removed");
+        Check(MyListingsImport.CleanImportedTitle("1 ~ 9,995 10레벨 겁화작열 삽니다") ==
+            "10레벨 겁화작열 삽니다", "unbracketed split-trade prefix removed");
         Check(MyListingsImport.CleanImportedTitle("10레벨 겁화 보석 구매합니다") ==
             "10레벨 겁화 보석 구매합니다", "normal title stays unchanged");
         var rangedRow = Row();
