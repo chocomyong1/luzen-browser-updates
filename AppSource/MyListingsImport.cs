@@ -331,14 +331,6 @@ internal static class MyListingsImport
                     if (update.HasChanges) result.Updates.Add(update);
                     else result.Duplicates++;
                 }
-                else if (target is not null && trustedPrice &&
-                    (string.IsNullOrWhiteSpace(target.OriginalTradeSide) ||
-                     target.OriginalTradeSide == row.TradeSide) &&
-                    !string.Equals(target.SiteObservedTitle, Clean(row.Title), StringComparison.Ordinal))
-                    result.Updates.Add(new ExistingListingUpdate
-                    {
-                        Target = target, SiteObservedTitle = Clean(row.Title)
-                    });
                 else result.Duplicates++;
                 continue;
             }
