@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.5",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.5/LuzenBrowser_22.3.5_BinaryUpdate.zip",
-  "sha256": "2a3632a0720f49a0ae65b62bd099f08026a1ff2852bc3a9a4ba6c45127590b03",
+  "version": "22.3.6",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.6/LuzenBrowser_22.3.6_BinaryUpdate.zip",
+  "sha256": "8949dfcd6ff061ad9b43612785b5b7094bfe8d441f8f1b4416a79ede0774fb0c",
   "format": "binary",
-  "releaseNotes": "v22.3.5 구매글 가격 변경 결과 확인 개선. 사이트 수정 POST 감지에 실패해도 본인 등록글 관리목록에서 등록번호·금액·원본 제목을 읽기 전용으로 검증합니다. 확인 대기 글은 제출 없는 결과 재조회 메뉴에서 대상 금액을 확인하고 로컬 금액만 동기화할 수 있습니다. 사이트 제출 직전 제목 변형으로 차단된 경우 별도 경고를 표시합니다. 중복 제출과 예약·일괄 가격 자동 제출은 계속 차단합니다."
+  "releaseNotes": "v22.3.6 사이트 구매글 가격 단건 시험 입력 방식 수정. 기존 자바스크립트 합성 클릭 대신 검증된 버튼 좌표에 브라우저 기본 마우스 입력을 한 번만 전송합니다. 원본 제목 보호와 제출 전 보류 저장을 유지하고, 제출 이벤트 취소·제목 변형 여부를 읽기 전용으로 진단합니다. 사이트 실제 가격 변경은 등록번호·가격·원본 제목 관리목록 재확인으로만 성공 처리하며 실패·불확실 시 재제출하지 않습니다. 예약·일괄 자동 가격 제출은 계속 차단합니다."
 }
