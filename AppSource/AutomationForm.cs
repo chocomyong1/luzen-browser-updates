@@ -2625,10 +2625,17 @@ internal sealed partial class AutomationForm : Form
                 }
                 else
                 {
+                    string submittedTarget = job.PendingSitePriceTarget;
                     bool updated = await ApplySitePriceAsync(job, bulkApproval: true, fromScheduler: true);
                     if (updated)
                     {
-                        job.PendingSitePriceTarget = "";
+                        // This site's request may have finished after the user
+                        // queued a NEW local target for the same listing.
+                        // Never erase that later reservation on readback.
+                        if (string.Equals(job.PendingSitePriceTarget, submittedTarget, StringComparison.Ordinal))
+                            job.PendingSitePriceTarget = "";
+                        else
+                            AppendLog($"새 가격 예약 유지: {job.Server} · {job.ListingNumber} · 다음 정상 순번에 반영");
                         // If the actual site price was already identical, no
                         // POST was needed but this due slot still concludes.
                         if (job.NextDueUtc <= DateTime.UtcNow)

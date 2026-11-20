@@ -30,8 +30,13 @@ internal sealed partial class AutomationForm
             problem = "선택한 물품이 이 시스템의 현재 목록에 없습니다.";
             return false;
         }
+        // Price edits are LOCAL reservations. When a site-price job is already
+        // in flight, defer edits to that one listing until its readback ends.
+        // Other rows are editable now; none start an independent site request.
+        bool editingPendingPrices = command.Field == IntegratedEditField.Price &&
+            _activeSitePriceJob is not null;
         if (_myListingsImportRunning || _sitePriceBatchRunning ||
-            (_busy && _currentlyExecutingJob is null))
+            (_busy && _currentlyExecutingJob is null && !editingPendingPrices))
         {
             problem = "사이트 조회·가격 제출·기존 작업이 끝난 뒤 편집할 수 있습니다.";
             return false;
@@ -118,8 +123,9 @@ internal sealed partial class AutomationForm
             !TryPlanAutomaticPriceApply(items, command.Value.Trim(), out pendingByJob, out problem))
             throw new InvalidOperationException(problem);
 
-        var immediate = items.Where(job => !ReferenceEquals(job, _currentlyExecutingJob)).ToList();
-        var deferred = items.Where(job => ReferenceEquals(job, _currentlyExecutingJob)).ToList();
+        var immediate = items.Where(job => !ReferenceEquals(job, _currentlyExecutingJob) &&
+            !(command.Field == IntegratedEditField.Price && ReferenceEquals(job, _activeSitePriceJob))).ToList();
+        var deferred = items.Except(immediate).ToList();
         var snapshots = immediate.Select(job => (Job: job,
             Previous: SnapshotIntegratedField(job, command.Field),
             Pending: job.PendingSitePriceTarget)).ToList();
@@ -165,7 +171,7 @@ internal sealed partial class AutomationForm
             (command.Field == IntegratedEditField.Price
                 ? "기존 본인 구매글은 다음 자동등록 순번에 가격 반영, 신규글은 첫 등록에 적용"
                 : "로컬 설정 저장") +
-            (deferred.Count > 0 ? $" · 실행 중 {deferred.Count}건 작업 종료 후 적용" : ""));
+            (deferred.Count > 0 ? $" · 실행 중 {deferred.Count}건 사이트 작업 종료 후 적용" : ""));
         var receipt = RememberBatchUndo(command.Field.ToString(), undoChanges);
         return new IntegratedEditResult(immediate.Count, deferred.Count, receipt);
     }

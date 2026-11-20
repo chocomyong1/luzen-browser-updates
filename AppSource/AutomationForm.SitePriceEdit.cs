@@ -14,6 +14,9 @@ internal sealed partial class AutomationForm
     private string _sitePriceEditDialogWarning = "";
     private string _lastSitePriceEditFailure = "";
     private string _sitePriceReadbackNote = "";
+    // An in-flight site price target is deferred until its readback completes.
+    // Other listings may replace their local reservation without site access.
+    private ListingJob? _activeSitePriceJob;
     private bool _sitePriceBatchRunning;
     private CancellationTokenSource? _sitePriceBatchCancellation;
 
@@ -249,6 +252,7 @@ internal sealed partial class AutomationForm
         // list; the previous trial could cancel the POST by navigating early.
         if (_schedulerRunning && !fromScheduler) PauseScheduler();
         _busy = true;
+        _activeSitePriceJob = job;
         _state.Text = "사이트 가격 수정 대상 확인 중";
         var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var token = cancellation.Token;
@@ -509,6 +513,20 @@ internal sealed partial class AutomationForm
                 _config.Jobs = _jobs.ToList();
                 _config.Save();
             }
+            // Finish the current verified/held site operation before applying
+            // any later local price the user requested for this same listing.
+            // SchedulerTick must compare its original reservation before
+            // clearing it, or this newer queued target would be lost.
+            int deferredPriceChanges = _deferredExecutingJobEdits.Count;
+            foreach (var deferredEdit in _deferredExecutingJobEdits) deferredEdit();
+            _deferredExecutingJobEdits.Clear();
+            if (deferredPriceChanges > 0)
+            {
+                _config.Jobs = _jobs.ToList();
+                _config.Save();
+                AppendLog($"사이트 가격 확인 완료 · 대기 중이던 로컬 수정 {deferredPriceChanges}건 반영");
+            }
+            _activeSitePriceJob = null;
             _busy = false;
             _state.Text = _schedulerRunning ? "자동 실행 중" : "중지/대기";
             _jobsGrid.Refresh();
