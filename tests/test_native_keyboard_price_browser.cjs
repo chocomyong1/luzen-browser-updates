@@ -55,7 +55,7 @@ async function oneTrial(browser, mutateTitle) {
     verifiedMaxQuantity:'9995',allowVerifiedTitleRestore:true,
     trustedOneClick:true,nativeKeyboardPrice:true
   })));
-  assert.equal(prepared.status,'input-ready');
+  assert.equal(prepared.status,'input-ready',JSON.stringify(prepared));
   assert.equal(await page.locator('[name=user_division_price]').inputValue(),'10,000');
   const cdp=await context.newCDPSession(page);
   const move=(type,button,buttons,clickCount,x,y)=>cdp.send('Input.dispatchMouseEvent',
