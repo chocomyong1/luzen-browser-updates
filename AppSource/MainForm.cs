@@ -135,6 +135,14 @@ internal sealed partial class MainForm : Form
         FormClosing += (_, _) => { CancelBootBRetry(); StopTelegramStatusPolling(); _marketStatusTimer.Stop(); _marketBridge?.Dispose(); _integratedRefreshTimer.Stop(); _splitStatusTimer.Stop(); _importProgressDismiss.Stop(); _importProgressClock.Stop(); _updateTimer.Stop(); _moduleA.StopAndSave(); _moduleB.StopAndSave(); _moduleC.StopAndSave(); };
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        // Also reapply when Windows recreates this handle after DPI/style
+        // changes; the original native resize and caption buttons remain.
+        NativeTitleBarTheme.Apply(Handle);
+    }
+
     private bool CanInstallUpdateAcrossSystems =>
         _moduleA.CanInstallSoftwareUpdate && _moduleB.CanInstallSoftwareUpdate && _moduleC.CanInstallSoftwareUpdate;
 
