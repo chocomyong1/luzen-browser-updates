@@ -473,8 +473,8 @@ internal sealed partial class AutomationForm
                 if (!IsAllowedCurrentPage()) throw new InvalidOperationException("수정 화면이 아이템매니아 공식 사이트를 벗어났습니다.");
                 form = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), false,
-                        job.Title, nativeSingleApproval)));
-                if (form.Status is "ready" or "diagnostic") break;
+                        job.Title, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity)));
+                if (form.Status is "ready" or "diagnostic" or "restore-needed") break;
             }
             if (form.Status == "diagnostic")
             {
@@ -499,7 +499,23 @@ internal sealed partial class AutomationForm
                 }
                 return false;
             }
-            if (form.Status != "ready")
+            bool titleRestoreApproved = false;
+            if (form.Status == "restore-needed" && nativeSingleApproval)
+            {
+                // The official edit page turned the first 8/9/10-level token
+                // into the exact, independently verified OWN-list split range.
+                // Never silently submit that corrupted title or overwrite it:
+                // make the one-item title-restoration risk explicit to the user.
+                if (MessageBox.Show(this,
+                    "사이트 수정 화면의 제목이 원본과 다르게 만들어졌습니다.\n\n" + form.Message +
+                    "\n\n승인하면 단 한 건의 수정폼 제목을 저장된 원본으로 되돌리고 가격을 변경합니다." +
+                    "\n사이트가 제출 중 제목을 다시 바꿀 위험은 아직 실사이트에서 검증되지 않았습니다." +
+                    "\n\n이 구매글 한 건만 시험할까요?",
+                    "원본 제목 복구 후 단건 가격 변경 시험", MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
+                titleRestoreApproved = true;
+            }
+            if (form.Status != "ready" && !titleRestoreApproved)
                 throw new InvalidOperationException("수정 페이지를 안전하게 확인하지 못했습니다: " + form.Message);
 
             // Subscribe BEFORE the click. Previously the first readback
@@ -532,7 +548,8 @@ internal sealed partial class AutomationForm
             {
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
-                        job.Title, nativeSingleApproval)));
+                        job.Title, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity,
+                        titleRestoreApproved)));
                 submitScriptNote = result.Message;
                 if (result.Status != "submitted")
                     AppendLog("구매글 가격 수정 제출 결과 불확실 (자동 재시도 금지): " + result.Message);

@@ -43,9 +43,12 @@ internal static class SitePriceEdit
         DetailEditScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click }), StringComparison.Ordinal);
 
     public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit,
-        string expectedTitle = "", bool nativeSingleApproval = false) =>
+        string expectedTitle = "", bool nativeSingleApproval = false,
+        string verifiedMinQuantity = "", string verifiedMaxQuantity = "",
+        bool allowVerifiedTitleRestore = false) =>
         EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new
-        { number, oldPrice, newPrice, submit, expectedTitle, nativeSingleApproval }), StringComparison.Ordinal);
+        { number, oldPrice, newPrice, submit, expectedTitle, nativeSingleApproval,
+            verifiedMinQuantity, verifiedMaxQuantity, allowVerifiedTitleRestore }), StringComparison.Ordinal);
 
     public const string OwnedRowScript = """
     (() => {
@@ -293,6 +296,24 @@ internal static class SitePriceEdit
       const siteTitle=titleInputs.length===1?cleanTitle(titleInputs[0].value):'';
       const titlePreserved=originalTitle.length>=3&&titleInputs.length===1&&
         titleSignature(siteTitle)===titleSignature(originalTitle);
+      // The site's BUY edit form sometimes REPLACES the first actual level
+      // with the split-quantity range (e.g. "10 레벨 ..." becomes
+      // "1 ~ 9,995 레벨 ..."). Posting that field unchanged corrupts a real
+      // listing title. Repair is permitted ONLY for one manually approved
+      // listing when the exact signed-in OWN row independently supplied the
+      // SAME min/max range and every character after "레벨" is identical.
+      const savedLevel=originalTitle.match(/^(8|9|10)\s*레벨([\s\S]*)$/);
+      const rangeTitle=siteTitle.match(/^\[?\s*([\d,]+)\s*(?:개)?\s*[~〜～–-]\s*([\d,]+)\s*(?:개)?\s*\]?\s*레벨([\s\S]*)$/);
+      const quantity=s=>String(s||'').replace(/,/g,'').trim();
+      const verifiedMin=quantity(a.verifiedMinQuantity),verifiedMax=quantity(a.verifiedMaxQuantity);
+      const verifiedRange=/^[1-9]\d{0,6}$/.test(verifiedMin)&&/^[1-9]\d{0,6}$/.test(verifiedMax)&&
+        Number(verifiedMax)>=Number(verifiedMin);
+      const mayRestoreTitle=!titlePreserved&&a.nativeSingleApproval===true&&
+        titleInputs.length===1&&visible(titleInputs[0])&&!titleInputs[0].readOnly&&
+        String(titleInputs[0].type||'').toLowerCase()!=='hidden'&&
+        !!savedLevel&&!!rangeTitle&&verifiedRange&&
+        quantity(rangeTitle[1])===verifiedMin&&quantity(rangeTitle[2])===verifiedMax&&
+        titleSignature(rangeTitle[3])===titleSignature(savedLevel[2]);
       const displayTitle=s=>String(s||'').replace(/[\r\n\t]/g,' ').trim().slice(0,90);
       const siteSubmit=isAuditedBuyForm?[...form.querySelectorAll('button[type="submit"]')].filter(e=>
         visible(e)&&attr(e,'id')==='ok_btn'&&attr(e,'class').split(/\s+/).includes('buy_re_reg')&&
@@ -300,12 +321,17 @@ internal static class SitePriceEdit
       // All of path, form, old site price, hidden listing ID, and the EXACT
       // native submit control must agree. A character-name save cannot pass.
       if(formOwnedId&&siteSubmit.length===1){
-        if(!titlePreserved)return result('error',titleInputs.length!==1?
+        if(!titlePreserved&&!mayRestoreTitle)return result('error',titleInputs.length!==1?
           '가격 수정은 제목까지 재등록하므로 제목 입력칸을 유일하게 확인할 때까지 제출을 차단합니다':
           '실제 제목 내용이 달라 가격 제출을 막았습니다.\n'+
           '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
           '프로그램 저장: '+displayTitle(originalTitle)+'\n'+
           '원래 제목과 다를 때는 자동으로 제목을 고치거나 가격을 제출하지 않습니다.');
+        if(mayRestoreTitle&&!a.allowVerifiedTitleRestore)return result('restore-needed',
+          '사이트가 첫 레벨 숫자를 검증된 분할 수량 범위로 바꾼 것을 확인했습니다.\n'+
+          '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
+          '프로그램 원문: '+displayTitle(originalTitle)+'\n'+
+          '원래 제목으로 폼을 복구하는 별도 승인이 있어야만 1건 제출할 수 있습니다.',old,1);
         // The scheduler and batch paths never get this explicit one-item
         // approval. Never synthesize fetch(FormData(form)) or form.submit():
         // those bypass the site's own validation/normalization handlers.
@@ -313,16 +339,31 @@ internal static class SitePriceEdit
           if(!a.submit)return result('ready','사이트 기본 재등록 버튼 확인 · 단건 사용자 승인 대기',old,1);
           // Snapshot every other form value. An oninput handler that mutates
           // a title, a level, a quantity or a hidden value must prevent POST.
-          const others=[...form.querySelectorAll('input,textarea,select')].filter(e=>e!==priceInput)
+          const others=[...form.querySelectorAll('input,textarea,select')]
+            .filter(e=>e!==priceInput&&(!mayRestoreTitle||e!==titleInputs[0]))
             .map(e=>({element:e,value:String(e.value??'')}));
+          const beforeTitle=titleInputs[0].value;
+          if(mayRestoreTitle)titleInputs[0].value=a.expectedTitle;
           priceInput.value=desired;
           priceInput.dispatchEvent(new Event('input',{bubbles:true}));
           priceInput.dispatchEvent(new Event('change',{bubbles:true}));
           const altered=others.some(o=>String(o.element.value??'')!==o.value);
           if(altered||titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
             priceInput.value=old;
+            if(mayRestoreTitle)titleInputs[0].value=beforeTitle;
             return result('error','가격 변경 이벤트가 제목 또는 다른 폼 값을 바꿔 제출을 중단했습니다',old,1);
           }
+          // The site's own click/validation handlers may still reformat the
+          // title between the click and its normal submit event. Veto that
+          // submit if it no longer carries the exact intended title. Native
+          // form.submit() would bypass this guard, so the one-item hold and
+          // independent readback remain mandatory.
+          form.addEventListener('submit',e=>{
+            if(e.target===form&&titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
+              e.preventDefault();
+              e.stopImmediatePropagation();
+            }
+          },{capture:true,once:true});
           // The audited native button is the ONLY permitted submit target.
           // A click may navigate and abort JS; C# records a crash-safe review
           // checkpoint and independently verifies site title/price afterward.
