@@ -24,7 +24,7 @@ async function oneTrial(browser, mutateTitle) {
   const requests = [];
   page.on('request', req => {if(req.method()==='POST')requests.push(req.url());});
   await page.route(url, route => route.fulfill({status:200,contentType:'text/html',body:`
-    <!doctype html><html lang="ko"><body>
+    <!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
     <form id="frmBuy" action="/myroom/buy/buy_re_reg_ok.php" method="post">
       <input type="hidden" name="registration_id" value="${listingId}">
       <label>제목<input name="user_title" value="${siteTitle}"></label>
