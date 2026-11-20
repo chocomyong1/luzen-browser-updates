@@ -38,10 +38,13 @@ internal static class OwnedListRepost
     (() => {
       const arg=__ARG__;
       const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
-      // A saved title can contain the separate quantity-range label while the
-      // site's .trade_title is only the actual item title. Normalize ONLY that
-      // presentation prefix; never accept a different item title by ID alone.
-      const coreTitle=s=>norm(s).replace(/^\[[\d,]+개[~〜-][\d,]+개\]/,'');
+      // My Room sometimes prepends a SPLIT-QUANTITY range to .trade_title,
+      // including the unbracketed "1 ~ 9,995" form. It is not an item level.
+      // Strip only a complete leading range, then still require the ENTIRE
+      // actual product title to match. A matching ID alone is never enough.
+      const coreTitle=s=>norm(String(s||'')
+        .replace(/^\s*\[\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?\s*\]\s*/, '')
+        .replace(/^\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?(?=\s|[^\d,])\s*/, ''));
       const valid=s=>/^\d{8,20}$/.test(String(s||''));
       const result=(status,message='',stamp='',diagnostic={})=>({status,message,stamp,...diagnostic});
       const official=()=>location.protocol==='https:' &&
@@ -114,9 +117,15 @@ internal static class OwnedListRepost
       for(const row of candidateRows){
         const text=String(row.innerText||row.textContent||'');
         if(text.length>6000)continue;
-        const itemTitle=String(row.querySelector?.('.trade_title')?.textContent||'').trim();
+        const titleElement=row.querySelector?.('.trade_title');
+        const itemTitle=String(titleElement?.textContent||'').trim();
+        // The title can be shortened or decorated for display, while its
+        // title/aria-label holds the full original text. Read only title-
+        // scoped attributes, never a tooltip from a delete/repost action.
+        const titleCandidates=[itemTitle,...['title','aria-label','data-title','data-original-title']
+          .map(key=>titleElement?.getAttribute?.(key)||'')].filter(s=>String(s).trim().length>1);
         const titleMatches=norm(text).includes(norm(arg.title)) ||
-          (itemTitle.length>1 && coreTitle(itemTitle)===coreTitle(arg.title));
+          titleCandidates.some(siteTitle=>coreTitle(siteTitle)===coreTitle(arg.title));
         if(titleMatches)titleRows++;
         const ids=new Set();
         for(const el of [row,...row.querySelectorAll('*')].slice(0,250)){
@@ -157,7 +166,8 @@ internal static class OwnedListRepost
       const diagnostic={scannedRows:candidateRows.size,numberRows,titleRows};
       if(matching.length===0&&numberRows>0)return result('mismatch',
         actualTitles.length
-          ?'등록번호는 있지만 저장된 제목과 사이트 제목이 다릅니다. 사이트 제목: '+actualTitles.join(' / ')
+          ?'등록번호는 있지만 저장된 제목과 사이트 제목이 다릅니다. 저장 제목: '+
+            String(arg.title).slice(0,100)+' / 사이트 제목: '+actualTitles.join(' / ')
           :'등록번호는 있지만 사이트의 물품 제목 영역을 확인하지 못했습니다. 원본 글을 다시 확인하세요',
         '',diagnostic);
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?

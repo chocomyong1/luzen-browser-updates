@@ -110,6 +110,41 @@ function evaluate(rows, { number = id, name = title, click = false,
   console.log('PASS quantity range prefix in saved title does not cause false mismatch');
 }
 {
+  const core = '10레벨 겁화작열 삽니다 24시 빠른거래';
+  const rendered = '1 ~ 9,995 ' + core;
+  const rows = [makeRealMarkupRow(id, rendered)];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: rendered, getAttribute: () => null } : null;
+  assert.equal(evaluate(rows, { name: core }).status, 'ready');
+  assert.equal(evaluate(rows, { name: core, click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS unbracketed 1 ~ 9,995 quantity range is not mistaken for title');
+}
+{
+  const core = '10레벨 겁화작열 삽니다 24시 빠른거래';
+  const rows = [makeRealMarkupRow(id, '1 ~ 9,995 레벨 겁화작열 삽니다 24시')];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: '1 ~ 9,995 레벨 겁화작열 삽니다 24시',
+      getAttribute: key => key === 'title' ? core : null } : null;
+  assert.equal(evaluate(rows, { name: core }).status, 'ready');
+  assert.equal(evaluate(rows, { name: core, click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS full official title attribute over truncated site display');
+}
+{
+  // A visually similar level with missing title information must remain
+  // blocked. Never infer the missing "10" from the listing number alone.
+  const core = '10레벨 겁화작열 삽니다 24시 빠른거래';
+  const rows = [makeRealMarkupRow(id, '1 ~ 9,995 레벨 겁화작열 삽니다 24시')];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: '1 ~ 9,995 레벨 겁화작열 삽니다 24시', getAttribute: () => null } : null;
+  const result = evaluate(rows, { name: core, click: true });
+  assert.equal(result.status, 'mismatch');
+  assert.match(result.message, /저장 제목: 10레벨 겁화작열/);
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS missing level/title cannot be guessed from matching ID');
+}
+{
   const rows = [makeRealMarkupRow(id, '10레벨 작열 보석 구매합니다')];
   rows[0].row.querySelector = selector => selector === '.trade_title'
     ? { textContent: '10레벨 작열 보석 구매합니다' } : null;

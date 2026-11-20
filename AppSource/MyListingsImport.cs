@@ -170,8 +170,9 @@ internal static class MyListingsImport
     // ItemMania renders the split-trade range inside its listing-title cell.
     // It is UI metadata, not part of the actual title typed by the owner.
     public static string CleanImportedTitle(string? text) =>
-        Regex.Replace(Clean(text),
-            @"^\[\s*[\d,]+\s*개\s*[~〜～–-]\s*[\d,]+\s*개\s*\]\s*", "").Trim();
+        Regex.Replace(Regex.Replace(Clean(text),
+            @"^\[\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?\s*\]\s*", ""),
+            @"^[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?(?=\s|[^\d,])\s*", "").Trim();
 
     internal static bool IsImportOnlyStatus(string? status) =>
         (status ?? "").StartsWith("가져옴:", StringComparison.Ordinal) ||
@@ -366,7 +367,9 @@ internal static class MyListingsImport
 (() => {
   const norm = s => String(s || '').replace(/\s+/g,' ').trim();
   const clip = (s,n=350) => norm(s).slice(0,n);
-  const stripQuantityRange = s => norm(s).replace(/^\[\s*[\d,]+\s*개\s*[~〜～–-]\s*[\d,]+\s*개\s*\]\s*/, '');
+  const stripQuantityRange = s => norm(s)
+    .replace(/^\[\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?\s*\]\s*/, '')
+    .replace(/^[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?(?=\s|[^\d,])\s*/, '');
   const clean = s => norm(s).replace(/[\s:*：()]/g,'');
   const official = u => { try { const x=new URL(u,location.href); return x.protocol==='https:' &&
     (x.hostname==='itemmania.com' || x.hostname.endsWith('.itemmania.com')); } catch { return false; } };
