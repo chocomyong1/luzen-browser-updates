@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.1",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.1/LuzenBrowser_22.3.1_BinaryUpdate.zip",
-  "sha256": "c841eb28ffde3e6798bbb1b63075e454473115451c6e6fa20fbfd56bb4e25872",
+  "version": "22.3.2",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.2/LuzenBrowser_22.3.2_BinaryUpdate.zip",
+  "sha256": "78105b5cddd176ed38eab1524c27a712c0a383a01582ed1abdde1ef8b4527346",
   "format": "binary",
-  "releaseNotes": "v22.3.1 내 등록글 불러오기 개선. 사이트 구매·판매 전체 목록을 확인했을 때만 삭제한 예전 등록번호를 정리 후보로 표시합니다. 사용자가 확인하면 프로그램 내부에서만 제거하며 별도 JSON 백업을 보관합니다. 더보기의 정리한 예전 글 복구로 복원할 수 있습니다. 조회가 불완전하거나 계정이 다른 글은 정리하지 않습니다. v22.3.0의 제목 보호 및 기존 글 가격 자동 수정 잠금은 유지됩니다."
+  "releaseNotes": "v22.3.2 구매글 사이트 가격 수정 단건 시험 기능 추가. 물품 상세 더보기에서 선택한 한 건만 명시적으로 승인하면 사이트 기본 재등록 버튼으로 변경하고, 가격·제목을 다시 읽어 확인합니다. 이전의 위험한 전체 폼 직접 POST는 사용하지 않습니다. 실사이트 안전성 확인 전이므로 예약·일괄 가격 자동 변경은 계속 차단합니다. v22.3.1의 예전 글 정리·복구 및 제목 보호도 유지됩니다."
 }
