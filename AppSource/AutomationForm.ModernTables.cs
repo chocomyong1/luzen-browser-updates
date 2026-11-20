@@ -147,6 +147,12 @@ internal sealed partial class AutomationForm
                 e.FormattingApplied = true;
             }
             if (grid.Rows[e.RowIndex].DataBoundItem is not ListingJob job) return;
+            if (field == "Title" && job.SiteTitleDiffers)
+            {
+                e.Value = "⚠ " + job.Title + "  |  사이트: " + job.SiteObservedTitle;
+                e.CellStyle.ForeColor = UiTheme.Warning;
+                e.FormattingApplied = true;
+            }
             if (field == "LastStatus")
             {
                 e.Value = job.StatusDisplay;
@@ -167,10 +173,15 @@ internal sealed partial class AutomationForm
         };
         grid.CellToolTipTextNeeded += (_, e) =>
         {
-            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
-                grid.Columns[e.ColumnIndex].DataPropertyName != "LastStatus") return;
+            if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
             if (grid.Rows[e.RowIndex].DataBoundItem is ListingJob job)
-                e.ToolTipText = job.LastStatus;
+            {
+                var field = grid.Columns[e.ColumnIndex].DataPropertyName;
+                if (field == "LastStatus") e.ToolTipText = job.LastStatus;
+                else if (field == "Title" && !string.IsNullOrWhiteSpace(job.SiteObservedTitle))
+                    e.ToolTipText = "저장 제목: " + job.Title + "\n사이트 표시 제목: " + job.SiteObservedTitle +
+                        "\n등록번호로 조회한 결과이며, 저장 제목은 덮어쓰지 않습니다.";
+            }
         };
     }
 

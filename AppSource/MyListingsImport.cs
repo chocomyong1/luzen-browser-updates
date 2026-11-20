@@ -68,6 +68,7 @@ internal sealed class ExistingPriceObservation
 internal sealed class ExistingListingUpdate
 {
     public ListingJob Target { get; set; } = null!;
+    public string SiteObservedTitle { get; set; } = "";
     public string Game { get; set; } = "";
     public string Server { get; set; } = "";
     public string Quantity { get; set; } = "";
@@ -85,12 +86,16 @@ internal sealed class ExistingListingUpdate
     public string Description { get; set; } = "";
     public bool ClearImportOnlyReview { get; set; }
     public bool HasChanges => ClearImportOnlyReview ||
+        !string.IsNullOrEmpty(SiteObservedTitle) &&
+          !string.Equals(Target.SiteObservedTitle, SiteObservedTitle, StringComparison.Ordinal) ||
         !string.IsNullOrEmpty(VerifiedSitePrice) &&
           !string.Equals(Target.VerifiedSitePrice.Replace(",", ""), VerifiedSitePrice.Replace(",", ""), StringComparison.Ordinal) ||
         new[] { Game, Server, Quantity, Unit, Price, EntryUrl, SourceListUrl, ItemCategory, TradingMethod,
                 MinQuantity, MaxQuantity, Character, Description }.Any(v => !string.IsNullOrEmpty(v));
     public void Apply()
     {
+        if (!string.IsNullOrWhiteSpace(SiteObservedTitle))
+            Target.SiteObservedTitle = SiteObservedTitle;
         if (!string.IsNullOrWhiteSpace(VerifiedSitePrice))
         {
             Target.VerifiedSitePrice = VerifiedSitePrice;
@@ -181,6 +186,12 @@ internal static class MyListingsImport
         Regex.Replace(Regex.Replace(Clean(text),
             @"^\[\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?\s*\]\s*", ""),
             @"^[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?(?=\s|[^\d,])\s*", "").Trim();
+
+    // Repeated level digits were observed in previously imported titles.
+    // This is an alarm, never an instruction to guess and rewrite a title.
+    public static bool HasSuspiciousDuplicatedLevel(string? text) =>
+        Regex.IsMatch(CleanImportedTitle(text),
+            @"(?<!\d)(?<level>8|9|10)(?:\s+\k<level>)+\s*레벨", RegexOptions.CultureInvariant);
 
     internal static bool IsImportOnlyStatus(string? status) =>
         (status ?? "").StartsWith("가져옴:", StringComparison.Ordinal) ||
@@ -288,6 +299,11 @@ internal static class MyListingsImport
                     var update = new ExistingListingUpdate
                     {
                         Target = target,
+                        // A verified exact ID can refresh the read-only site
+                        // title without overwriting the user's saved title.
+                        SiteObservedTitle = trustedPrice &&
+                            !string.Equals(target.SiteObservedTitle, Clean(row.Title), StringComparison.Ordinal)
+                            ? Clean(row.Title) : "",
                         Game = string.IsNullOrWhiteSpace(target.Game) ? proposedGame : "",
                         Server = string.IsNullOrWhiteSpace(target.Server) ? proposedServer : "",
                         Quantity = (string.IsNullOrWhiteSpace(target.Quantity) ||
@@ -326,6 +342,7 @@ internal static class MyListingsImport
             var side = Clean(row.TradeSide, 30);
             if (side is not ("판매" or "구매")) side = "알 수 없음";
             if (string.IsNullOrEmpty(url)) result.WithoutUrl++;
+            bool suspiciousTitle = HasSuspiciousDuplicatedLevel(title);
             var job = new ListingJob
             {
                 Operation = "재등록", OriginalTradeSide = side,
@@ -333,6 +350,7 @@ internal static class MyListingsImport
                 ImportedFromSite = true, ImportedUtc = DateTime.UtcNow,
                 SiteId = siteId, SubId = subId,
                 Game = game, Server = server, Title = title,
+                SiteObservedTitle = Clean(row.Title),
                 // Only explicitly confirmed values, never new-listing defaults.
                 ItemCategory = Clean(row.ItemCategory, 40), TradingMethod = Clean(row.TradingMethod, 40),
                 MinQuantity = Clean(row.MinQuantity, 30), MaxQuantity = Clean(row.MaxQuantity, 30),
@@ -343,10 +361,12 @@ internal static class MyListingsImport
                 VerifiedSitePriceUtc = CanTrustOwnedImport(row, number) ? DateTime.UtcNow : null,
                 SourceListUrl = IsOwnedListUrl(row.SourceListUrl) ? CanonicalUrl(row.SourceListUrl) : "",
                 Enabled = false, AutoRepost = true, InitialCompleted = true,
-                RequiresReview = !CanTrustOwnedImport(row, number), NextDueUtc = DateTime.MaxValue,
-                LastStatus = CanTrustOwnedImport(row, number)
-                    ? "가져옴: 내 등록글 확인됨 · 자동 실행 OFF"
-                    : "가져옴: 등록번호·가격 또는 상세 URL 확인 필요"
+                RequiresReview = suspiciousTitle || !CanTrustOwnedImport(row, number), NextDueUtc = DateTime.MaxValue,
+                LastStatus = suspiciousTitle
+                    ? "가져옴: 제목 숫자 중복 의심 · 원본 확인 전 자동 작업 금지"
+                    : CanTrustOwnedImport(row, number)
+                        ? "가져옴: 내 등록글 확인됨 · 자동 실행 OFF"
+                        : "가져옴: 등록번호·가격 또는 상세 URL 확인 필요"
             };
             result.NewJobs.Add(job);
         }

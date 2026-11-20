@@ -133,6 +133,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   buttonHeading = '캐릭터명', approvedSubmit = false,
   pathname = approvedSubmit ? '/myroom/buy/buy_re_reg.html' : '/buy/edit.html',
   formId = 'frmBuy', priceFieldName = 'user_division_price',
+  formTitle = title, includeTitleField = true,
   nativeSubmitCount = 1, submitId = 'ok_btn', submitClass = 'buy_re_reg',
   includeFormId = true, formAction = '', formMethod = 'post' } = {}) {
   let clicked = 0;
@@ -147,6 +148,9 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     closest(name) { return name === 'form' ? form : null; }
   }
   const quantity = new HTMLInputElement('1');
+  const titleInput = new HTMLInputElement(formTitle);
+  titleInput.name = 'user_title';
+  titleInput.getAttribute = key => key === 'name' ? titleInput.name : null;
   const prices = Array.from({ length: priceFields }, () => new HTMLInputElement(old));
   for (const p of prices) {
     p.name = priceFieldName;
@@ -171,12 +175,14 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const form = { tagName: 'FORM', dataset: {}, getAttribute: key => formAttrs[key] || null,
     requestSubmit: () => assert.fail('Native form submission must not be used in this transport'),
     querySelectorAll: key => key === 'input[type="hidden"]' ? (includeFormId ? [hidden] : []) :
+      key === 'input,textarea' ? (includeTitleField ? [titleInput] : []) :
       key === 'button[type="submit"]' ? nativeSubmits : key.startsWith('button,') ? allButtons : [] };
   class FormData {
     constructor(target) {
       assert.equal(target, form);
       this.fields = new Map([['user_division_price', prices[0].value],
         ['registration_id', id], ['other_hidden_field', 'private value']]);
+      if (includeTitleField) this.fields.set('user_title', titleInput.value);
     }
     has(name) { return this.fields.has(name); }
     get(name) { return this.fields.get(name); }
@@ -202,7 +208,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     key === 'input' ? [quantity, ...prices] : [] };
   const evaluate = (submit = true, expected = number, expectedOld = '10000') =>
     vm.runInNewContext(script('EditFormScript').replace('__ARG__', JSON.stringify({
-      number: expected, oldPrice: expectedOld, newPrice: '35100', submit
+      number: expected, oldPrice: expectedOld, newPrice: '35100', submit,
+      expectedTitle: title
     })), {
       document, HTMLInputElement, FormData, fetch: networkFetch, Event: class { constructor() {} },
       location: { protocol: 'https:', hostname: host, pathname, search: '' },
@@ -214,23 +221,33 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
 
 {
   const audited = editFormCase({approvedSubmit: true, finalText: ['저장', '수정하기']});
-  assert.equal(audited.evaluate(false).status, 'ready');
+  assert.equal(audited.evaluate(false).status, 'blocked');
   assert.equal(audited.clicked, 0);
   assert.equal(audited.prices[0].value, '10,000');
-  assert.equal(audited.evaluate(true).status, 'submitted');
-  assert.equal(audited.prices[0].value, '35100');
-  assert.equal(audited.inputEvents, 2);
-  assert.deepEqual(audited.clickedLabels, ['REAL_MULTIPART_POST']);
-  assert.equal(audited.fetchCalls.length, 1, 'Exactly one first-party POST per approved submission');
-  assert.equal(audited.fetchCalls[0].url, '/myroom/buy/buy_re_reg_ok.php');
-  assert.equal(audited.fetchCalls[0].options.method, 'POST');
-  assert.equal(audited.fetchCalls[0].options.credentials, 'same-origin');
-  assert.equal(audited.fetchCalls[0].options.body.get('user_division_price'), '35100');
+  assert.equal(audited.evaluate(true).status, 'blocked');
+  assert.match(audited.evaluate(true).message, /제목 보호 모드/);
+  assert.equal(audited.prices[0].value, '10,000');
+  assert.equal(audited.inputEvents, 0);
+  assert.deepEqual(audited.clickedLabels, []);
+  assert.equal(audited.fetchCalls.length, 0, 'Never resubmit the whole form to change only its price');
   assert.doesNotMatch(audited.evaluate(false).message, /private value/);
-  assert.equal(audited.evaluate(true, number, '35100').status, 'error',
-    'Second attempt against the same form is blocked');
-  assert.equal(audited.fetchCalls.length, 1);
-  console.log('PASS approved frmBuy constructs exactly one authenticated multipart POST');
+  assert.equal(audited.evaluate(true, number, '35100').status, 'error');
+  assert.equal(audited.fetchCalls.length, 0);
+  assert.match(source, /AutomaticPriceSubmissionEnabled\s*=>\s*false/);
+  assert.match(automation, /!SitePriceEdit\.AutomaticPriceSubmissionEnabled/);
+  console.log('PASS approved frmBuy cannot send even one multipart POST while title safety is active');
+}
+
+{
+  const modifiedTitle = editFormCase({ approvedSubmit: true, formTitle: '1 ~ 999 9 9 레벨 겁화 작열 구매합니다' });
+  assert.equal(modifiedTitle.evaluate(false).status, 'error');
+  assert.equal(modifiedTitle.evaluate(true).status, 'error');
+  assert.equal(modifiedTitle.fetchCalls.length, 0);
+  const unknownTitle = editFormCase({ approvedSubmit: true, includeTitleField: false });
+  assert.equal(unknownTitle.evaluate(false).status, 'error');
+  assert.equal(unknownTitle.evaluate(true).status, 'error');
+  assert.equal(unknownTitle.fetchCalls.length, 0);
+  console.log('PASS title mismatch or missing title field blocks price re-registration POST');
 }
 
 {
