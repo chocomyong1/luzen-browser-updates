@@ -135,7 +135,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   formId = 'frmBuy', priceFieldName = 'user_division_price',
   formTitle = title, includeTitleField = true,
   nativeSubmitCount = 1, submitId = 'ok_btn', submitClass = 'buy_re_reg',
-  includeFormId = true, formAction = '', formMethod = 'post' } = {}) {
+  includeFormId = true, formAction = '', formMethod = 'post', eventMutatesTitle = false } = {}) {
   let clicked = 0;
   const clickedLabels = [];
   let inputEvents = 0;
@@ -144,7 +144,11 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     set value(v) { this._value = v; }
     get value() { return this._value; }
     getClientRects() { return [1]; }
-    dispatchEvent() { inputEvents++; return true; }
+    dispatchEvent() {
+      inputEvents++;
+      if (eventMutatesTitle && prices?.includes(this)) titleInput.value = '9 9 레벨 겁화 구매합니다';
+      return true;
+    }
     closest(name) { return name === 'form' ? form : null; }
   }
   const quantity = new HTMLInputElement('1');
@@ -176,6 +180,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     requestSubmit: () => assert.fail('Native form submission must not be used in this transport'),
     querySelectorAll: key => key === 'input[type="hidden"]' ? (includeFormId ? [hidden] : []) :
       key === 'input,textarea' ? (includeTitleField ? [titleInput] : []) :
+      key === 'input,textarea,select' ? [quantity, ...prices, ...(includeTitleField ? [titleInput] : [])] :
       key === 'button[type="submit"]' ? nativeSubmits : key.startsWith('button,') ? allButtons : [] };
   class FormData {
     constructor(target) {
@@ -206,10 +211,10 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     key.startsWith('tr,') ? [tr] :
     key.startsWith('button,') ? allButtons :
     key === 'input' ? [quantity, ...prices] : [] };
-  const evaluate = (submit = true, expected = number, expectedOld = '10000') =>
+  const evaluate = (submit = true, expected = number, expectedOld = '10000', nativeSingleApproval = false) =>
     vm.runInNewContext(script('EditFormScript').replace('__ARG__', JSON.stringify({
       number: expected, oldPrice: expectedOld, newPrice: '35100', submit,
-      expectedTitle: title
+      expectedTitle: title, nativeSingleApproval
     })), {
       document, HTMLInputElement, FormData, fetch: networkFetch, Event: class { constructor() {} },
       location: { protocol: 'https:', hostname: host, pathname, search: '' },
@@ -217,6 +222,27 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     }, { timeout: 1000 });
   return { evaluate, get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
     clickedLabels, prices, formAttrs, fetchCalls };
+}
+
+{
+  const native = editFormCase({approvedSubmit: true});
+  assert.equal(native.evaluate(false, number, '10000', true).status, 'ready');
+  assert.equal(native.clicked, 0);
+  assert.equal(native.prices[0].value, '10,000');
+  assert.equal(native.evaluate(true, number, '10000', true).status, 'submitted');
+  assert.deepEqual(native.clickedLabels, ['REAL_SITE_RE_REG']);
+  assert.equal(native.prices[0].value, '35100');
+  assert.equal(native.fetchCalls.length, 0, 'Native site button, never synthetic full-form fetch');
+  assert.equal(native.inputEvents, 2);
+  const mutated = editFormCase({approvedSubmit: true, eventMutatesTitle: true});
+  assert.equal(mutated.evaluate(true, number, '10000', true).status, 'error');
+  assert.equal(mutated.clicked, 0);
+  assert.equal(mutated.prices[0].value, '10000');
+  assert.equal(mutated.fetchCalls.length, 0);
+  const wrong = editFormCase({approvedSubmit: true, formTitle: '10 10 레벨 겁화 구매합니다'});
+  assert.equal(wrong.evaluate(true, number, '10000', true).status, 'error');
+  assert.equal(wrong.clicked, 0);
+  console.log('PASS explicit single-item native site button changes only price; title mutation blocks submission');
 }
 
 {

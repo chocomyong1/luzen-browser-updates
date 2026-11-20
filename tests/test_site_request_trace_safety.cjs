@@ -40,7 +40,7 @@ assert.match(observer, /Network\.loadingFinished/);
 assert.match(observer, /Network\.loadingFailed/);
 assert.doesNotMatch(observer, /getRequestPostData|\.postData|\.headers|\.response\.body|Fetch\.enable/);
 const safetyStart = price.indexOf('using var submissionObserver = new SitePriceSubmitObserver(');
-const siteSubmit = price.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true, job.Title)');
+const siteSubmit = price.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,');
 const finish = price.indexOf('await submissionObserver.WaitAsync(token)', siteSubmit);
 const readback = price.indexOf('await ConfirmChangedSitePriceAsync(job, desired, token)', siteSubmit);
 const checkpoint = price.indexOf('job.RequiresReview = true', safetyStart);

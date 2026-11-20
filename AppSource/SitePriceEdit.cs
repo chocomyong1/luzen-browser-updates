@@ -43,8 +43,9 @@ internal static class SitePriceEdit
         DetailEditScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click }), StringComparison.Ordinal);
 
     public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit,
-        string expectedTitle = "") =>
-        EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, oldPrice, newPrice, submit, expectedTitle }), StringComparison.Ordinal);
+        string expectedTitle = "", bool nativeSingleApproval = false) =>
+        EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new
+        { number, oldPrice, newPrice, submit, expectedTitle, nativeSingleApproval }), StringComparison.Ordinal);
 
     public const string OwnedRowScript = """
     (() => {
@@ -296,12 +297,30 @@ internal static class SitePriceEdit
         if(!titlePreserved)return result('error',titleInputs.length!==1?
           '가격 수정은 제목까지 재등록하므로 제목 입력칸을 유일하게 확인할 때까지 제출을 차단합니다':
           '사이트 수정폼 제목과 저장된 원본 제목이 다릅니다. 가격만 수정해도 제목이 바뀔 수 있어 제출을 차단합니다');
-        // Safety interlock: the former code posted the ENTIRE site form with
-        // fetch(FormData(form)), bypassing the site's submit handler. This can
-        // rewrite the listing title even when only its price was edited. Until
-        // the server-side title behavior is verified, NEVER send that POST.
-        // Preview and submit requests are deliberately read-only.
-        return result('blocked','제목 보호 모드: 구매글 가격 자동 수정은 중지됐습니다. 사이트에서 직접 재등록하세요.',old,1);
+        // The scheduler and batch paths never get this explicit one-item
+        // approval. Never synthesize fetch(FormData(form)) or form.submit():
+        // those bypass the site's own validation/normalization handlers.
+        if(a.nativeSingleApproval===true){
+          if(!a.submit)return result('ready','사이트 기본 재등록 버튼 확인 · 단건 사용자 승인 대기',old,1);
+          // Snapshot every other form value. An oninput handler that mutates
+          // a title, a level, a quantity or a hidden value must prevent POST.
+          const others=[...form.querySelectorAll('input,textarea,select')].filter(e=>e!==priceInput)
+            .map(e=>({element:e,value:String(e.value??'')}));
+          priceInput.value=desired;
+          priceInput.dispatchEvent(new Event('input',{bubbles:true}));
+          priceInput.dispatchEvent(new Event('change',{bubbles:true}));
+          const altered=others.some(o=>String(o.element.value??'')!==o.value);
+          if(altered||cleanTitle(titleInputs[0].value)!==originalTitle){
+            priceInput.value=old;
+            return result('error','가격 변경 이벤트가 제목 또는 다른 폼 값을 바꿔 제출을 중단했습니다',old,1);
+          }
+          // The audited native button is the ONLY permitted submit target.
+          // A click may navigate and abort JS; C# records a crash-safe review
+          // checkpoint and independently verifies site title/price afterward.
+          siteSubmit[0].click();
+          return result('submitted','검증된 사이트 기본 재등록 버튼 클릭',desired,1);
+        }
+        return result('blocked','제목 보호 모드: 예약·일괄 가격 자동 제출 중지',old,1);
       }
       const diag=`경로:${safe(location.pathname)}; 가격칸:${priceName}; 폼:${formName}/${formAction}; `+
         `폼 등록번호:${formOwnedId?'일치':'미확인'}; 제출후보:${siteSubmit.length}개; `+
