@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.95",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.95/LuzenBrowser_22.2.95_BinaryUpdate.zip",
-  "sha256": "84d6332320ff28d0a1e45f78079ff740d39b10e0dfc5e722921134073af19185",
+  "version": "22.2.96",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.96/LuzenBrowser_22.2.96_BinaryUpdate.zip",
+  "sha256": "4af33b9d7591a6d69378f252de0905c40c0981aa3dbd7976976d6f752c2f7912",
   "format": "binary",
-  "releaseNotes": "v22.2.95 사이트 제목 인식 구조 개선 및 가격 수정 예약 현황: 재등록과 가격 변경에서 공통으로 사이트 제목, 분할수량, 등록번호, 거래 방향과 확인 가능한 서버를 분리 검증합니다. 잘못 표시된 제목·수량은 제출 없이 보류합니다. 관리 또는 통합 편집에서 가격 예약 현황을 열어 확인된 사이트 가격, 예약 가격, 다음 차례의 예상 반영 시간을 보고 예약 금액을 다시 수정할 수 있습니다. 예상 시간은 사이트 상황과 대기 순번에 따라 달라집니다."
+  "releaseNotes": "v22.2.96 제목 불일치에 따른 재등록 차단 해제: 아이템매니아 본인 관리목록의 정확한 등록번호와 해당 글에 직접 연결된 재등록 버튼으로 검증합니다. 제목 표시는 참고용으로만 사용하여 공백·기호·레벨 표시가 바뀌어도 등록번호가 맞으면 작업을 진행합니다. 거래 방향과 확인 가능한 서버·분할수량 불일치, 등록번호 중복 및 연결 불확실 시 제출을 차단합니다. 가격 수정 화면도 같은 원칙을 적용하고 기존 가격 예약은 유지합니다."
 }
