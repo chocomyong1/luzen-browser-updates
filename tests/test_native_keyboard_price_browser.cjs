@@ -49,6 +49,8 @@ async function oneTrial(browser, mutateTitle) {
     </script>
     </body></html>`}));
   await page.goto(url,{waitUntil:'domcontentloaded'});
+  assert.equal((await page.locator('tr th').textContent()).trim(),'구매금액');
+  assert.equal(await page.locator('[name=user_division_price]').inputValue(),'10,000');
   const prepared=await page.evaluate(script('EditFormScript').replace('__ARG__',JSON.stringify({
     number:listingId,oldPrice:'10000',newPrice:target,submit:true,
     expectedTitle:title,nativeSingleApproval:true,verifiedMinQuantity:'1',
