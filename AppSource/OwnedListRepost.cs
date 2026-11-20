@@ -62,7 +62,11 @@ internal static class OwnedListRepost
           ?Number(String(s).replace(/,/g,'')):0;
         const min=integer(arg.minQuantity),max=integer(arg.maxQuantity);
         if(min<1||max<min||integer(range[1])!==min||integer(range[2])!==max)return false;
-        const saved=coreTitle(arg.title).match(/^(8|9|10)(레벨.+)$/);
+        // Gem titles may have multiple leading level tokens, e.g. saved
+        // "10 10 레벨 겁작 구매합니다" -> site "1 ~ 999 10 레벨 겁작 구매합니다".
+        // Only the FIRST level is masked by the split-range display; all
+        // subsequent 8/9/10 tokens and the complete remaining text must match.
+        const saved=coreTitle(arg.title).match(/^(8|9|10)((?:8|9|10)*레벨.+)$/);
         return !!saved && norm(label.slice(range[0].length))===saved[2];
       };
       const valid=s=>/^\d{8,20}$/.test(String(s||''));
