@@ -273,6 +273,7 @@ internal sealed partial class MainForm : Form
         moreMenu.Items.Add("선택 물품 삭제", null, (_, _) => _module.RemoveListing());
         moreMenu.Items.Add("설정 저장", null, (_, _) => _module.SaveListings());
         moreMenu.Items.Add("로컬 목록 새로고침", null, (_, _) => _module.RefreshListings());
+        moreMenu.Items.Add("가격 수정 예약 현황", null, (_, _) => ShowPriceReservationsDialog());
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("아이템매니아 계정", null, (_, _) => _module.OpenAccountSettings());
         moreMenu.Items.Add("시간당 등록 횟수 설정", null, (_, _) => _module.OpenHourlyLimitSettings());

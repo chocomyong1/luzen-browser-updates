@@ -3434,7 +3434,7 @@ internal sealed partial class AutomationForm : Form
         try
         {
             string js = OwnedListRepost.BuildScript(job.ListingNumber, job.Title, click,
-                job.MinQuantity, job.MaxQuantity);
+                job.MinQuantity, job.MaxQuantity, job.Server, job.OriginalTradeSide);
             string raw = await _web.CoreWebView2.ExecuteScriptAsync(js);
             return OwnedListRepost.Decode(raw);
         }

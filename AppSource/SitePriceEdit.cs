@@ -26,11 +26,15 @@ internal static class SitePriceEdit
         catch (JsonException) { return new SitePriceEditResult { Message = "수정 화면 응답을 해석하지 못했습니다" }; }
     }
 
-    public static string BuildOwnedRowScript(string number, string title, bool click) =>
-        OwnedRowScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click, openTitle = false }), StringComparison.Ordinal);
+    public static string BuildOwnedRowScript(string number, string title, bool click,
+        string minQuantity = "", string maxQuantity = "", string server = "", string tradeSide = "") =>
+        OwnedListingTitleIdentity.Inject(OwnedRowScript).Replace("__ARG__", JsonSerializer.Serialize(new
+        { number, title, click, openTitle = false, minQuantity, maxQuantity, server, tradeSide }), StringComparison.Ordinal);
 
-    public static string BuildOwnedTitleScript(string number, string title, bool click) =>
-        OwnedRowScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click, openTitle = true }), StringComparison.Ordinal);
+    public static string BuildOwnedTitleScript(string number, string title, bool click,
+        string minQuantity = "", string maxQuantity = "", string server = "", string tradeSide = "") =>
+        OwnedListingTitleIdentity.Inject(OwnedRowScript).Replace("__ARG__", JsonSerializer.Serialize(new
+        { number, title, click, openTitle = true, minQuantity, maxQuantity, server, tradeSide }), StringComparison.Ordinal);
 
     public static string BuildDetailEditScript(string number, string title, bool click) =>
         DetailEditScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click }), StringComparison.Ordinal);
@@ -42,6 +46,7 @@ internal static class SitePriceEdit
     (() => {
       const a=__ARG__;
       const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
+      __OWNED_TITLE_IDENTITY__
       const result=(status,message='',candidates=0)=>({status,message,candidates});
       const official=location.protocol==='https:'&&/(^|\.)itemmania\.com$/i.test(location.hostname);
       const own=/^\/myroom\/(sell\/sell_regist|buy\/buy_regist)\.html$/i.test(location.pathname);
@@ -66,7 +71,6 @@ internal static class SitePriceEdit
           }
         }
       }
-      const core=s=>norm(s).replace(/^\[[\d,]+개[~〜-][\d,]+개\]/,'');
       const matching=[];
       for(const row of candidates){
         const text=String(row.innerText||row.textContent||'');
@@ -82,8 +86,8 @@ internal static class SitePriceEdit
         }
         if(exact.test(text))ids.add(a.number);
         if(!ids.has(a.number))continue;
-        const title=String(row.querySelector('.trade_title')?.textContent||'');
-        if(!norm(text).includes(norm(a.title))&&core(title)!==core(a.title))continue;
+        const identity=ownedTitleIdentity(row,a);
+        if(!identity.ok)continue;
         if(ids.size!==1)return result('error','해당 행에 서로 다른 등록번호가 있어 수정하지 않았습니다');
         matching.push(row);
       }
@@ -93,8 +97,7 @@ internal static class SitePriceEdit
       const visible=e=>e.isConnected&&e.getClientRects().length>0&&!e.disabled&&
         (e.ownerDocument?.defaultView?.getComputedStyle(e)||getComputedStyle(e)).visibility!=='hidden';
       if(a.openTitle){
-        const titleLinks=[...row.querySelectorAll('.trade_title')].filter(visible)
-          .filter(e=>core(e.textContent)===core(a.title));
+        const titleLinks=[...row.querySelectorAll('.trade_title')].filter(visible);
         if(titleLinks.length!==1)return result('error',titleLinks.length?
           '등록글 제목이 여러 개 연결되어 있습니다':'검증된 등록글의 클릭 가능한 제목을 찾지 못했습니다',titleLinks.length);
         const titleNode=titleLinks[0];

@@ -10,8 +10,13 @@ function section(filename, marker) {
   const open = source.indexOf('"""', start);
   const end = source.indexOf('"""', open + 3);
   if (open < 0 || end < 0) throw new Error(`missing raw string terminator: ${marker}`);
-  return source.slice(open + 3, end).replaceAll('__ARG__', '{}').replaceAll('__KEY__', '"Title"')
+  let snippet = source.slice(open + 3, end).replaceAll('__ARG__', '{}').replaceAll('__KEY__', '"Title"')
     .replaceAll('__EXPECTED_NUMBER__', '"2026070507571234"');
+  if(snippet.includes('__OWNED_TITLE_IDENTITY__')){
+    const identity = section('OwnedListingTitleIdentity.cs', 'public const string BrowserScript');
+    snippet = snippet.replaceAll('__OWNED_TITLE_IDENTITY__', identity);
+  }
+  return snippet;
 }
 const snippets = [
   ['OwnedListRepost.cs', 'public const string BrowserScript'],

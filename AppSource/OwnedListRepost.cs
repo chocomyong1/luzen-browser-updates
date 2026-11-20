@@ -30,9 +30,9 @@ internal static class OwnedListRepost
     }
 
     public static string BuildScript(string number, string title, bool? click,
-        string minQuantity = "", string maxQuantity = "") =>
-        BrowserScript.Replace("__ARG__", JsonSerializer.Serialize(new
-            { number, title, click, minQuantity, maxQuantity }), StringComparison.Ordinal);
+        string minQuantity = "", string maxQuantity = "", string server = "", string tradeSide = "") =>
+        OwnedListingTitleIdentity.Inject(BrowserScript).Replace("__ARG__", JsonSerializer.Serialize(new
+            { number, title, click, minQuantity, maxQuantity, server, tradeSide }), StringComparison.Ordinal);
 
     // All controls are located from the current signed-in OWN listing page.
     // In particular, a page-level '재등록' button is NOT assumed to be the user's item.
@@ -40,35 +40,7 @@ internal static class OwnedListRepost
     (() => {
       const arg=__ARG__;
       const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
-      // My Room sometimes prepends a SPLIT-QUANTITY range to .trade_title,
-      // including the unbracketed "1 ~ 9,995" form. It is not an item level.
-      // Strip only a complete leading range, then still require the ENTIRE
-      // actual product title to match. A matching ID alone is never enough.
-      const coreTitle=s=>norm(String(s||'')
-        .replace(/^\s*\[\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?\s*\]\s*/, '')
-        .replace(/^\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?(?=\s|[^\d,])\s*/, ''));
-      // Observed My Room issue: "10 레벨 작열..." is sometimes rendered
-      // as "1 ~ 9,995 레벨 작열..." because a split-quantity label masks
-      // the FIRST level number. Allow this narrow correction only if the
-      // displayed range exactly equals the stored verified min/max quantity,
-      // the saved item starts with a known gem level, and EVERY remaining
-      // title character matches. An ID alone or an arbitrary suffix is NEVER
-      // enough to authorize a repost.
-      const maskedLeadingGemLevel=siteTitle=>{
-        const label=String(siteTitle||'').trim();
-        const range=label.match(/^\s*\[?\s*([\d,]+)\s*(?:개)?\s*[~〜～–-]\s*([\d,]+)\s*(?:개)?\s*\]?\s*/);
-        if(!range)return false;
-        const integer=s=>/^\d{1,7}$/.test(String(s||'').replace(/,/g,''))
-          ?Number(String(s).replace(/,/g,'')):0;
-        const min=integer(arg.minQuantity),max=integer(arg.maxQuantity);
-        if(min<1||max<min||integer(range[1])!==min||integer(range[2])!==max)return false;
-        // Gem titles may have multiple leading level tokens, e.g. saved
-        // "10 10 레벨 겁작 구매합니다" -> site "1 ~ 999 10 레벨 겁작 구매합니다".
-        // Only the FIRST level is masked by the split-range display; all
-        // subsequent 8/9/10 tokens and the complete remaining text must match.
-        const saved=coreTitle(arg.title).match(/^(8|9|10)((?:8|9|10)*레벨.+)$/);
-        return !!saved && norm(label.slice(range[0].length))===saved[2];
-      };
+      __OWNED_TITLE_IDENTITY__
       const valid=s=>/^\d{8,20}$/.test(String(s||''));
       const result=(status,message='',stamp='',diagnostic={})=>({status,message,stamp,...diagnostic});
       const official=()=>location.protocol==='https:' &&
@@ -141,18 +113,8 @@ internal static class OwnedListRepost
       for(const row of candidateRows){
         const text=String(row.innerText||row.textContent||'');
         if(text.length>6000)continue;
-        const titleElement=row.querySelector?.('.trade_title');
-        const itemTitle=String(titleElement?.textContent||'').trim();
-        // The title can be shortened or decorated for display, while its
-        // title/aria-label holds the full original text. Read only title-
-        // scoped attributes, never a tooltip from a delete/repost action.
-        const titleCandidates=[itemTitle,...['title','aria-label','data-title','data-original-title']
-          .map(key=>titleElement?.getAttribute?.(key)||'')].filter(s=>String(s).trim().length>1);
-        const titleMatches=norm(text).includes(norm(arg.title)) ||
-          titleCandidates.some(siteTitle=>coreTitle(siteTitle)===coreTitle(arg.title)) ||
-          (titleCandidates.length>0 && maskedLeadingGemLevel(itemTitle) &&
-           // Never override a contradictory full original title attribute.
-           !titleCandidates.slice(1).some(siteTitle=>coreTitle(siteTitle)!==coreTitle(arg.title)));
+        const identity=ownedTitleIdentity(row,arg);
+        const titleMatches=identity.ok;
         if(titleMatches)titleRows++;
         const ids=new Set();
         for(const el of [row,...row.querySelectorAll('*')].slice(0,250)){
@@ -170,7 +132,8 @@ internal static class OwnedListRepost
         if(new RegExp('(?:^|\\D)'+arg.number+'(?!\\d)').test(text))ids.add(arg.number);
         if(ids.has(arg.number)){
           numberRows++;
-          if(itemTitle&&actualTitles.length<2)actualTitles.push(itemTitle.slice(0,120));
+          if(actualTitles.length<2)actualTitles.push((identity.title||identity.reason).slice(0,120)+
+            (identity.reason?' ['+identity.reason+']':''));
         }
         if(!ids.has(arg.number)||!titleMatches)continue;
         if(ids.size!==1)return result('error','한 물품 행에 서로 다른 등록번호가 있어 중단했습니다','',

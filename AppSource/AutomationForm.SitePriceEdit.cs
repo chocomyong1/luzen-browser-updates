@@ -277,6 +277,9 @@ internal sealed partial class AutomationForm
                 MyListingsImport.IsOwnedListUrl(x.SourceListUrl)).ToList();
             if (records.Count != 1 || !TrySitePrice(records[0].Price, out var current))
                 throw new InvalidOperationException("해당 등록번호의 현재 사이트 단가를 정확히 읽지 못했습니다. 수정하지 않았습니다.");
+            job.VerifiedSitePrice = current.ToString();
+            job.VerifiedSitePriceUtc = DateTime.UtcNow;
+            _config.Save();
             if (current == desired)
             {
                 AppendLog($"사이트 가격이 이미 동일합니다: {job.Server} · {job.ListingNumber} · {desired:N0}원 (제출 없음)");
@@ -304,7 +307,8 @@ internal sealed partial class AutomationForm
             {
                 AppendLog("실제 수정 화면 경로: 본인 등록글의 제목을 열고 상세 화면에서 수정하기 탐색 · " + job.ListingNumber);
                 var titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                    SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, false)));
+                    SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, false,
+                        job.MinQuantity, job.MaxQuantity, job.Server, job.OriginalTradeSide)));
                 if (titleLink.Status == "ready")
                 {
                     // My Room may render clickable titles without an href.
@@ -312,7 +316,8 @@ internal sealed partial class AutomationForm
                     try
                     {
                         titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                            SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, true)));
+                            SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, true,
+                                job.MinQuantity, job.MaxQuantity, job.Server, job.OriginalTradeSide)));
                         if (titleLink.Status != "opened") throw new InvalidOperationException(titleLink.Message);
                     }
                     catch (Exception ex) when (IsAllowedCurrentPage() &&
@@ -471,6 +476,8 @@ internal sealed partial class AutomationForm
             job.RequiresReview = previousReview;
             job.Enabled = previousEnabled && !previousReview;
             job.LastStatus = "사이트 구매글 단가 변경 확인: " + desired.ToString("N0") + "원";
+            job.VerifiedSitePrice = desired.ToString();
+            job.VerifiedSitePriceUtc = DateTime.UtcNow;
             job.LastSucceededUtc = DateTime.UtcNow;
             job.InitialCompleted = true;
             job.NextDueUtc = previousDue == DateTime.MaxValue ? previousDue :

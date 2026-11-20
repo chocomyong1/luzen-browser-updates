@@ -199,6 +199,7 @@ internal sealed partial class MainForm
         actions.Controls.Add(IntegratedButton("같은 가격 선택", 126, SelectIntegratedSamePrice));
         actions.Controls.Add(IntegratedButton("선택 해제", 95, () => MarkIntegratedVisible(false)));
         actions.Controls.Add(IntegratedButton("선택 일괄수정", 134, ShowIntegratedBulkDialog, primary: true));
+        actions.Controls.Add(IntegratedButton("가격 예약 현황", 125, ShowPriceReservationsDialog));
         _integratedUndoButton = IntegratedButton("마지막 수정 되돌리기", 161, UndoIntegratedBatchEdit);
         _integratedUndoButton.Visible = _integratedLastUndo.Count > 0;
         actions.Controls.Add(_integratedUndoButton);
