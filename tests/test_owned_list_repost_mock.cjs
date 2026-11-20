@@ -236,14 +236,35 @@ function evaluate(rows, { number = id, name = title, click = false,
   assert.equal(evaluate([item], valid).status, 'clicked');
   assert.equal(evaluate([item], { ...valid, server: '아만' }).status, 'mismatch');
   assert.equal(evaluate([item], { ...valid, tradeSide: '판매' }).status, 'mismatch');
-  assert.equal(evaluate([item], { ...valid, maxQuantity: '9995' }).status, 'mismatch');
-  assert.deepEqual(item.clicks, ['repost']);
+  assert.equal(evaluate([item], { ...valid, maxQuantity: '9995' }).status, 'clicked');
+  assert.deepEqual(item.clicks, ['repost','repost']);
   const conflicting = item.row.querySelector;
   item.row.querySelector = selector => selector === '.sub_trade_title'
     ? { textContent: '[1개~9,995개]' } : conflicting(selector);
-  assert.equal(evaluate([item], valid).status, 'mismatch');
+  assert.equal(evaluate([item], valid).status, 'clicked');
+  assert.deepEqual(item.clicks, ['repost','repost','repost']);
+  assert.equal(evaluate([item], { ...valid, number: other }).status, 'not-found');
+  assert.deepEqual(item.clicks, ['repost','repost','repost']);
+  console.log('PASS ID-bound action survives stale saved quantity; server/side and wrong ID stay blocked');
+}
+{
+  // Reported 11-20 failure: an existing listing's site range differs from
+  // the saved range. The exact native reInsert ID still names ONE own item.
+  const item = makeRealMarkupRow(id, '사이트 표시 제목이 변경된 게시글');
+  const nativeQuery = item.row.querySelector.bind(item.row);
+  item.row.querySelector = key => key === '.sub_trade_title'
+    ? {textContent: '[1개~9,995개]'} : nativeQuery(key);
+  assert.equal(evaluate([item], { name: '이전 저장 제목', minQuantity: '1',
+    maxQuantity: '9999', click: true }).status, 'clicked');
   assert.deepEqual(item.clicks, ['repost']);
-  console.log('PASS structural ID/quantity/server/side evidence and conflicting DOM fields');
+  // A row with no ID-bound action must NEVER be rescued by matching quantity.
+  const spoof = makeRealMarkupRow(id, '사이트 표시 제목이 변경된 게시글', other);
+  spoof.row.querySelector = key => key === '.sub_trade_title'
+    ? {textContent: '[1개~9,995개]'} : null;
+  assert.notEqual(evaluate([spoof], {minQuantity: '1',maxQuantity: '9999',
+    click: true }).status, 'clicked');
+  assert.deepEqual(spoof.clicks, []);
+  console.log('PASS user-reported stale split range does not authorize an unbound repost');
 }
 {
   const item = makeRealMarkupRow(id, '다른 사이트 원본 제목');

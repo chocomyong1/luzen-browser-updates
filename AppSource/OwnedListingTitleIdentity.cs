@@ -4,8 +4,8 @@ namespace LuzenBrowserReplica;
 
 // Shared read-only evidence parser for repost and site-price editing.
 // A listing number must be independently bound to the exact OWN-list row;
-// server, quantity and trade side veto contradictory evidence. Displayed
-// titles are advisory only because the site reformats/masks them frequently.
+// server and trade side veto contradictory evidence. Saved title and quantity
+// may be stale after independent site changes; neither identifies the row.
 internal static class OwnedListingTitleIdentity
 {
     public static string Inject(string script) =>
@@ -28,13 +28,15 @@ internal static class OwnedListingTitleIdentity
           return min>=1&&max>=min?{min,max,prefix:match[0]}:null;
         };
         const shownRange=parseRange(raw),splitRange=parseRange(split);
-        // Only a dedicated split-quantity field is independent quantity
-        // evidence. Digits embedded in the displayed TITLE can be decoration
-        // or a site masking artifact and must never veto an ID-bound row.
+        // A dedicated split-quantity field may show the CURRENT quantity,
+        // while the job's stored range reflects an older import or an edit
+        // made directly on the site. It is diagnostic, not another listing
+        // identifier. The exact OWN-list ID and its bound action determine
+        // which listing can be touched. Title digits are also decorative.
         const siteRange=splitRange;
         const min=integer(expected.minQuantity),max=integer(expected.maxQuantity);
-        if(siteRange&&min&&max&&(min!==siteRange.min||max!==siteRange.max))
-          return {ok:false,reason:'사이트 분할수량과 저장 수량 불일치',title:raw};
+        const quantityCompared=!!siteRange&&!!min&&!!max;
+        const quantityMatches=quantityCompared&&min===siteRange.min&&max===siteRange.max;
         // Category/server links are independent from the title and ID.
         const servers=new Set();
         const attrServer=row.getAttribute?.('data-server')||row.getAttribute?.('data-server-name');
@@ -69,8 +71,11 @@ internal static class OwnedListingTitleIdentity
             titleMatches=true;
         }
         return {ok:true,titleMatches,
-          reason:titleMatches?'제목 참고 일치':'사이트 제목 형식 차이 (제출 차단 아님)',
-          title:raw,quantityVerified:!!siteRange&&!!min&&!!max};
+          reason:quantityCompared&&!quantityMatches
+            ?'저장 수량과 사이트 수량 다름 (등록번호로 검증, 제출 차단 아님)'
+            :(titleMatches?'제목 참고 일치':'사이트 제목 형식 차이 (제출 차단 아님)'),
+          title:raw,quantityVerified:quantityMatches,
+          quantityDiffers:quantityCompared&&!quantityMatches};
       };
     """;
 }
