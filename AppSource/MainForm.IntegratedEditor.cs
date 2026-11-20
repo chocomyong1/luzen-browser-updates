@@ -497,7 +497,7 @@ internal sealed partial class MainForm
         {
             Left = 23, Top = 160, Width = 489, Height = 69,
             Text = "가격 적용: 기존 본인 구매글은 다음 자동등록 순번에 반영, 신규글은 첫 등록에 사용합니다.\n" +
-                   "진행 중인 1건은 완료 후 저장합니다. 기존글 가격 반영은 시스템당 최대 20건입니다.",
+                   "반영 전에는 다시 수정해 예약 금액을 교체할 수 있습니다. 진행 중인 글은 완료 후 변경됩니다.",
             ForeColor = UiTheme.Muted
         };
         fieldInput.SelectedIndexChanged += (_, _) =>
@@ -505,7 +505,7 @@ internal sealed partial class MainForm
             var field = fields[fieldInput.SelectedIndex].Field;
             note.Text = field == IntegratedEditField.Price
                 ? "가격 적용: 기존 본인 구매글은 다음 자동등록 순번에 반영, 신규글은 첫 등록에 사용합니다.\n" +
-                  "진행 중인 1건은 완료 후 저장합니다. 기존글 가격 반영은 시스템당 최대 20건입니다."
+                  "반영 전에는 다시 수정해 예약 금액을 교체할 수 있습니다. 진행 중인 글은 완료 후 변경됩니다."
                 : "선택한 물품의 로컬 설정만 변경합니다. 사이트에 즉시 제출하지 않습니다.\n" +
                   "자동등록 진행 중인 물품은 현재 작업 완료 후 적용합니다.";
             valueInput.PlaceholderText = field switch
@@ -542,7 +542,7 @@ internal sealed partial class MainForm
             if (MessageBox.Show(dialog,
                 $"{counts}에 '{fields[fieldInput.SelectedIndex].Label}'을(를) 적용할까요?\n\n" +
                 (field == IntegratedEditField.Price
-                    ? "기존 본인 구매글은 다음 자동등록 순번에 반영하고 신규글은 첫 등록에 사용합니다."
+                    ? "기존 본인 구매글은 다음 자동등록 순번에 반영하고 신규글은 첫 등록에 사용합니다. 기존 예약은 새 금액으로 교체합니다."
                     : "사이트의 기존 게시글은 즉시 바꾸지 않습니다. 로컬 목록만 변경합니다.") +
                 "\n\nA/B/C의 작업 순번과 시간당 제한은 그대로 유지됩니다.",
                 "통합 일괄수정", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
