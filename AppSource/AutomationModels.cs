@@ -41,6 +41,11 @@ internal sealed class ListingJob
     // this empty and use their new amount on first registration.
     // Keep the exact planned amount for mismatch detection before submission.
     public string PendingSitePriceTarget { get; set; } = "";
+    // Last price verified on the authenticated OWN listing, not the editable
+    // local target. Persist separately so reservations survive restart/update.
+    // Empty means the current live site price has not yet been verified.
+    public string VerifiedSitePrice { get; set; } = "";
+    public DateTime? VerifiedSitePriceUtc { get; set; }
     public string Description { get; set; } = "";
     public string Character { get; set; } = "";
     public string EntryUrl { get; set; } = ""; // 재등록 대상 본인 물품 URL (신규 등록 URL과 분리)

@@ -7,6 +7,9 @@ const assert = require('node:assert/strict');
 const source = fs.readFileSync(path.join(__dirname, '../AppSource/OwnedListRepost.cs'), 'utf8');
 const embedded = source.match(/public const string BrowserScript = """([\s\S]*?)""";/)?.[1];
 assert(embedded, 'C# repost browser script missing');
+const identitySource = fs.readFileSync(path.join(__dirname, '../AppSource/OwnedListingTitleIdentity.cs'), 'utf8');
+const identityScript = identitySource.match(/public const string BrowserScript = """([\s\S]*?)""";/)?.[1];
+assert(identityScript, 'shared title identity script missing');
 
 const id = '2026070507571234';
 const other = '2026070507579999';
@@ -27,6 +30,7 @@ function makeRow(number, name, actionName = '재등록', iconClass = '') {
     tagName: 'TR', innerText: name, textContent: name,
     closest: () => null,
     getAttribute: key => key === 'data-tid' ? number : null,
+    querySelector: key => key === '.trade_title' ? { textContent: name, getAttribute: () => null } : null,
     querySelectorAll: selector => selector === '*' ? [titleCell, actionCell, button] :
       selector.startsWith('button,') ? [button] : []
   };
@@ -52,6 +56,7 @@ function makeRealMarkupRow(number, name, reinsertNumber = number, stamp = '11-16
   const row = {
     tagName: 'TR', innerText: `${number} ${name}`, textContent: `${number} ${name}`,
     closest: () => null, getAttribute: () => null,
+    querySelector: key => key === '.trade_title' ? { textContent: name, getAttribute: () => null } : null,
     querySelectorAll: selector => selector === 'td.flex_box p.f_gray' ? [postedAt] : selector === '*' ? actions :
       selector.startsWith('button,') ? actions : []
   };
@@ -60,7 +65,7 @@ function makeRealMarkupRow(number, name, reinsertNumber = number, stamp = '11-16
 
 function evaluate(rows, { number = id, name = title, click = false,
   pathname = '/myroom/buy/buy_regist.html', hostname = 'www.itemmania.com', siteReinsert,
-  minQuantity = '', maxQuantity = '' } = {}) {
+  minQuantity = '', maxQuantity = '', server = '', tradeSide = '' } = {}) {
   const document = {
     querySelectorAll: selector => selector === 'tr' ? rows.map(x => x.row) :
       selector.includes('[data-tid]') ? rows.map(x => x.row) : []
@@ -68,8 +73,9 @@ function evaluate(rows, { number = id, name = title, click = false,
   const scope = { document, location: { protocol: 'https:', hostname, pathname },
     getComputedStyle: () => ({ visibility: 'visible' }) };
   if (siteReinsert) scope.window = { reInsert: siteReinsert };
-  const js = embedded.replace('__ARG__', JSON.stringify({ number, title: name, click,
-    minQuantity, maxQuantity }));
+  const js = embedded.replace('__OWNED_TITLE_IDENTITY__', identityScript)
+    .replace('__ARG__', JSON.stringify({ number, title: name, click,
+      minQuantity, maxQuantity, server, tradeSide }));
   return vm.runInNewContext(js, scope, { timeout: 1000 });
 }
 
@@ -214,6 +220,39 @@ function evaluate(rows, { number = id, name = title, click = false,
   assert.equal(evaluate(rows, { ...exact, number: other }).status, 'not-found');
   assert.deepEqual(rows[0].clicks, []);
   console.log('PASS repeated leading levels still require matching number, range and suffix');
+}
+{
+  const saved = '10 10 레벨 겁작 구매합니다';
+  const shown = '1 ~ 999 10 레벨 겁작 구매합니다';
+  const item = makeRealMarkupRow(id, shown);
+  const originalQuery = item.row.querySelector.bind(item.row);
+  item.row.querySelector = selector => selector === '.sub_trade_title'
+    ? { textContent: '[1개~999개]' } : originalQuery(selector);
+  const originalAll = item.row.querySelectorAll.bind(item.row);
+  item.row.querySelectorAll = selector => selector === 'a[href]' ? [{
+    getAttribute: attribute => attribute === 'href'
+      ? '/buy/list_search.html?search_server_text=%EC%B9%B4%EB%A7%88%EC%9D%B8' : null
+  }] : originalAll(selector);
+  const valid = { name: saved, minQuantity: '1', maxQuantity: '999',
+    server: '카마인', tradeSide: '구매', click: true };
+  assert.equal(evaluate([item], valid).status, 'clicked');
+  assert.equal(evaluate([item], { ...valid, server: '아만' }).status, 'mismatch');
+  assert.equal(evaluate([item], { ...valid, tradeSide: '판매' }).status, 'mismatch');
+  assert.equal(evaluate([item], { ...valid, maxQuantity: '9995' }).status, 'mismatch');
+  assert.deepEqual(item.clicks, ['repost']);
+  const conflicting = item.row.querySelector;
+  item.row.querySelector = selector => selector === '.sub_trade_title'
+    ? { textContent: '[1개~9,995개]' } : conflicting(selector);
+  assert.equal(evaluate([item], valid).status, 'mismatch');
+  assert.deepEqual(item.clicks, ['repost']);
+  console.log('PASS structural ID/title/quantity/server/side evidence and conflicting DOM fields');
+}
+{
+  const item = makeRealMarkupRow(id, '다른 사이트 원본 제목');
+  item.row.innerText = `정확한 제목: ${title} · ${id}`;
+  assert.equal(evaluate([item], { click: true }).status, 'mismatch');
+  assert.deepEqual(item.clicks, []);
+  console.log('PASS unrelated row text cannot override the actual scoped title');
 }
 {
   const rows = [makeRealMarkupRow(id, '10레벨 작열 보석 구매합니다')];

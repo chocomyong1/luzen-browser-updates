@@ -1,0 +1,34 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const read = name => fs.readFileSync(path.join(__dirname, '../AppSource', name), 'utf8');
+
+const model = read('AutomationModels.cs');
+const imports = read('MyListingsImport.cs');
+const confirmed = read('AutomationForm.SitePriceEdit.cs');
+const scheduler = read('AutomationForm.PriceReservations.cs');
+const ui = read('MainForm.PriceReservations.cs');
+const toolbar = read('MainForm.cs');
+const integrated = read('MainForm.IntegratedEditor.cs');
+
+assert.match(model, /public string VerifiedSitePrice \{ get; set; \}/);
+assert.match(model, /public DateTime\? VerifiedSitePriceUtc \{ get; set; \}/);
+assert.match(imports, /Target\.VerifiedSitePrice = VerifiedSitePrice/);
+assert.match(imports, /VerifiedSitePrice = sameOwnedListing \? verifiedPrice : ""/);
+assert.match(confirmed, /job\.VerifiedSitePrice = current\.ToString\(\)/);
+assert.match(confirmed, /job\.VerifiedSitePrice = desired\.ToString\(\)/);
+assert.match(scheduler, /internal IReadOnlyList<PriceReservationSnapshot> CurrentPriceReservations\(\)/);
+assert.match(scheduler, /if \(!_schedulerRunning\)/);
+assert.match(scheduler, /시간당 등록 한도 대기/);
+assert.match(scheduler, /HourlyServerQuota\.NextAllowedUtc/);
+assert.match(ui, /현재 사이트 가격/);
+assert.match(ui, /변경 예약 가격/);
+assert.match(ui, /예상 반영/);
+assert.match(ui, /예약 가격 다시 수정/);
+assert.match(ui, /new IntegratedEditCommand\(IntegratedEditField\.Price, value\)/);
+assert.match(ui, /owner\.ValidateIntegratedEdit/);
+assert.match(ui, /owner\.ApplyIntegratedEdit/);
+assert.match(toolbar, /"가격 수정 예약 현황"/);
+assert.match(integrated, /"가격 예약 현황"/);
+assert.doesNotMatch(ui, /ExecuteScriptAsync|PostAsync|reInsert\(/);
+console.log('PASS independent verified site price, conditional ETA, A/B/C reservations and safe re-edit');

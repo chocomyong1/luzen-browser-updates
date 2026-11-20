@@ -25,6 +25,8 @@ internal sealed class ListingJob
     public string Unit { get; set; } = "";
     public string Price { get; set; } = "";
     public string PendingSitePriceTarget { get; set; } = "";
+    public string VerifiedSitePrice { get; set; } = "";
+    public DateTime? VerifiedSitePriceUtc { get; set; }
     public string EntryUrl { get; set; } = "";
     public string SourceListUrl { get; set; } = "";
     public bool Enabled { get; set; }
@@ -95,6 +97,8 @@ internal static class Program
         var scheduled = current.NextDueUtc;
         plan.Updates[0].Apply();
         Check(current.Price == "35,100", "30,000 becomes 35,100");
+        Check(current.VerifiedSitePrice == "35,100" && current.VerifiedSitePriceUtc.HasValue,
+            "confirmed own-list price is retained independently from editable target");
         Check(current.Enabled && current.AutoRepost && current.NextDueUtc == scheduled, "scheduler untouched");
         Check(!current.RequiresReview && current.LastStatus == "예약됨", "review and status untouched");
 
@@ -109,6 +113,8 @@ internal static class Program
         foreach (var update in queuedPlan.Updates) update.Apply();
         Check(queued.Price == "93,000" && queued.PendingSitePriceTarget == "93000",
             "next-slot price reservation survives a site re-import");
+        Check(queued.VerifiedSitePrice == "90,000",
+            "pending edit retains actual confirmed site price, separate from reserved target");
 
         // A common live scenario is six same-server listings edited together.
         // Importing the signed-in My Room list during their wait must never

@@ -73,6 +73,7 @@ internal sealed class ExistingListingUpdate
     public string Quantity { get; set; } = "";
     public string Unit { get; set; } = "";
     public string Price { get; set; } = "";
+    public string VerifiedSitePrice { get; set; } = "";
     public bool UpdateVerifiedPrice { get; set; }
     public string EntryUrl { get; set; } = "";
     public string SourceListUrl { get; set; } = "";
@@ -84,10 +85,17 @@ internal sealed class ExistingListingUpdate
     public string Description { get; set; } = "";
     public bool ClearImportOnlyReview { get; set; }
     public bool HasChanges => ClearImportOnlyReview ||
+        !string.IsNullOrEmpty(VerifiedSitePrice) &&
+          !string.Equals(Target.VerifiedSitePrice.Replace(",", ""), VerifiedSitePrice.Replace(",", ""), StringComparison.Ordinal) ||
         new[] { Game, Server, Quantity, Unit, Price, EntryUrl, SourceListUrl, ItemCategory, TradingMethod,
                 MinQuantity, MaxQuantity, Character, Description }.Any(v => !string.IsNullOrEmpty(v));
     public void Apply()
     {
+        if (!string.IsNullOrWhiteSpace(VerifiedSitePrice))
+        {
+            Target.VerifiedSitePrice = VerifiedSitePrice;
+            Target.VerifiedSitePriceUtc = DateTime.UtcNow;
+        }
         if (string.IsNullOrWhiteSpace(Target.Game)) Target.Game = Game;
         if (string.IsNullOrWhiteSpace(Target.Server)) Target.Server = Server;
         if (string.IsNullOrWhiteSpace(Target.Quantity) ||
@@ -289,6 +297,7 @@ internal static class MyListingsImport
                             ? Clean(row.Quantity, 30) : "",
                         Unit = string.IsNullOrWhiteSpace(target.Unit) ? Clean(row.Unit, 30) : "",
                         UpdateVerifiedPrice = priceChanged,
+                        VerifiedSitePrice = sameOwnedListing ? verifiedPrice : "",
                         Price = priceChanged ? verifiedPrice : "",
                         ItemCategory = string.IsNullOrWhiteSpace(target.ItemCategory) ? Clean(row.ItemCategory, 40) : "",
                         TradingMethod = string.IsNullOrWhiteSpace(target.TradingMethod) ? Clean(row.TradingMethod, 40) : "",
@@ -330,6 +339,8 @@ internal static class MyListingsImport
                 Character = Clean(row.Character, 80), Description = Clean(row.Description, 2000),
                 Quantity = Clean(row.Quantity, 30), Unit = Clean(row.Unit, 30),
                 Price = Clean(row.Price, 30), EntryUrl = url,
+                VerifiedSitePrice = CanTrustOwnedImport(row, number) ? Clean(row.Price, 30) : "",
+                VerifiedSitePriceUtc = CanTrustOwnedImport(row, number) ? DateTime.UtcNow : null,
                 SourceListUrl = IsOwnedListUrl(row.SourceListUrl) ? CanonicalUrl(row.SourceListUrl) : "",
                 Enabled = false, AutoRepost = true, InitialCompleted = true,
                 RequiresReview = !CanTrustOwnedImport(row, number), NextDueUtc = DateTime.MaxValue,

@@ -5,6 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../AppSource/SitePriceEdit.cs'), 'utf8');
+const identitySource = fs.readFileSync(path.join(__dirname, '../AppSource/OwnedListingTitleIdentity.cs'), 'utf8');
+const identityScript = identitySource.match(/public const string BrowserScript = """([\s\S]*?)""";/)?.[1];
+assert(identityScript);
 const automation = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.SitePriceEdit.cs'), 'utf8');
 const script = marker => {
   const markerStart = source.indexOf(`public const string ${marker} = """`);
@@ -15,7 +18,8 @@ const number = '2026070508129767';
 const title = '+ 8 + 레벨 겁화, 작열 삽니다 + 즉시대기중 +';
 
 function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정',
-  buttonDesc = '수정', buttonHandler = `modifyItem('${number}')`, count = 1 } = {}) {
+  buttonDesc = '수정', buttonHandler = `modifyItem('${number}')`, count = 1,
+  minQuantity = '', maxQuantity = '' } = {}) {
   let clicked = 0;
   const titleLink = { textContent: displayedTitle, isConnected: true, disabled: false,
     getClientRects: () => [1], matches: () => true, parentElement: null,
@@ -37,7 +41,9 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   };
   const document = { querySelectorAll: key => key.startsWith('tr,') ? [row] : key === '[onclick]' ? actions : [] };
   const evaluate = (click = true, openTitle = false) => vm.runInNewContext(
-    script('OwnedRowScript').replace('__ARG__', JSON.stringify({ number, title, click, openTitle })),
+    script('OwnedRowScript').replace('__OWNED_TITLE_IDENTITY__', identityScript)
+      .replace('__ARG__', JSON.stringify({ number, title, click, openTitle,
+        minQuantity, maxQuantity })),
     { document, location: { protocol: 'https:', hostname: 'www.itemmania.com',
         pathname: '/myroom/buy/buy_regist.html' },
       getComputedStyle: () => ({ visibility: 'visible' }) }, { timeout: 1000 });
@@ -58,6 +64,16 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   const many = ownRowCase({ count: 2 });
   assert.equal(many.evaluate(true).status, 'error');
   assert.equal(many.clicked, 0);
+}
+{
+  const maskedTitle = '+ 8 + 레벨 겁화, 작열 삽니다 + 즉시대기중 +';
+  const target = ownRowCase({ displayedTitle: '1 ~ 999 레벨 겁화, 작열 삽니다 + 즉시대기중 +',
+    minQuantity: '1', maxQuantity: '999' });
+  // Different original punctuation is NOT silently matched just because
+  // an ID and split-range are present; a price submission must remain safe.
+  assert.equal(target.evaluate(false, true).status, 'error');
+  assert.equal(target.clicked, 0);
+  console.log('PASS price-edit title route blocks uncertain masked content');
 }
 {
   const titleRoute = ownRowCase({ buttonText: '', buttonDesc: '', buttonHandler: '' });
