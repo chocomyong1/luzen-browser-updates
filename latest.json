@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.3",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.3/LuzenBrowser_22.3.3_BinaryUpdate.zip",
-  "sha256": "9b1f5899238099a9f720802fd48056f208fc056865ff69093fbedb2701915270",
+  "version": "22.3.4",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.4/LuzenBrowser_22.3.4_BinaryUpdate.zip",
+  "sha256": "343f0a37f686551afb24969305bd1fb464f00e3c6bc4e860bcbee631cc8fb83c",
   "format": "binary",
-  "releaseNotes": "v22.3.3 사이트 구매글 가격 단건 시험의 제목 비교 개선. 수정폼에서 공백·유니코드 조합만 달라진 같은 제목은 허용하되 숫자·기호·문구나 수량 표시가 실제로 다르면 제출하지 않습니다. 제목 차이로 중지할 때 사이트 수정폼과 저장된 제목을 직접 표시해 원인을 알 수 있습니다. 전체 폼 직접 POST, 예약·일괄 자동 가격 제출은 계속 차단합니다."
+  "releaseNotes": "v22.3.4 아이템매니아 구매글 가격 단건 수정폼 제목 보호 개선. 사이트가 10 레벨 같은 원래 첫 레벨을 1~9,995 분할수량 범위로 바꾼 경우, 동일 등록번호의 관리목록에서 범위를 검증하고 사용자가 별도 승인한 1건에 한해 사이트 수정폼의 제목을 원문으로 복구한 뒤 기본 재등록 버튼으로 제출합니다. 이벤트와 제출 직전 제목이 또 달라지면 차단하고 결과를 재조회합니다. 예약·일괄 가격 자동 제출은 계속 차단합니다."
 }
