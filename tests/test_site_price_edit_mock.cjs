@@ -77,9 +77,9 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   assert.equal(target.clicked, 1);
   const invalidRange = ownRowCase({ displayedTitle: '1 ~ 999 레벨 겁화, 작열 삽니다',
     minQuantity: '1', maxQuantity: '9995', splitLabel: '[1개~999개]' });
-  assert.equal(invalidRange.evaluate(true, true).status, 'error');
-  assert.equal(invalidRange.clicked, 0);
-  console.log('PASS price-edit navigation ignores title but still rejects conflicting quantities');
+  assert.equal(invalidRange.evaluate(true, true).status, 'opened');
+  assert.equal(invalidRange.clicked, 1);
+  console.log('PASS price-edit navigation accepts stale title/quantity with exact ID; site price verified separately');
 }
 {
   const titleRoute = ownRowCase({ buttonText: '', buttonDesc: '', buttonHandler: '' });
