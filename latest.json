@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.94",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.94/LuzenBrowser_22.2.94_BinaryUpdate.zip",
-  "sha256": "6aaccc13576dfb5343c072f9f8653266742453ac373c80170b9f355d7e57d2d6",
+  "version": "22.2.95",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.95/LuzenBrowser_22.2.95_BinaryUpdate.zip",
+  "sha256": "84d6332320ff28d0a1e45f78079ff740d39b10e0dfc5e722921134073af19185",
   "format": "binary",
-  "releaseNotes": "v22.2.94 아이템매니아 제목 인식 추가 보완: 10 10 레벨 겁작 구매합니다가 1 ~ 999 10 레벨 겁작 구매합니다로 보이는 사례를 수정합니다. 제목 맨 앞의 레벨 숫자 하나만 분할수량 표시에 가려져도 뒤에 남은 여러 레벨 숫자와 전체 문구를 정확히 비교합니다. 원본 등록번호와 저장된 분할수량 범위가 일치할 때만 재등록하며, 다른 제목·수량 또는 등록번호는 계속 차단합니다."
+  "releaseNotes": "v22.2.95 사이트 제목 인식 구조 개선 및 가격 수정 예약 현황: 재등록과 가격 변경에서 공통으로 사이트 제목, 분할수량, 등록번호, 거래 방향과 확인 가능한 서버를 분리 검증합니다. 잘못 표시된 제목·수량은 제출 없이 보류합니다. 관리 또는 통합 편집에서 가격 예약 현황을 열어 확인된 사이트 가격, 예약 가격, 다음 차례의 예상 반영 시간을 보고 예약 금액을 다시 수정할 수 있습니다. 예상 시간은 사이트 상황과 대기 순번에 따라 달라집니다."
 }
