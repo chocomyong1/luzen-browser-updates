@@ -14,7 +14,7 @@ assert.match(importer, /!sides\.Contains\("판매"\) \|\| !sides\.Contains\("구
 assert.match(importer, /job\.ImportedFromSite && job\.Operation == "재등록"/);
 assert.match(importer, /!job\.PendingRepostAttemptUtc\.HasValue/);
 assert.match(importer, /IsOwnedListUrl\(job\.SourceListUrl\)/);
-assert.match(importer, /observed\.Contains\(job\.OriginalTradeSide \+ ":" \+ job\.ListingNumber\.Trim\(\)\)/);
+assert.match(importer, /observed\.Contains\(job\.OriginalTradeSide \+ ":" \+ \(job\.ListingNumber \?\? ""\)\.Trim\(\)\)/);
 
 assert.match(owned, /VerifiedTradeSides\.Add\(/);
 assert.match(owned, /IsSellListUrl\(page\.PageUrl\) != MyListingsImport\.IsSellListUrl\(url\)/);

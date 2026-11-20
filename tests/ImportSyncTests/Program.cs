@@ -61,6 +61,7 @@ internal static class Program
     private static ListingJob Job(string price = "30,000") => new()
     {
         ListingNumber = Number, SiteId = "slshrn124", ImportedFromSite = true,
+        Operation = "재등록",
         OriginalTradeSide = "구매", Game = "로스트아크", Server = "카마인",
         Title = Title, Price = price, Quantity = "1", Unit = "개",
         SourceListUrl = MyListingsImport.BuyListingsUrl,

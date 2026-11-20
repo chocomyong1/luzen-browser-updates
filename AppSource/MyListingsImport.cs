@@ -253,7 +253,7 @@ internal static class MyListingsImport
             !job.PendingRepostAttemptUtc.HasValue &&
             string.IsNullOrWhiteSpace(job.PendingRepostBeforeStamp) &&
             !(job.LastStatus ?? "").Contains("제출 결과 확인 필요", StringComparison.Ordinal) &&
-            !observed.Contains(job.OriginalTradeSide + ":" + job.ListingNumber.Trim()))
+            !observed.Contains(job.OriginalTradeSide + ":" + (job.ListingNumber ?? "").Trim()))
             .ToList();
     }
 
