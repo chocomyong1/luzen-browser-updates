@@ -328,7 +328,7 @@ internal static class SitePriceEdit
           matching.push(input);
       }
       if(matching.length===0){
-        const alias=/^(price|goods_price|sale_price|buy_price|sell_price|trade_price|goodsPrice|buyPrice|sellPrice)$/i;
+        const alias=/^(price|goods_price|sale_price|buy_price|sell_price|trade_price|goodsPrice|buyPrice|sellPrice|user_division_price)$/i;
         for(const input of document.querySelectorAll('input'))if(editable(input)&&
           alias.test(input.name||input.id||'')&&money(input.value)===old)matching.push(input);
       }
