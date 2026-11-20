@@ -1105,6 +1105,7 @@ internal sealed partial class AutomationForm : Form
         selectionTools.Items.Add(new ToolStripSeparator());
         selectionTools.Items.Add("CSV 가져오기", null, (_, _) => ImportJobsCsv());
         selectionTools.Items.Add("CSV 내보내기", null, (_, _) => ExportJobsCsv());
+        selectionTools.Items.Add("정리한 예전 글 복구", null, (_, _) => RestoreStaleImportedJobs());
         Button? selectionToolsButton = null;
         selectionToolsButton = ActionButton("더보기 ▾", 99,
             () => selectionTools.Show(selectionToolsButton!, 0, selectionToolsButton!.Height));
