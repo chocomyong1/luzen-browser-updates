@@ -11,7 +11,12 @@ const editor = read('AutomationForm.cs');
 
 assert.match(script, /AutomaticPriceSubmissionEnabled\s*=>\s*false/);
 assert.match(script, /a\.nativeSingleApproval===true/);
-assert.match(script, /siteSubmit\[0\]\.click\(\)/);
+assert.doesNotMatch(script, /siteSubmit\[0\]\.click\(\)/);
+assert.match(script, /a\.trustedOneClick!==true/);
+assert.match(script, /document\.elementFromPoint/);
+assert.match(script, /return result\('armed'/);
+assert.match(script, /VerifyNativeClickScript/);
+assert.match(script, /canClick:\(\)=>location\.pathname/);
 assert.match(script, /mayRestoreTitle=!titlePreserved&&a\.nativeSingleApproval===true/);
 assert.match(script, /quantity\(rangeTitle\[1\]\)===verifiedMin&&quantity\(rangeTitle\[2\]\)===verifiedMax/);
 assert.match(script, /titleSignature\(rangeTitle\[3\]\)===titleSignature\(savedLevel\[2\]\)/);
@@ -19,8 +24,8 @@ assert.match(script, /if\(mayRestoreTitle&&!a\.allowVerifiedTitleRestore\)return
 assert.match(script, /if\(mayRestoreTitle\)titleInputs\[0\]\.value=a\.expectedTitle/);
 assert.match(script, /form\.addEventListener\('submit'/);
 assert.match(script, /e\.preventDefault\(\)/);
-assert.match(script, /result\('guard-blocked'/);
-assert.match(script, /submitEventOutcome==='not-seen'|submitEventOutcome='not-seen'/);
+assert.match(script, /probe\.guardBlocked=true/);
+assert.match(script, /p\.submitEvent\?\.defaultPrevented/);
 assert.match(script, /others\.some\(o=>String\(o\.element\.value\?\?''\)!==o\.value\)/);
 assert.match(script, /titleSignature\(titleInputs\[0\]\.value\)!==titleSignature\(originalTitle\)/);
 assert.match(script, /titleSignature\(siteTitle\)===titleSignature\(originalTitle\)/);
@@ -33,6 +38,10 @@ assert.match(app, /!string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)/);
 assert.match(app, /SitePriceEdit\.BuildEditFormScript\(job\.ListingNumber, current\.ToString\(\), desired\.ToString\(\), true,\s*job\.Title, nativeSingleApproval, records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
 assert.match(app, /ConfirmChangedSitePriceAsync\(job, desired, token\)/);
 assert.match(app, /if \(nativeSingleApproval\) job\.PendingSitePriceTarget = desired\.ToString\(\)/);
+assert.match(app, /DispatchVerifiedSitePriceClickAsync\(result\.X, result\.Y, token\)/);
+assert.match(app, /CallDevToolsProtocolMethodAsync\("Input\.dispatchMouseEvent"/);
+assert.match(app, /core\.ExecuteScriptAsync\(SitePriceEdit\.VerifyNativeClickScript\)/);
+assert.match(app, /trustedOneClick: true/);
 assert.doesNotMatch(app, /if \(!observed\.RequestObserved\)\s*throw/);
 assert.ok(app.indexOf('ConfirmChangedSitePriceAsync(job, desired, token)') >
   app.indexOf('var observed = await submissionObserver.WaitAsync(token)'),

@@ -137,10 +137,12 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   titleReadOnly = false, titleType = 'text',
   nativeSubmitCount = 1, submitId = 'ok_btn', submitClass = 'buy_re_reg',
   includeFormId = true, formAction = '', formMethod = 'post', eventMutatesTitle = false,
-  clickMutatesTitle = false, clickSkipsSubmitEvent = false } = {}) {
+  clickMutatesTitle = false, clickSkipsSubmitEvent = false, siteCancelsSubmit = false,
+  buttonObscured = false } = {}) {
   let clicked = 0;
   let acceptedNativeSubmits = 0;
   const submitGuards = [];
+  const clickObservers = [];
   const clickedLabels = [];
   let inputEvents = 0;
   class HTMLInputElement {
@@ -179,14 +181,20 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     closest: key => key === 'form' ? form : null,
     getClientRects: () => [1], click: () => {
       clicked++; clickedLabels.push('REAL_SITE_RE_REG');
+      for (const fn of clickObservers) fn({isTrusted:true});
       if (clickMutatesTitle) titleInput.value = '9 9 레벨 겁화 구매합니다';
       if (clickSkipsSubmitEvent) return;
       let blocked = false;
-      const submitEvent = {target: form, preventDefault: () => { blocked = true; },
+      const submitEvent = {target: form, defaultPrevented:false,
+        preventDefault() {blocked=true;this.defaultPrevented=true;},
         stopImmediatePropagation: () => { blocked = true; }};
       for(const check of submitGuards)check(submitEvent);
+      if(siteCancelsSubmit)submitEvent.preventDefault();
       if (!blocked) acceptedNativeSubmits++;
-    }
+    },
+    addEventListener: (event, fn) => { if(event==='click')clickObservers.push(fn); },
+    getBoundingClientRect: () => ({left:110,right:230,top:90,bottom:130}),
+    contains: () => false
   }));
   const allButtons = [...buttons, ...nativeSubmits];
   const hidden = { value: id, getAttribute: () => null };
@@ -222,23 +230,30 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const headingCell = { textContent: heading };
   const tr = { querySelector: key => key.startsWith('th,') ? headingCell : null,
     querySelectorAll: key => key === 'input' ? [quantity, ...prices] : [] };
-  const document = { querySelectorAll: key => key === 'form' ? [form] :
+  const document = { elementFromPoint: () => buttonObscured ? null : nativeSubmits[0],
+    querySelectorAll: key => key === 'form' ? [form] :
     key.startsWith('input[type="hidden"]') ? [hidden] :
     key.startsWith('tr,') ? [tr] :
     key.startsWith('button,') ? allButtons :
     key === 'input' ? [quantity, ...prices] : [] };
+  const window = {innerWidth:850,innerHeight:650};
   const evaluate = (submit = true, expected = number, expectedOld = '10000', nativeSingleApproval = false,
-    verifiedMinQuantity = '', verifiedMaxQuantity = '', allowVerifiedTitleRestore = false) =>
+    verifiedMinQuantity = '', verifiedMaxQuantity = '', allowVerifiedTitleRestore = false,
+    trustedOneClick = true) =>
     vm.runInNewContext(script('EditFormScript').replace('__ARG__', JSON.stringify({
       number: expected, oldPrice: expectedOld, newPrice: '35100', submit,
       expectedTitle: savedTitle, nativeSingleApproval, verifiedMinQuantity,
-      verifiedMaxQuantity, allowVerifiedTitleRestore
+      verifiedMaxQuantity, allowVerifiedTitleRestore, trustedOneClick
     })), {
-      document, HTMLInputElement, FormData, fetch: networkFetch, Event: class { constructor() {} },
+      document, window, HTMLInputElement, FormData, fetch: networkFetch, Event: class { constructor() {} },
       location: { protocol: 'https:', hostname: host, pathname, search: '' },
       getComputedStyle: () => ({ visibility: 'visible' })
     }, { timeout: 1000 });
-  return { evaluate, get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
+  const probe = () => vm.runInNewContext(script('SubmitProbeScript'), {window}, {timeout:1000});
+  const verifyNativeClick = () => vm.runInNewContext(script('VerifyNativeClickScript'), {window}, {timeout:1000});
+  const simulateOneBrowserClick = () => nativeSubmits[0]?.click();
+  return { evaluate, probe, verifyNativeClick, simulateOneBrowserClick,
+    get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
     get acceptedNativeSubmits() { return acceptedNativeSubmits; },
     clickedLabels, prices, titleInput, formAttrs, fetchCalls };
 }
@@ -255,25 +270,47 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(restored.titleInput.value, siteFormTitle);
   assert.equal(restored.prices[0].value, '10,000');
   assert.equal(restored.evaluate(true, number, '10000', true, '1', '9995', true).status,
-    'submitted', 'The exact old title must be written into the native form before the one permitted click');
+    'armed', 'The exact old title must be written into the native form before the one permitted browser-input click');
   assert.equal(restored.titleInput.value, savedTitle);
   assert.equal(restored.prices[0].value, '35100');
+  assert.equal(restored.verifyNativeClick(),true,'Exact button and original title must still match before mouse press');
+  assert.equal(restored.clicked, 0, 'Preflight must not click anything');
+  restored.simulateOneBrowserClick();
   assert.deepEqual(restored.clickedLabels, ['REAL_SITE_RE_REG']);
   assert.equal(restored.acceptedNativeSubmits, 1);
+  assert.match(restored.probe(), /버튼 입력:사용자형; 제출 이벤트:감지; 사이트 제출 취소:아니오/);
   assert.equal(restored.fetchCalls.length, 0);
   const lateMutation = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
     clickMutatesTitle: true});
   assert.equal(lateMutation.evaluate(true, number, '10000', true, '1', '9995', true).status,
-    'guard-blocked', 'The user must be told that the native submit was vetoed by the title guard');
+    'armed', 'The site must be protected even when a native input rewrites the title');
+  lateMutation.simulateOneBrowserClick();
   assert.equal(lateMutation.clicked, 1);
   assert.equal(lateMutation.acceptedNativeSubmits, 0,
     'A site click handler rewriting the title must be vetoed before POST');
+  assert.match(lateMutation.probe(), /제목 보호 차단:예; 현재 제목 변형:예/);
   const noSubmitEvent = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
     clickSkipsSubmitEvent: true});
   const noSubmitResult = noSubmitEvent.evaluate(true, number, '10000', true, '1', '9995', true);
-  assert.equal(noSubmitResult.status, 'submitted', 'A click by itself is an uncertain submission');
-  assert.match(noSubmitResult.message, /제출 이벤트 미확인/);
+  assert.equal(noSubmitResult.status, 'armed', 'A button prepared for a click is NOT a submission');
+  noSubmitEvent.simulateOneBrowserClick();
+  assert.match(noSubmitEvent.probe(), /제출 이벤트:미감지/);
   assert.equal(noSubmitEvent.acceptedNativeSubmits, 0);
+  const siteCancelled = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle,
+    siteCancelsSubmit:true});
+  assert.equal(siteCancelled.evaluate(true,number,'10000',true,'1','9995',true).status,'armed');
+  siteCancelled.simulateOneBrowserClick();
+  assert.match(siteCancelled.probe(), /사이트 제출 취소:예; 제목 보호 차단:아니오/);
+  assert.equal(siteCancelled.acceptedNativeSubmits,0);
+  const obscured = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle,
+    buttonObscured:true});
+  assert.equal(obscured.evaluate(true,number,'10000',true,'1','9995',true).status,'error');
+  assert.equal(obscured.clicked,0);
+  assert.equal(obscured.prices[0].value,'10000');
+  const shifted = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
+  assert.equal(shifted.evaluate(true,number,'10000',true,'1','9995',true).status,'armed');
+  shifted.titleInput.value='9 9 레벨 겁화 구매합니다';
+  assert.equal(shifted.verifyNativeClick(),false,'Changing the title after arm must block native mouse input');
   const invalidRange = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
   assert.equal(invalidRange.evaluate(true, number, '10000', true, '1', '999', true).status, 'error');
   assert.equal(invalidRange.clicked, 0);
@@ -308,7 +345,9 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(native.evaluate(false, number, '10000', true).status, 'ready');
   assert.equal(native.clicked, 0);
   assert.equal(native.prices[0].value, '10,000');
-  assert.equal(native.evaluate(true, number, '10000', true).status, 'submitted');
+  assert.equal(native.evaluate(true, number, '10000', true).status, 'armed');
+  assert.equal(native.clicked, 0);
+  native.simulateOneBrowserClick();
   assert.deepEqual(native.clickedLabels, ['REAL_SITE_RE_REG']);
   assert.equal(native.prices[0].value, '35100');
   assert.equal(native.fetchCalls.length, 0, 'Native site button, never synthetic full-form fetch');
@@ -327,8 +366,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   // punctuation and quantity-range prefixes cannot be silently normalized.
   const spacing = editFormCase({approvedSubmit: true,
     formTitle: '+8+레벨 겁화,작열 삽니다+즉시대기중+'});
-  assert.equal(spacing.evaluate(true, number, '10000', true).status, 'submitted');
-  assert.equal(spacing.clicked, 1);
+  assert.equal(spacing.evaluate(true, number, '10000', true).status, 'armed');
+  assert.equal(spacing.clicked, 0);
   const prefixed = editFormCase({approvedSubmit: true,
     formTitle: '[1개~999개] '+title});
   assert.equal(prefixed.evaluate(true, number, '10000', true).status, 'error');

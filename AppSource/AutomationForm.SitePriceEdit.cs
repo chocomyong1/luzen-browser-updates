@@ -23,6 +23,31 @@ internal sealed partial class AutomationForm
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
 
+    // Only for one explicitly approved, exact-ID BUY form. A browser mouse
+    // input activates the site's own click/submit handlers; it is NOT a
+    // direct form POST, synthetic fetch, or bypass of site validation.
+    private async Task DispatchVerifiedSitePriceClickAsync(double x, double y, CancellationToken token)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || x <= 0 || y <= 0)
+            throw new InvalidOperationException("사이트 재등록 버튼 좌표를 검증하지 못했습니다");
+        var core = _web.CoreWebView2 ?? throw new InvalidOperationException("사이트 브라우저 연결 없음");
+        foreach (var (type, button, buttons, clickCount) in new[]
+        {
+            ("mouseMoved", "none", 0, 0),
+            ("mousePressed", "left", 1, 1),
+            ("mouseReleased", "left", 0, 1)
+        })
+        {
+            token.ThrowIfCancellationRequested();
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                System.Text.Json.JsonSerializer.Serialize(new { type, x, y, button, buttons, clickCount }));
+            if (type == "mouseMoved" &&
+                !string.Equals(await core.ExecuteScriptAsync(SitePriceEdit.VerifyNativeClickScript),
+                    "true", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("클릭 직전 사이트 버튼·등록정보·원본 제목 검증 실패. 제출하지 않았습니다");
+        }
+    }
+
     // A newly drafted listing uses its edited price on its first ordinary post.
     // Imported BUY posts and BUY posts successfully created by Luzen can queue a price edit.
     // A saved local draft alone never becomes an owned listing.
@@ -617,16 +642,20 @@ internal sealed partial class AutomationForm
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
                         job.Title, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity,
-                        titleRestoreApproved)));
+                        titleRestoreApproved, trustedOneClick: true)));
                 submitScriptNote = result.Message;
-                if (result.Status != "submitted")
-                    AppendLog("구매글 가격 수정 제출 결과 불확실 (자동 재시도 금지): " + result.Message);
-                else AppendLog("구매글 가격 수정 폼 전송 시작: " + result.Message);
+                if (result.Status != "armed")
+                    throw new InvalidOperationException("사이트 가격 수정 버튼 준비 실패: " + result.Message);
+                AppendLog("구매글 가격 수정 폼 검증: " + result.Message);
+                // Exactly one native browser click, and only after the
+                // uncertain-result review checkpoint was saved above.
+                await DispatchVerifiedSitePriceClickAsync(result.X, result.Y, token);
+                submitScriptNote = "검증된 사이트 재등록 버튼에 실제 브라우저 클릭 1회 (서버 반영은 별도 확인)";
             }
             catch (Exception ex)
             {
-                submitScriptNote = "페이지 전환 또는 스크립트 중단: " + ex.GetType().Name;
-                AppendLog("구매글 가격 수정 뒤 화면 전환: " + ex.GetType().Name + " (중복 제출 금지)");
+                submitScriptNote += " · 브라우저 입력/화면 전환 결과 불확실: " + ex.GetType().Name;
+                AppendLog("구매글 가격 수정 버튼/화면 전환 결과 불확실: " + ex.GetType().Name + " (중복 제출 금지)");
             }
 
             var observed = await submissionObserver.WaitAsync(token);
@@ -635,6 +664,21 @@ internal sealed partial class AutomationForm
                 " · HTTP " + (observed.HttpStatus?.ToString() ?? "미확인") + " · " + observed.Detail +
                 (string.IsNullOrWhiteSpace(observed.OtherBuyPostPath) ? "" :
                     " · 다른 구매글 POST 경로 감지(성공 근거 아님): " + observed.OtherBuyPostPath));
+            if (!observed.RequestObserved &&
+                string.Equals(_web.Source?.AbsolutePath, "/myroom/buy/buy_re_reg.html", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var probeJson = await _web.CoreWebView2!.ExecuteScriptAsync(SitePriceEdit.SubmitProbeScript);
+                    string? probe = System.Text.Json.JsonSerializer.Deserialize<string>(probeJson);
+                    if (!string.IsNullOrWhiteSpace(probe))
+                    {
+                        submitScriptNote += " · " + probe;
+                        AppendLog("구매글 사이트 기본 제출 진단 (조회만): " + probe);
+                    }
+                }
+                catch (Exception ex) { AppendLog("사이트 제출 이벤트 조회 실패: " + ex.GetType().Name); }
+            }
             // A missing CDP POST event is NOT proof that the site rejected
             // the submission. Always read the signed-in OWN list, including
             // the no-POST case, before making a success/failure decision.
