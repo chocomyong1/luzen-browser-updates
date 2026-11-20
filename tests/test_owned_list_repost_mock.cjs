@@ -59,7 +59,8 @@ function makeRealMarkupRow(number, name, reinsertNumber = number, stamp = '11-16
 }
 
 function evaluate(rows, { number = id, name = title, click = false,
-  pathname = '/myroom/buy/buy_regist.html', hostname = 'www.itemmania.com', siteReinsert } = {}) {
+  pathname = '/myroom/buy/buy_regist.html', hostname = 'www.itemmania.com', siteReinsert,
+  minQuantity = '', maxQuantity = '' } = {}) {
   const document = {
     querySelectorAll: selector => selector === 'tr' ? rows.map(x => x.row) :
       selector.includes('[data-tid]') ? rows.map(x => x.row) : []
@@ -67,7 +68,8 @@ function evaluate(rows, { number = id, name = title, click = false,
   const scope = { document, location: { protocol: 'https:', hostname, pathname },
     getComputedStyle: () => ({ visibility: 'visible' }) };
   if (siteReinsert) scope.window = { reInsert: siteReinsert };
-  const js = embedded.replace('__ARG__', JSON.stringify({ number, title: name, click }));
+  const js = embedded.replace('__ARG__', JSON.stringify({ number, title: name, click,
+    minQuantity, maxQuantity }));
   return vm.runInNewContext(js, scope, { timeout: 1000 });
 }
 
@@ -143,6 +145,47 @@ function evaluate(rows, { number = id, name = title, click = false,
   assert.match(result.message, /저장 제목: 10레벨 겁화작열/);
   assert.deepEqual(rows[0].clicks, []);
   console.log('PASS missing level/title cannot be guessed from matching ID');
+}
+{
+  // Real 22.2.92 failure: 10 at the BEGINNING of the saved title is hidden
+  // by the exact site's split-quantity range. Require the original range in
+  // the stored job and a character-for-character match of the remaining text.
+  const saved = '10 레벨 작열 삽니다 24 시';
+  const shown = '1 ~ 9,995 레벨 작열 삽니다 24 시';
+  const rows = [makeRealMarkupRow(id, shown)];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: shown, getAttribute: () => null } : null;
+  const args = { name: saved, minQuantity: '1', maxQuantity: '9995' };
+  assert.equal(evaluate(rows, args).status, 'ready');
+  assert.equal(evaluate(rows, { ...args, click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS observed leading 10 masked by verified 1 ~ 9,995 range');
+}
+{
+  const saved = '10 레벨 작열 삽니다 24 시';
+  const shown = '1 ~ 9,995 레벨 작열 삽니다 24 시';
+  const rows = [makeRealMarkupRow(id, shown)];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: shown, getAttribute: () => null } : null;
+  const base = { name: saved, click: true, minQuantity: '1', maxQuantity: '9995' };
+  assert.equal(evaluate(rows, { ...base, maxQuantity: '9999' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...base, minQuantity: '' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...base, name: '10 레벨 겁화 삽니다 24 시' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...base, name: '7 레벨 작열 삽니다 24 시' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...base, number: other }).status, 'not-found');
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS masked title requires exact registered ID, quantity range and entire suffix');
+}
+{
+  const shown = '1 ~ 9,995 레벨 작열 삽니다 24 시';
+  const rows = [makeRealMarkupRow(id, shown)];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: shown,
+      getAttribute: key => key === 'title' ? '9 레벨 작열 삽니다 24 시' : null } : null;
+  assert.equal(evaluate(rows, { name: '10 레벨 작열 삽니다 24 시', click: true,
+    minQuantity: '1', maxQuantity: '9995' }).status, 'mismatch');
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS conflicting original title attribute defeats quantity-mask fallback');
 }
 {
   const rows = [makeRealMarkupRow(id, '10레벨 작열 보석 구매합니다')];
