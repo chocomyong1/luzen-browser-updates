@@ -15,6 +15,7 @@ internal sealed class SitePriceSubmitObservation
     public bool RequestObserved { get; init; }
     public bool NetworkFinished { get; init; }
     public int? HttpStatus { get; init; }
+    public string OtherBuyPostPath { get; init; } = "";
     public string Detail { get; init; } = "";
 }
 
@@ -31,6 +32,7 @@ internal sealed class SitePriceSubmitObserver : IDisposable
     private CoreWebView2DevToolsProtocolEventReceiver? _finished;
     private CoreWebView2DevToolsProtocolEventReceiver? _failed;
     private string _requestId = "";
+    private string _otherBuyPostPath = "";
     private int? _httpStatus;
     private bool _disposed;
 
@@ -73,8 +75,17 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             }
             if (Str(req, "method") != "POST" || requestId.Length == 0 ||
                 !Uri.TryCreate(Str(req, "url"), UriKind.Absolute, out var uri) ||
-                !ItemManiaAccountStore.IsOfficialSite(uri) ||
-                !uri.AbsolutePath.Equals(BuyReRegistrationPostPath, StringComparison.OrdinalIgnoreCase)) return;
+                !ItemManiaAccountStore.IsOfficialSite(uri)) return;
+            if (!uri.AbsolutePath.Equals(BuyReRegistrationPostPath, StringComparison.OrdinalIgnoreCase))
+            {
+                // A site revision may submit the same edit to another BUY
+                // endpoint. This path is only a diagnostic, never proof of
+                // a successful price edit or authorization to retry.
+                if (_otherBuyPostPath.Length == 0 &&
+                    uri.AbsolutePath.StartsWith("/myroom/buy/", StringComparison.OrdinalIgnoreCase))
+                    _otherBuyPostPath = uri.AbsolutePath[..Math.Min(uri.AbsolutePath.Length, 120)];
+                return;
+            }
             _requestId = requestId;
         }
         catch (Exception) { /* Unrelated DevTools events do not affect the edit. */ }
@@ -105,6 +116,7 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             _done.TrySetResult(new SitePriceSubmitObservation
             {
                 RequestObserved = true, NetworkFinished = true, HttpStatus = _httpStatus,
+                OtherBuyPostPath = _otherBuyPostPath,
                 Detail = "사이트 제출 요청의 네트워크 전송 완료"
             });
         }
@@ -121,6 +133,7 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             _done.TrySetResult(new SitePriceSubmitObservation
             {
                 RequestObserved = true, HttpStatus = _httpStatus,
+                OtherBuyPostPath = _otherBuyPostPath,
                 Detail = "사이트 제출 요청이 네트워크 단계에서 끝나지 못함"
             });
         }
@@ -135,6 +148,7 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             return new SitePriceSubmitObservation
             {
                 RequestObserved = _requestId.Length > 0, HttpStatus = _httpStatus,
+                OtherBuyPostPath = _otherBuyPostPath,
                 Detail = _requestId.Length > 0
                     ? "요청은 확인했으나 완료 신호가 없어 결과 확인 필요"
                     : "사이트의 구매글 재등록 POST 요청이 감지되지 않음"

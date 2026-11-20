@@ -38,6 +38,9 @@ assert.match(observer, /Network\.requestWillBeSent/);
 assert.match(observer, /Network\.responseReceived/);
 assert.match(observer, /Network\.loadingFinished/);
 assert.match(observer, /Network\.loadingFailed/);
+assert.match(observer, /OtherBuyPostPath/);
+assert.match(observer, /StartsWith\("\/myroom\/buy\/"/);
+assert.match(price, /observed\.OtherBuyPostPath/);
 assert.doesNotMatch(observer, /getRequestPostData|\.postData|\.headers|\.response\.body|Fetch\.enable/);
 const safetyStart = price.indexOf('using var submissionObserver = new SitePriceSubmitObserver(');
 const siteSubmit = price.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,');
@@ -49,5 +52,6 @@ assert(siteSubmit < finish && finish < readback,
   'The site POST must finish or time out before another page navigation starts');
 assert.match(price.slice(checkpoint, siteSubmit), /_config\.Save\(\)/,
   'Crash-safe review checkpoint must be persisted before the actual POST');
-assert.match(price.slice(finish, readback), /if \(!observed\.RequestObserved\)/);
-console.log('PASS passive request trace and real submit-response observation before readback');
+assert.doesNotMatch(price.slice(finish, readback), /if \(!observed\.RequestObserved\)[\s\S]*?throw/,
+  'A missing POST observer event must NOT bypass read-only own-list verification');
+console.log('PASS passive request trace, crash-safe hold and real readback even when POST detection fails');

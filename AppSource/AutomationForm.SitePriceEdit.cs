@@ -160,6 +160,70 @@ internal sealed partial class AutomationForm
             manuallyApprovedPrice: (long)amount.Value);
     }
 
+    // Recovery path for a previously attempted edit. It NEVER revisits the
+    // edit form or clicks its submit button; only the signed-in OWN list is
+    // consulted. A new registration number is never inferred or rebound.
+    private async Task RecheckSelectedPriceWithoutSubmitAsync()
+    {
+        if (_selected is null) return;
+        if (_busy || _myListingsImportRunning || _sitePriceBatchRunning || _siteRequestTraceActive)
+        {
+            MessageBox.Show(this, "다른 사이트 작업이 끝난 뒤 결과를 조회해 주세요.", "가격 결과 재조회");
+            return;
+        }
+        var job = _selected;
+        if (!IsRegisteredOwnedBuyPriceTarget(job) || !job.RequiresReview ||
+            !job.LastStatus.Contains("가격", StringComparison.Ordinal))
+        {
+            MessageBox.Show(this, "가격 변경 후 확인 대기 중인 본인 구매글만 제출 없이 재조회할 수 있습니다.",
+                "가격 결과 재조회", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        var account = ItemManiaAccountStore.Load(_system).UserId;
+        if (string.IsNullOrWhiteSpace(account) ||
+            !string.Equals(account, job.SiteId, StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(this, "현재 로그인 계정과 저장된 물품 계정이 일치하지 않아 조회하지 않습니다.",
+                "계정 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (_schedulerRunning) PauseScheduler();
+        using var dialog = new Form
+        {
+            Text = "가격 변경 결과 재조회 · 제출 없음", Width = 460, Height = 225,
+            FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
+            MaximizeBox = false, MinimizeBox = false
+        };
+        var description = new Label
+        {
+            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n확인할 변경 목표 금액을 입력하세요. 사이트에 다시 제출하지 않습니다.",
+            AutoSize = true, Left = 18, Top = 17
+        };
+        var amount = new NumericUpDown
+        {
+            Left = 18, Top = 83, Width = 400, Minimum = 1000, Maximum = 1000000000,
+            Increment = 10, ThousandsSeparator = true, DecimalPlaces = 0
+        };
+        string proposed = string.IsNullOrWhiteSpace(job.PendingSitePriceTarget)
+            ? job.Price : job.PendingSitePriceTarget;
+        if (TrySitePrice(proposed, out var proposedAmount))
+            amount.Value = Math.Clamp((decimal)proposedAmount, amount.Minimum, amount.Maximum);
+        var verify = new Button { Text = "읽기 전용 조회", DialogResult = DialogResult.OK,
+            Left = 195, Top = 132, Width = 117, Height = 30 };
+        var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel,
+            Left = 322, Top = 132, Width = 96, Height = 30 };
+        dialog.Controls.AddRange(new Control[] { description, amount, verify, cancel });
+        dialog.AcceptButton = verify;
+        dialog.CancelButton = cancel;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        if (amount.Value % 10 != 0)
+        {
+            MessageBox.Show(this, "금액은 10원 단위로 입력해 주세요.", "가격 확인");
+            return;
+        }
+        await InspectPendingSitePriceOnlyAsync(job, (long)amount.Value, confirmLocalOnExact: true);
+    }
+
     // Reservation only: no WebView navigation, no POST, no forced scheduler
     // pause and no additional hourly quota usage at the time of this click.
     private async Task ApplySelectedSitePricesAsync(IReadOnlyList<ListingJob>? explicitTargets = null,
@@ -537,6 +601,10 @@ internal sealed partial class AutomationForm
             job.Enabled = false;
             job.LastStatus = "구매글 가격 재등록 제출 중: 결과 확인 필요";
             job.NextDueUtc = DateTime.MaxValue;
+            // Persist the intended amount before the native click. When a
+            // submit outcome is uncertain, the user can verify this exact
+            // target later WITHOUT clicking the site's submit button again.
+            if (nativeSingleApproval) job.PendingSitePriceTarget = desired.ToString();
             _config.Jobs = _jobs.ToList();
             _config.Save();
             _armedSitePriceEditNumber = job.ListingNumber;
@@ -564,25 +632,28 @@ internal sealed partial class AutomationForm
             var observed = await submissionObserver.WaitAsync(token);
             AppendLog("구매글 실제 사이트 수정 POST 확인: " +
                 (observed.RequestObserved ? SitePriceSubmitObserver.BuyReRegistrationPostPath : "요청 없음") +
-                " · HTTP " + (observed.HttpStatus?.ToString() ?? "미확인") + " · " + observed.Detail);
-            if (!observed.RequestObserved)
-                throw new InvalidOperationException("실제 사이트 구매글 수정 POST 요청을 확인하지 못했습니다. " +
-                    "사이트 전송이 차단되었거나 요청을 감지하지 못했습니다. 폼 실행 결과: " +
-                    submitScriptNote[..Math.Min(180, submitScriptNote.Length)] +
-                    "\n이미 확인 대기 상태로 저장되어 자동 재제출하지 않습니다.");
-            // Network completion is NOT the success condition. Even if a
-            // redirect or response event was missed, read the actual OWN list
-            // before deciding whether this one registered price changed.
+                " · HTTP " + (observed.HttpStatus?.ToString() ?? "미확인") + " · " + observed.Detail +
+                (string.IsNullOrWhiteSpace(observed.OtherBuyPostPath) ? "" :
+                    " · 다른 구매글 POST 경로 감지(성공 근거 아님): " + observed.OtherBuyPostPath));
+            // A missing CDP POST event is NOT proof that the site rejected
+            // the submission. Always read the signed-in OWN list, including
+            // the no-POST case, before making a success/failure decision.
+            // This is read-only and never retries the site's submit button.
             if (observed.NetworkFinished) await Task.Delay(950, token);
 
             _state.Text = "구매글 가격 변경 결과 확인 중";
             if (!await ConfirmChangedSitePriceAsync(job, desired, token))
-                throw new InvalidOperationException("구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " +
-                    "새 등록번호가 생겼을 수도 있으므로 이 글은 확인 대기 상태로 두고 자동으로 다시 제출하지 않습니다." +
+                throw new InvalidOperationException((observed.RequestObserved ?
+                    "구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " :
+                    "수정 POST 요청을 감지하지 못했고 관리목록에서도 변경된 단가를 확인하지 못했습니다. ") +
+                    "새 등록번호가 생겼거나 사이트가 제출을 막았을 수 있어 확인 대기 상태를 유지하며 재제출하지 않습니다." +
+                    "\n사이트 폼 실행: " + submitScriptNote[..Math.Min(180, submitScriptNote.Length)] +
                     (string.IsNullOrWhiteSpace(_sitePriceReadbackNote) ? "" :
                         "\n읽기 전용 목록 검사: " + _sitePriceReadbackNote) +
                     (string.IsNullOrWhiteSpace(_sitePriceEditDialogWarning) ? "" :
                         " 사이트 메시지: " + _sitePriceEditDialogWarning));
+            if (!observed.RequestObserved)
+                AppendLog("요청 감지 누락: 본인 관리목록의 등록번호·가격·제목이 일치하여 변경을 확인했습니다 (재제출 없음).");
 
             job.RequiresReview = previousReview;
             job.Enabled = previousEnabled && !previousReview;
@@ -665,7 +736,8 @@ internal sealed partial class AutomationForm
         public string Message { get; set; } = "";
     }
 
-    private async Task InspectPendingSitePriceOnlyAsync(ListingJob job, long target)
+    private async Task InspectPendingSitePriceOnlyAsync(ListingJob job, long target,
+        bool confirmLocalOnExact = false)
     {
         _busy = true;
         _state.Text = "확인 대기 구매글 사이트 가격 읽는 중 (제출 없음)";
@@ -677,7 +749,29 @@ internal sealed partial class AutomationForm
             if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(cancellation.Token);
             var readback = await ReadSitePriceAfterRepostAsync(job, target, cancellation.Token);
             AppendLog("가격 확인 대기 글 재조회 (제출 없음): " + job.ListingNumber + " · " + readback.Message);
-            MessageBox.Show(this,
+            if (confirmLocalOnExact && readback.ExactIdVerified)
+            {
+                if (MessageBox.Show(this,
+                    "사이트 관리목록에서 기존 등록번호·원본 제목·변경 단가가 모두 일치합니다.\n\n" +
+                    readback.Message + "\n\n프로그램의 저장 금액을 이 가격으로 맞출까요? " +
+                    "확인 대기와 자동등록 중지는 그대로 유지합니다. 사이트 재제출은 하지 않습니다.",
+                    "읽기 전용 검증 완료", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                    MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                {
+                    job.Price = target.ToString("N0");
+                    job.VerifiedSitePrice = target.ToString();
+                    job.VerifiedSitePriceUtc = DateTime.UtcNow;
+                    job.PendingSitePriceTarget = "";
+                    job.RequiresReview = true;
+                    job.Enabled = false;
+                    job.NextDueUtc = DateTime.MaxValue;
+                    job.LastStatus = "사이트 단가 재조회 확인 · 보류 유지: " + target.ToString("N0") + "원";
+                    _config.Jobs = _jobs.ToList();
+                    _config.Save();
+                    AppendLog($"✓ 재제출 없이 로컬 금액 동기화 · {job.ListingNumber} · {target:N0}원 · 보류 유지");
+                }
+            }
+            else MessageBox.Show(this,
                 "사이트 관리 목록을 읽기 전용으로 확인했습니다. 가격을 다시 제출하지 않았습니다.\n\n" +
                 readback.Message + "\n\n등록번호가 바뀐 경우 자동 연결하거나 재등록하지 않습니다.",
                 "가격 변경 결과 재확인", MessageBoxButtons.OK,
