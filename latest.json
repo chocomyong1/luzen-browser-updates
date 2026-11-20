@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.99",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.99/LuzenBrowser_22.2.99_BinaryUpdate.zip",
-  "sha256": "164333908ba12727712c4324789c6b4f140d46907d408952f21be880d3c8296d",
+  "version": "22.3.0",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.0/LuzenBrowser_22.3.0_BinaryUpdate.zip",
+  "sha256": "8a59a6c6f395d9b3f52e3a80494e0859ec2caa0418ce977dc14b0707f99bf1b0",
   "format": "binary",
-  "releaseNotes": "v22.2.99 가격 일괄수정·같은 가격 선택·예약의 20개 수량 제한을 제거했습니다. 등록번호·본인 구매글·계정 확인과 기존 시간당·서버별 등록 간격은 그대로 유지됩니다. 가격 변경 예약은 다음 자동등록 순번에 적용되며, 예약 현황에서 적용 전 가격을 다시 교체할 수 있습니다."
+  "releaseNotes": "v22.3.0 제목 보호 긴급 업데이트. 저장 제목 자동 변경을 제거하고 사이트 표시 제목을 별도로 대조합니다. 제목 불일치 또는 9 9·10 10 레벨 중복 글은 자동 재등록 보류. 제목 손상 위험이 있는 기존 글의 가격 자동 변경은 안전 검증 전까지 중지됩니다. 사이트에서 직접 가격을 수정해 주세요."
 }
