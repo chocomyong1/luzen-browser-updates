@@ -47,10 +47,73 @@ internal static class SitePriceEdit
     public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit,
         string expectedTitle = "", bool nativeSingleApproval = false,
         string verifiedMinQuantity = "", string verifiedMaxQuantity = "",
-        bool allowVerifiedTitleRestore = false, bool trustedOneClick = false) =>
+        bool allowVerifiedTitleRestore = false, bool trustedOneClick = false,
+        bool nativeKeyboardPrice = false) =>
         EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new
         { number, oldPrice, newPrice, submit, expectedTitle, nativeSingleApproval,
-            verifiedMinQuantity, verifiedMaxQuantity, allowVerifiedTitleRestore, trustedOneClick }), StringComparison.Ordinal);
+            verifiedMinQuantity, verifiedMaxQuantity, allowVerifiedTitleRestore, trustedOneClick,
+            nativeKeyboardPrice }), StringComparison.Ordinal);
+
+    public const string VerifyNativePriceInputScript = """
+    (()=>window.__luzenPriceNativeProbe?.canStartTyping?.()===true)()
+    """;
+
+    public const string VerifyNativePriceFocusScript = """
+    (()=>window.__luzenPriceNativeProbe?.priceInput===document.activeElement&&
+      window.__luzenPriceNativeProbe?.canType?.()===true)()
+    """;
+
+    // Run only after the host has typed the desired price into the site's
+    // verified input using actual browser keyboard events. The original
+    // title, listing ID and every non-price field are checked once more.
+    public const string FinalizeNativePriceScript = """
+    (()=>{
+      const p=window.__luzenPriceNativeProbe;
+      const result=(status,message='',x=0,y=0)=>({status,message,x,y});
+      if(!p||!p.canType?.())return result('error','가격 입력 중 사이트 수정폼이 변경되어 제출하지 않았습니다');
+      if(p.money(p.priceInput.value)!==p.desired)
+        return result('error','사이트 가격 입력칸에 변경 금액이 정확히 반영되지 않았습니다');
+      if(p.titleChanged())return result('error','가격 입력 중 원본 제목이 변형돼 제출하지 않았습니다');
+      const changed=p.others.filter(o=>String(o.element.value??'')!==o.value);
+      const safePriceField=o=>{
+        const e=o.element,name=String(e.name||e.id||'');
+        return String(e.type||'').toLowerCase()==='hidden'&&
+          /(?:price|amount|total|sum|fee|cost|charge|money|payment)/i.test(name)&&
+          /^[-+\d,.]*$/.test(String(e.value||''));
+      };
+      if(changed.some(o=>!safePriceField(o)))
+        return result('error','사이트가 가격 외 다른 폼 값을 변경하여 제출하지 않았습니다. 영향받은 필드: '+
+          changed.filter(o=>!safePriceField(o)).slice(0,4).map(o=>
+            String(o.element.name||o.element.id||'이름 없음').slice(0,40)).join(','));
+      const button=p.button;
+      button.scrollIntoView?.({block:'center',inline:'center'});
+      const rect=button.getBoundingClientRect?.();
+      const x=rect?(rect.left+rect.right)/2:NaN;
+      const y=rect?(rect.top+rect.bottom)/2:NaN;
+      const point=Number.isFinite(x)&&Number.isFinite(y)&&x>0&&y>0&&
+        x<window.innerWidth&&y<window.innerHeight?document.elementFromPoint?.(x,y):null;
+      if(!point||!(point===button||button.contains?.(point)))
+        return result('error','사이트 재등록 버튼 위치를 확인하지 못해 제출하지 않았습니다');
+      p.canClick=()=>p.canType()&&p.money(p.priceInput.value)===p.desired&&
+        !p.titleChanged()&&p.others.every(o=>String(o.element.value??'')===o.value||safePriceField(o))&&
+        (document.elementFromPoint(x,y)===button||button.contains?.(document.elementFromPoint(x,y)));
+      button.addEventListener('click',e=>{
+        p.clickSeen=true;p.clickTrusted=e.isTrusted===true;
+      },{capture:true,once:true});
+      const protectTitleAtSubmit=e=>{
+        if(e.target!==p.form)return;
+        p.submitSeen=true;p.submitEvent=e;
+        if(p.titleChanged()){
+          p.guardBlocked=true;e.preventDefault();e.stopImmediatePropagation();
+        }
+      };
+      // Capture guards site click normalization; a second, late bubble
+      // guard catches a site's own form-submit handler rewriting the title.
+      p.form.addEventListener('submit',protectTitleAtSubmit,{capture:true,once:true});
+      p.form.addEventListener('submit',protectTitleAtSubmit,{capture:false,once:true});
+      return result('armed','사이트 가격칸의 실제 키보드 입력 및 원본 제목 확인 · 재등록 단건 클릭 준비',x,y);
+    })()
+    """;
 
     // Read-only result of the ONE native browser-input trial; does not inspect
     // field values, credentials or request contents and never invokes submit.
@@ -60,11 +123,14 @@ internal static class SitePriceEdit
       if(!p)return '사이트 제출 진단 신호 없음';
       const cancellation=p.submitEvent?.defaultPrevented===true;
       const titleChanged=p.titleChanged?.()===true;
+      const invalid=[...p.form.querySelectorAll(':invalid')].slice(0,5)
+        .map(e=>String(e.name||e.id||'이름 없음').slice(0,35));
       return '버튼 입력:'+ (p.clickSeen?(p.clickTrusted?'사용자형':'합성'):'감지 안 됨')+
         '; 제출 이벤트:'+(p.submitSeen?'감지':'미감지')+
         '; 사이트 제출 취소:'+(cancellation?'예':'아니오/미확인')+
         '; 제목 보호 차단:'+(p.guardBlocked?'예':'아니오')+
-        '; 현재 제목 변형:'+(titleChanged?'예':'아니오');
+        '; 현재 제목 변형:'+(titleChanged?'예':'아니오')+
+        '; HTML 유효성 오류 필드:'+(invalid.join(',')||'없음');
     })()
     """;
 
@@ -262,7 +328,7 @@ internal static class SitePriceEdit
           matching.push(input);
       }
       if(matching.length===0){
-        const alias=/^(price|goods_price|sale_price|buy_price|sell_price|trade_price|goodsPrice|buyPrice|sellPrice)$/i;
+        const alias=/^(price|goods_price|sale_price|buy_price|sell_price|trade_price|goodsPrice|buyPrice|sellPrice|user_division_price)$/i;
         for(const input of document.querySelectorAll('input'))if(editable(input)&&
           alias.test(input.name||input.id||'')&&money(input.value)===old)matching.push(input);
       }
@@ -364,66 +430,48 @@ internal static class SitePriceEdit
           // Prepare only the audited form here. The host sends ONE native
           // browser mouse click after persisting the review checkpoint.
           if(a.trustedOneClick!==true)return result('blocked','가격 제출은 검증된 실제 브라우저 클릭 경로로만 허용합니다',old,1);
-          // Snapshot every other form value. An oninput handler that mutates
-          // a title, a level, a quantity or a hidden value must prevent POST.
+          if(a.nativeKeyboardPrice!==true)
+            return result('blocked','실제 사이트 키보드로 가격칸을 입력하는 방식만 허용합니다',old,1);
+          // Snapshot all other fields. Site-controlled numeric price totals
+          // may update during real typing; identity/title/quantity changes
+          // will still prevent the submit.
           const others=[...form.querySelectorAll('input,textarea,select')]
             .filter(e=>e!==priceInput&&(!mayRestoreTitle||e!==titleInputs[0]))
             .map(e=>({element:e,value:String(e.value??'')}));
           const beforeTitle=titleInputs[0].value;
           if(mayRestoreTitle)titleInputs[0].value=a.expectedTitle;
-          priceInput.value=desired;
-          priceInput.dispatchEvent(new Event('input',{bubbles:true}));
-          priceInput.dispatchEvent(new Event('change',{bubbles:true}));
-          const altered=others.some(o=>String(o.element.value??'')!==o.value);
-          if(altered||titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
-            priceInput.value=old;
+          if(titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
             if(mayRestoreTitle)titleInputs[0].value=beforeTitle;
-            return result('error','가격 변경 이벤트가 제목 또는 다른 폼 값을 바꿔 제출을 중단했습니다',old,1);
+            return result('error','사이트 원본 제목을 유지할 수 없어 제출하지 않았습니다',old,1);
           }
           const button=siteSubmit[0];
-          button.scrollIntoView?.({block:'center',inline:'center'});
-          const rect=button.getBoundingClientRect?.();
+          priceInput.scrollIntoView?.({block:'center',inline:'center'});
+          const rect=priceInput.getBoundingClientRect?.();
           const x=rect?(rect.left+rect.right)/2:NaN;
           const y=rect?(rect.top+rect.bottom)/2:NaN;
           const point=Number.isFinite(x)&&Number.isFinite(y)&&x>0&&y>0&&
             x<window.innerWidth&&y<window.innerHeight?document.elementFromPoint?.(x,y):null;
-          if(!point||!(point===button||button.contains?.(point))){
-            priceInput.value=old;
+          if(!point||!(point===priceInput||priceInput.contains?.(point))){
             if(mayRestoreTitle)titleInputs[0].value=beforeTitle;
-            return result('error','사이트 재등록 버튼의 실제 화면 위치를 안전하게 검증할 수 없어 클릭하지 않았습니다',old,1);
+            return result('error','사이트 가격 입력칸의 화면 위치를 검증하지 못해 제출하지 않았습니다',old,1);
           }
-          // The site's own click/validation handlers may still reformat the
-          // title between the click and its normal submit event. Veto that
-          // submit if it no longer carries the exact intended title. Native
-          // form.submit() would bypass this guard, so the one-item hold and
-          // independent readback remain mandatory.
           const probe={clickSeen:false,clickTrusted:false,submitSeen:false,
             guardBlocked:false,submitEvent:null,
+            form,button,priceInput,others,desired,money,
             titleChanged:()=>titleSignature(titleInputs[0].value)!==titleSignature(originalTitle),
-            canClick:()=>location.pathname.toLowerCase()==='/myroom/buy/buy_re_reg.html'&&
-              button.isConnected&&document.elementFromPoint(x,y)&&
-              (document.elementFromPoint(x,y)===button||button.contains?.(document.elementFromPoint(x,y)))&&
+            canType:()=>location.pathname.toLowerCase()==='/myroom/buy/buy_re_reg.html'&&
+              button.isConnected&&priceInput.isConnected&&!priceInput.disabled&&!priceInput.readOnly&&
               titleSignature(titleInputs[0].value)===titleSignature(originalTitle)&&
-              money(priceInput.value)===desired&&
-              others.every(o=>String(o.element.value??'')===o.value)};
+              [...form.querySelectorAll('input[type="hidden"]')].some(e=>String(e.value||'')===a.number),
+            canStartTyping:()=>location.pathname.toLowerCase()==='/myroom/buy/buy_re_reg.html'&&
+              button.isConnected&&priceInput.isConnected&&
+              titleSignature(titleInputs[0].value)===titleSignature(originalTitle)&&
+              document.elementFromPoint(x,y)&&
+              (document.elementFromPoint(x,y)===priceInput||priceInput.contains?.(document.elementFromPoint(x,y)))};
           window.__luzenPriceNativeProbe=probe;
-          button.addEventListener('click',e=>{
-            probe.clickSeen=true;
-            probe.clickTrusted=e.isTrusted===true;
-          },{capture:true,once:true});
-          form.addEventListener('submit',e=>{
-            if(e.target!==form)return;
-            probe.submitSeen=true;
-            probe.submitEvent=e;
-            if(titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
-              probe.guardBlocked=true;
-              e.preventDefault();
-              e.stopImmediatePropagation();
-            }
-          },{capture:true,once:true});
-          // No site click occurs in ExecuteScriptAsync. Only the exact button
-          // center is handed to the host for one native mouse input sequence.
-          return result('armed','원본 제목 및 화면의 재등록 버튼 위치 검증 · 실제 브라우저 단건 클릭 준비',desired,1,x,y);
+          // No price or submit action occurs in this script. The host types
+          // through real browser keyboard events before the final readback.
+          return result('input-ready','사이트 가격 입력칸 검증 · 실제 키보드 입력 준비 (제출 없음)',old,1,x,y);
         }
         return result('blocked','제목 보호 모드: 예약·일괄 가격 자동 제출 중지',old,1);
       }
