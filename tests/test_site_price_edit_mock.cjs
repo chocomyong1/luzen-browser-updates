@@ -137,7 +137,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   titleReadOnly = false, titleType = 'text',
   nativeSubmitCount = 1, submitId = 'ok_btn', submitClass = 'buy_re_reg',
   includeFormId = true, formAction = '', formMethod = 'post', eventMutatesTitle = false,
-  clickMutatesTitle = false } = {}) {
+  clickMutatesTitle = false, clickSkipsSubmitEvent = false } = {}) {
   let clicked = 0;
   let acceptedNativeSubmits = 0;
   const submitGuards = [];
@@ -180,6 +180,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     getClientRects: () => [1], click: () => {
       clicked++; clickedLabels.push('REAL_SITE_RE_REG');
       if (clickMutatesTitle) titleInput.value = '9 9 레벨 겁화 구매합니다';
+      if (clickSkipsSubmitEvent) return;
       let blocked = false;
       const submitEvent = {target: form, preventDefault: () => { blocked = true; },
         stopImmediatePropagation: () => { blocked = true; }};
@@ -263,10 +264,16 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const lateMutation = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
     clickMutatesTitle: true});
   assert.equal(lateMutation.evaluate(true, number, '10000', true, '1', '9995', true).status,
-    'submitted', 'The click happened but the native submit was vetoed');
+    'guard-blocked', 'The user must be told that the native submit was vetoed by the title guard');
   assert.equal(lateMutation.clicked, 1);
   assert.equal(lateMutation.acceptedNativeSubmits, 0,
     'A site click handler rewriting the title must be vetoed before POST');
+  const noSubmitEvent = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
+    clickSkipsSubmitEvent: true});
+  const noSubmitResult = noSubmitEvent.evaluate(true, number, '10000', true, '1', '9995', true);
+  assert.equal(noSubmitResult.status, 'submitted', 'A click by itself is an uncertain submission');
+  assert.match(noSubmitResult.message, /제출 이벤트 미확인/);
+  assert.equal(noSubmitEvent.acceptedNativeSubmits, 0);
   const invalidRange = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
   assert.equal(invalidRange.evaluate(true, number, '10000', true, '1', '999', true).status, 'error');
   assert.equal(invalidRange.clicked, 0);

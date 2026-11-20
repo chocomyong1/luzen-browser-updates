@@ -358,17 +358,24 @@ internal static class SitePriceEdit
           // submit if it no longer carries the exact intended title. Native
           // form.submit() would bypass this guard, so the one-item hold and
           // independent readback remain mandatory.
+          let submitEventOutcome='not-seen';
           form.addEventListener('submit',e=>{
+            if(e.target!==form)return;
             if(e.target===form&&titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
+              submitEventOutcome='blocked-title';
               e.preventDefault();
               e.stopImmediatePropagation();
-            }
+            }else submitEventOutcome='seen';
           },{capture:true,once:true});
           // The audited native button is the ONLY permitted submit target.
           // A click may navigate and abort JS; C# records a crash-safe review
           // checkpoint and independently verifies site title/price afterward.
           siteSubmit[0].click();
-          return result('submitted','검증된 사이트 기본 재등록 버튼 클릭',desired,1);
+          if(submitEventOutcome==='blocked-title')
+            return result('guard-blocked','사이트 재등록 버튼 실행 중 제목이 다시 변형되어 전송을 차단했습니다. 제목이 안전하지 않아 재제출하지 않습니다.',old,1);
+          return result('submitted',submitEventOutcome==='seen'?
+            '사이트 기본 재등록 버튼 클릭 · 기본 제출 이벤트 확인 (실제 전송 여부는 별도 검증)':
+            '사이트 기본 재등록 버튼 클릭 · 기본 제출 이벤트 미확인 (실제 전송 여부는 별도 검증)',desired,1);
         }
         return result('blocked','제목 보호 모드: 예약·일괄 가격 자동 제출 중지',old,1);
       }
