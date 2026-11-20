@@ -280,14 +280,20 @@ internal static class SitePriceEdit
       // A price change sends the site's ENTIRE re-registration form, not just
       // the amount. Never send it unless its original title survives intact.
       // Do not "repair" a corrupted title by guessing from quantity/level.
-      const cleanTitle=s=>String(s||'').replace(/\s+/g,' ').trim();
+      const cleanTitle=s=>String(s||'').normalize('NFC').replace(/\s+/g,' ').trim();
+      // The edit form sometimes changes only spacing ("9 레벨" vs
+      // "9레벨"). That is display formatting, not permission to replace,
+      // repair, strip a quantity range, or add/remove ANY actual character.
+      // Keep all digits and punctuation; a doubled 9 or 10 MUST still fail.
+      const titleSignature=s=>cleanTitle(s).replace(/\s/g,'');
       const titleName=/^(?:title|subject|goods_?title|item_?title|user_?title|goods_?subject|item_?subject|user_?subject|goods_?name|item_?name|user_?item_?name)$/i;
       const titleInputs=form?[...form.querySelectorAll('input,textarea')].filter(e=>
         titleName.test(String(e.getAttribute?.('name')||e.name||e.getAttribute?.('id')||''))):[];
       const originalTitle=cleanTitle(a.expectedTitle);
       const siteTitle=titleInputs.length===1?cleanTitle(titleInputs[0].value):'';
       const titlePreserved=originalTitle.length>=3&&titleInputs.length===1&&
-        siteTitle===originalTitle;
+        titleSignature(siteTitle)===titleSignature(originalTitle);
+      const displayTitle=s=>String(s||'').replace(/[\r\n\t]/g,' ').trim().slice(0,90);
       const siteSubmit=isAuditedBuyForm?[...form.querySelectorAll('button[type="submit"]')].filter(e=>
         visible(e)&&attr(e,'id')==='ok_btn'&&attr(e,'class').split(/\s+/).includes('buy_re_reg')&&
         String(e.innerText||e.textContent||'').replace(/\s+/g,'')==='재등록'):[];
@@ -296,7 +302,10 @@ internal static class SitePriceEdit
       if(formOwnedId&&siteSubmit.length===1){
         if(!titlePreserved)return result('error',titleInputs.length!==1?
           '가격 수정은 제목까지 재등록하므로 제목 입력칸을 유일하게 확인할 때까지 제출을 차단합니다':
-          '사이트 수정폼 제목과 저장된 원본 제목이 다릅니다. 가격만 수정해도 제목이 바뀔 수 있어 제출을 차단합니다');
+          '실제 제목 내용이 달라 가격 제출을 막았습니다.\n'+
+          '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
+          '프로그램 저장: '+displayTitle(originalTitle)+'\n'+
+          '원래 제목과 다를 때는 자동으로 제목을 고치거나 가격을 제출하지 않습니다.');
         // The scheduler and batch paths never get this explicit one-item
         // approval. Never synthesize fetch(FormData(form)) or form.submit():
         // those bypass the site's own validation/normalization handlers.
@@ -310,7 +319,7 @@ internal static class SitePriceEdit
           priceInput.dispatchEvent(new Event('input',{bubbles:true}));
           priceInput.dispatchEvent(new Event('change',{bubbles:true}));
           const altered=others.some(o=>String(o.element.value??'')!==o.value);
-          if(altered||cleanTitle(titleInputs[0].value)!==originalTitle){
+          if(altered||titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
             priceInput.value=old;
             return result('error','가격 변경 이벤트가 제목 또는 다른 폼 값을 바꿔 제출을 중단했습니다',old,1);
           }
