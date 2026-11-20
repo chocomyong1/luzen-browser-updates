@@ -85,7 +85,7 @@ assert.equal(items[0].title,'10레벨 겁화 보석 구매합니다');
 assert.equal(items[1].title,'10레벨 겁화 보석 구매합니다',
   'Quantity range rendered inside .trade_title must NOT become part of the product title');
 assert.match(src, /const stripQuantityRange = s => norm\(s\)/);
-const noBrackets = match[1].match(/const stripQuantityRange = s => norm\(s\)[\s\S]*?;\n/);
+const noBrackets = match[1].match(/const stripQuantityRange = s => norm\(s\)[\s\S]*?;\r?\n/);
 assert(noBrackets, 'Imported title must strip common unbracketed quantity prefixes');
 assert.match(src,/public static string CleanImportedTitle\(string\? text\)/,
   'Already-imported titles need the same quantity-range cleanup at load time');
