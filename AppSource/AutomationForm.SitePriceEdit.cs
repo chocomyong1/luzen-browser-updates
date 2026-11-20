@@ -65,6 +65,26 @@ internal sealed partial class AutomationForm
         await KeyAsync("keyUp", "Tab", "Tab", 9);
     }
 
+    private async Task ReplaceVerifiedSitePriceTextOnceAsync(long desired, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var core = _web.CoreWebView2 ?? throw new InvalidOperationException("사이트 브라우저 연결 없음");
+        var selection = SitePriceEdit.Decode(await core.ExecuteScriptAsync(
+            SitePriceEdit.SelectNativePriceForReplacementScript));
+        if (selection.Status != "retry-ready")
+            throw new InvalidOperationException("사이트 가격칸 안전한 전체 선택 실패: " + selection.Message);
+        // Input.insertText replaces a proven selected range through the
+        // browser's input path; it never bypasses a site's submit handler.
+        await core.CallDevToolsProtocolMethodAsync("Input.insertText",
+            System.Text.Json.JsonSerializer.Serialize(new
+            { text = desired.ToString(System.Globalization.CultureInfo.InvariantCulture) }));
+        token.ThrowIfCancellationRequested();
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+            "{\"type\":\"keyDown\",\"key\":\"Tab\",\"code\":\"Tab\",\"windowsVirtualKeyCode\":9}");
+        await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+            "{\"type\":\"keyUp\",\"key\":\"Tab\",\"code\":\"Tab\",\"windowsVirtualKeyCode\":9}");
+    }
+
     // Only for one explicitly approved, exact-ID BUY form. A browser mouse
     // input activates the site's own click/submit handlers; it is NOT a
     // direct form POST, synthetic fetch, or bypass of site validation.
@@ -692,6 +712,16 @@ internal sealed partial class AutomationForm
                 await TypeVerifiedSitePriceAsync(result.X, result.Y, desired, token);
                 var final = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.FinalizeNativePriceScript));
+                if (final.Status == "input-mismatch")
+                {
+                    // No POST or submit click has happened. Try only ONE
+                    // focused, fully selected input-text replacement. This
+                    // handles site masks that intercept per-key editing.
+                    AppendLog("가격 입력칸 자릿수 검증 불일치 (사이트 제출 전): " + final.Message);
+                    await ReplaceVerifiedSitePriceTextOnceAsync(desired, token);
+                    final = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                        SitePriceEdit.FinalizeNativePriceScript));
+                }
                 submitScriptNote = final.Message;
                 if (final.Status != "armed")
                     throw new InvalidOperationException("사이트 키보드 입력 후 폼 검증 실패: " + final.Message);

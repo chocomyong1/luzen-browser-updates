@@ -188,15 +188,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.7'
+          $version = '22.3.8'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.7
-          path: LuzenBrowser_22.3.7_BinaryUpdate.zip
+          name: vanta-windows-v22.3.8
+          path: LuzenBrowser_22.3.8_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -204,7 +204,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.7'
+          $version = '22.3.8'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -216,7 +216,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.7 구매글 가격 단건 시험의 입력 경로 개선. 가격 값을 자바스크립트로 덮어쓰지 않고 검증된 가격칸에 브라우저의 실제 키 입력·변경 이벤트로 입력한 뒤 가격·원본 제목·등록번호 및 비가격 필드 변경을 재검증합니다. 제목은 사이트 제출 직전 캡처와 버블 단계에서 모두 보호합니다. Chromium 브라우저 입력 검증을 통과한 빌드만 배포하며, 아이템매니아 실사이트 반영은 본인 관리목록에서 등록번호·가격·제목이 모두 일치할 때만 성공 처리합니다. 확인 불가 글 재제출·예약·일괄 자동 가격 제출은 계속 차단합니다.'
+            releaseNotes = 'v22.3.8 구매글 단건 가격 입력칸의 사이트 마스킹 대응. 브라우저 키 입력 후 실제 숫자가 목표와 다르면 다른 제출 없이 해당 가격칸의 모든 텍스트 선택을 검증하고 브라우저 Input.insertText로 한 번만 보정합니다. 가격·등록번호·제목·비가격 필드 재검증에 모두 통과한 경우에만 사이트 기본 재등록 버튼을 한 번 클릭합니다. 금액이 계속 다르면 실제 입력 숫자를 표시하고 제출하지 않습니다. 실제 Chromium 입력 마스크 회귀 테스트와 Windows 빌드 검증을 통과한 업데이트입니다. 결과 불확실 글의 자동 재제출과 일괄 사이트 가격 반영은 계속 차단합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

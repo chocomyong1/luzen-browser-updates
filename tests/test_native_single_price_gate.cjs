@@ -19,6 +19,8 @@ assert.match(script, /VerifyNativeClickScript/);
 assert.match(script, /p\.canClick=\(\)=>p\.canType\(\)/);
 assert.match(script, /VerifyNativePriceInputScript/);
 assert.match(script, /VerifyNativePriceFocusScript/);
+assert.match(script, /SelectNativePriceForReplacementScript/);
+assert.match(script, /return result\('input-mismatch'/);
 assert.match(script, /FinalizeNativePriceScript/);
 assert.match(script, /mayRestoreTitle=!titlePreserved&&a\.nativeSingleApproval===true/);
 assert.match(script, /quantity\(rangeTitle\[1\]\)===verifiedMin&&quantity\(rangeTitle\[2\]\)===verifiedMax/);
@@ -42,6 +44,8 @@ assert.match(app, /SitePriceEdit\.BuildEditFormScript\(job\.ListingNumber, curre
 assert.match(app, /ConfirmChangedSitePriceAsync\(job, desired, token\)/);
 assert.match(app, /if \(nativeSingleApproval\) job\.PendingSitePriceTarget = desired\.ToString\(\)/);
 assert.match(app, /TypeVerifiedSitePriceAsync\(result\.X, result\.Y, desired, token\)/);
+assert.match(app, /ReplaceVerifiedSitePriceTextOnceAsync\(desired, token\)/);
+assert.match(app, /CallDevToolsProtocolMethodAsync\("Input\.insertText"/);
 assert.match(app, /core\.ExecuteScriptAsync\(SitePriceEdit\.VerifyNativePriceFocusScript\)/);
 assert.match(app, /DispatchVerifiedSitePriceClickAsync\(final\.X, final\.Y, token\)/);
 assert.match(app, /CallDevToolsProtocolMethodAsync\("Input\.dispatchMouseEvent"/);

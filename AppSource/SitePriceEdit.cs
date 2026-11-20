@@ -63,6 +63,26 @@ internal static class SitePriceEdit
       window.__luzenPriceNativeProbe?.canType?.()===true)()
     """;
 
+    // A site's input mask can defeat Ctrl+A followed by per-digit input.
+    // This fall-back only selects the *same* already-audited price field.
+    // No click on the submit button and no site request can occur here.
+    public const string SelectNativePriceForReplacementScript = """
+    (()=>{
+      const p=window.__luzenPriceNativeProbe;
+      const result=(status,message='')=>({status,message});
+      if(!p||!p.canType?.()||p.clickSeen||p.submitSeen||p.titleChanged())
+        return result('error','가격 재입력 전에 수정폼·제목·등록번호 검증에 실패했습니다');
+      const e=p.priceInput;
+      if(String(e.type||'').toLowerCase()!=='text'&&String(e.type||'').toLowerCase()!=='tel')
+        return result('error','이 가격 입력칸의 형태에서는 안전한 전체 선택을 지원하지 않습니다');
+      e.focus();
+      try{e.select();}catch{return result('error','가격 입력칸 전체 선택 실패');}
+      if(document.activeElement!==e||e.selectionStart!==0||e.selectionEnd!==e.value.length)
+        return result('error','기존 가격의 모든 숫자를 선택하지 못해 재입력하지 않습니다');
+      return result('retry-ready','같은 가격 입력칸에서 기존 금액 전체 선택 확인 · 사이트 제출 없음');
+    })()
+    """;
+
     // Run only after the host has typed the desired price into the site's
     // verified input using actual browser keyboard events. The original
     // title, listing ID and every non-price field are checked once more.
@@ -72,7 +92,9 @@ internal static class SitePriceEdit
       const result=(status,message='',x=0,y=0)=>({status,message,x,y});
       if(!p||!p.canType?.())return result('error','가격 입력 중 사이트 수정폼이 변경되어 제출하지 않았습니다');
       if(p.money(p.priceInput.value)!==p.desired)
-        return result('error','사이트 가격 입력칸에 변경 금액이 정확히 반영되지 않았습니다');
+        return result('input-mismatch','사이트 가격 입력칸의 실제 숫자: '+
+          (p.money(p.priceInput.value).slice(0,18)||'빈칸')+
+          ' / 요청 숫자: '+p.desired+' (입력 형태: '+String(p.priceInput.type||'미확인').slice(0,18)+')');
       if(p.titleChanged())return result('error','가격 입력 중 원본 제목이 변형돼 제출하지 않았습니다');
       const changed=p.others.filter(o=>String(o.element.value??'')!==o.value);
       const safePriceField=o=>{

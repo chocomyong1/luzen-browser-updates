@@ -154,6 +154,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     getBoundingClientRect() {return {left:30,right:150,top:60,bottom:100};}
     scrollIntoView() {hitTarget=this;}
     contains() {return false;}
+    focus() {document.activeElement=this;}
+    select() {this.selectionStart=0;this.selectionEnd=this.value.length;}
     dispatchEvent() {
       inputEvents++;
       if (eventMutatesTitle && prices?.includes(this)) titleInput.value = '9 9 레벨 겁화 구매합니다';
@@ -260,6 +262,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     {window,document}, {timeout:1000});
   const finalize = () => vm.runInNewContext(script('FinalizeNativePriceScript'),
     {window,document}, {timeout:1000});
+  const selectForReplacement = () => vm.runInNewContext(script('SelectNativePriceForReplacementScript'),
+    {window,document}, {timeout:1000});
   const verifyNativeClick = () => vm.runInNewContext(script('VerifyNativeClickScript'), {window}, {timeout:1000});
   const simulateTyping = (value='35100') => {
     document.activeElement=prices[0];
@@ -267,7 +271,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     prices[0].dispatchEvent();prices[0].dispatchEvent();
   };
   const simulateOneBrowserClick = () => nativeSubmits[0]?.click();
-  return { evaluate, probe, verifyNativePriceInput, verifyNativePriceFocus, finalize, verifyNativeClick,
+  return { evaluate, probe, verifyNativePriceInput, verifyNativePriceFocus, finalize,
+    selectForReplacement, verifyNativeClick,
     simulateTyping, simulateOneBrowserClick,
     get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
     get acceptedNativeSubmits() { return acceptedNativeSubmits; },
@@ -341,6 +346,16 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(shifted.finalize().status,'armed');
   shifted.titleInput.value='9 9 레벨 겁화 구매합니다';
   assert.equal(shifted.verifyNativeClick(),false,'Changing the title after arm must block native mouse input');
+  const masked = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
+  assert.equal(masked.evaluate(true,number,'10000',true,'1','9995',true).status,'input-ready');
+  masked.simulateTyping('1000035100');
+  const mismatch = masked.finalize();
+  assert.equal(mismatch.status,'input-mismatch');
+  assert.match(mismatch.message,/1000035100/);
+  assert.equal(masked.selectForReplacement().status,'retry-ready');
+  masked.simulateTyping();
+  assert.equal(masked.finalize().status,'armed','An exact input correction before any submit may be accepted');
+  assert.equal(masked.clicked,0);
   const invalidRange = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
   assert.equal(invalidRange.evaluate(true, number, '10000', true, '1', '999', true).status, 'error');
   assert.equal(invalidRange.clicked, 0);
