@@ -18,7 +18,7 @@ const siteTitle = '1 ~ 9,995 레벨 겁화 삽니다 24 시';
 const target = '35100';
 const url = 'https://www.itemmania.com/myroom/buy/buy_re_reg.html';
 
-async function oneTrial(browser, mutateTitle) {
+async function oneTrial(browser, mutateTitle, maskPerKey=false) {
   const context = await browser.newContext({viewport:{width:1100,height:750}});
   const page = await context.newPage();
   const requests = [];
@@ -37,6 +37,9 @@ async function oneTrial(browser, mutateTitle) {
       const price=document.querySelector('[name=user_division_price]');
       const form=document.querySelector('#frmBuy');
       price.addEventListener('keyup',()=>window.keyboardCount++);
+      if(${maskPerKey?'true':'false'})price.addEventListener('keyup',()=>{
+        if(!price.dataset.masked){price.dataset.masked='1';price.value='10,000'+price.value;}
+      });
       price.addEventListener('input',()=>window.inputCount++);
       price.addEventListener('change',()=>window.changeCount++);
       form.addEventListener('submit',event=>{
@@ -82,10 +85,21 @@ async function oneTrial(browser, mutateTitle) {
     price:document.querySelector('[name=user_division_price]').value,
     keyups:window.keyboardCount,inputs:window.inputCount,changes:window.changeCount
   }));
-  assert.equal(typed.price,target,'Chromium key-down text must replace selected input without duplication');
+  if(!maskPerKey)
+    assert.equal(typed.price,target,'Chromium key-down text must replace selected input without duplication');
+  else assert.notEqual(typed.price,target,'Fake masked site must reproduce the real-world mismatch');
   assert(typed.keyups>=5,'Real keyup handlers must fire for each digit');
   assert(typed.changes>=1,'Real change event must fire when the input blurs');
-  const finalized=await page.evaluate(script('FinalizeNativePriceScript'));
+  let finalized=await page.evaluate(script('FinalizeNativePriceScript'));
+  if(maskPerKey){
+    assert.equal(finalized.status,'input-mismatch');
+    const selection=await page.evaluate(script('SelectNativePriceForReplacementScript'));
+    assert.equal(selection.status,'retry-ready');
+    await cdp.send('Input.insertText',{text:target});
+    await key('keyDown','Tab','Tab',9);
+    await key('keyUp','Tab','Tab',9);
+    finalized=await page.evaluate(script('FinalizeNativePriceScript'));
+  }
   assert.equal(finalized.status,'armed',finalized.message);
   await move('mouseMoved','none',0,0,finalized.x,finalized.y);
   assert.equal(await page.evaluate(script('VerifyNativeClickScript')),true);
@@ -110,7 +124,7 @@ async function oneTrial(browser, mutateTitle) {
   const options={headless:true,args:['--no-sandbox','--disable-dev-shm-usage']};
   if(process.env.LUZEN_TEST_CHROMIUM_BIN)options.executablePath=process.env.LUZEN_TEST_CHROMIUM_BIN;
   const browser=await chromium.launch(options);
-  try{await oneTrial(browser,false);await oneTrial(browser,true);}
+  try{await oneTrial(browser,false);await oneTrial(browser,true);await oneTrial(browser,false,true);}
   finally{await browser.close();}
   console.log('PASS real Chromium key input triggers site validators; only one native click; late title mutation blocked');
 })().catch(error=>{console.error(error);process.exitCode=1;});
