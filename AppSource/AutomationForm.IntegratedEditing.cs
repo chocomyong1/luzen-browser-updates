@@ -69,13 +69,12 @@ internal sealed partial class AutomationForm
         }
         if (problem.Length > 0) return false;
 
-        // A repost locates the exact live row by BOTH number and title.
-        // Replacing a posted title locally would make that row unfindable;
-        // the existing site editing flow must be used for live titles.
+        // This local editor does not publish a new title to the site. Avoid
+        // misleading the user by changing only the saved display label.
         if (command.Field == IntegratedEditField.Title &&
             items.Any(item => ListingIdentity.HasNumber(item.ListingNumber)))
         {
-            problem = "기존 사이트 등록글의 제목은 여기서 변경할 수 없습니다. 사이트 제목과 불일치하면 재등록이 차단됩니다.";
+            problem = "기존 사이트 등록글의 제목은 여기서 변경할 수 없습니다. 사이트 제목을 실제로 변경하는 기능이 아닙니다.";
             return false;
         }
 

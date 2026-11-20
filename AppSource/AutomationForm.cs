@@ -1784,11 +1784,12 @@ internal sealed partial class AutomationForm : Form
         if (ListingIdentity.HasNumber(_selected.ListingNumber) &&
             !string.Equals(proposedTitle, _selected.Title, StringComparison.Ordinal))
         {
-            // A repost finds its live listing by number AND the original title.
-            // Never make an existing post unfindable through a local-only edit.
+            // Local-only title edits would mislead the user: this editor does
+            // not change the published site's title. Repost identity no longer
+            // depends on the displayed title, but retain the original label.
             if (notify) MessageBox.Show(this,
                 "기존 사이트 등록글의 제목은 프로그램에서만 변경할 수 없습니다. " +
-                "사이트 제목과 달라지면 재등록을 찾지 못합니다. 원본 제목을 유지합니다.",
+                "사이트 제목을 실제로 변경하는 기능이 아니므로 원본 제목을 유지합니다.",
                 "기존 등록글 제목 보호", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             _title.Text = _selected.Title;
             AppendLog($"기존 등록글 제목 변경 차단: {_selected.Server} · {_selected.ListingNumber}");
@@ -2251,7 +2252,7 @@ internal sealed partial class AutomationForm : Form
             if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(timeout.Token);
             var result = await LocateOwnedListFallbackAsync(target, timeout.Token);
             string summary = result.Status == "ready"
-                ? "등록번호·제목·재등록 버튼 1개를 확인했습니다. 실제 제출하지 않았습니다."
+                ? "등록번호·거래 방향·재등록 버튼 1개를 확인했습니다. 실제 제출하지 않았습니다."
                 : "조회시험 실패: " + result.Message + ". 실제 제출하지 않았습니다.";
             AppendLog("[미제출 조회시험] " + target.Server + " / " + target.ListingNumber +
                 " / 상태 " + result.Status + " / " + summary);
@@ -2829,7 +2830,7 @@ internal sealed partial class AutomationForm : Form
         var flow = _config.WorkflowFor(EffectiveOperation(job));
         AppendLog($"작업 시작: [{flow.Operation}] {job.Server} / {job.Title}" + (dryRun ? " (미제출 테스트)" : ""));
         if (flow.Operation == "재등록" && MyListingsImport.IsOwnedListUrl(EntryFor(job, flow)))
-            AppendLog("재등록 방식: 본인 관리목록에 바로 접속하여 정확한 등록번호·제목 행을 검증합니다.");
+            AppendLog("재등록 방식: 본인 관리목록의 등록번호·거래 방향·연결 버튼을 검증합니다. 제목 차이는 참고만 합니다.");
         try
         {
             await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
@@ -2874,7 +2875,7 @@ internal sealed partial class AutomationForm : Form
                                     if (fallback.Status != "ready")
                                         throw new InvalidOperationException("[시험] 상세 화면 확인 실패 및 본인 등록목록 재탐색 실패: " +
                                             existing.Error + " / " + fallback.Message + ". 제출하지 않았습니다.");
-                                    AppendLog("[시험] 본인 등록목록에서 정확한 등록번호·제목·재등록 버튼 확인: " + job.ListingNumber);
+                                    AppendLog("[시험] 본인 등록목록에서 등록번호·재등록 버튼 확인: " + job.ListingNumber);
                                 }
                                 else AppendLog("[시험] 실제 제출 없이 상세 등록번호 확인: " + job.ListingNumber);
                             }
@@ -2905,7 +2906,7 @@ internal sealed partial class AutomationForm : Form
                             var ownRow = await LocateOwnedListRepostAsync(job, token);
                             if (ownRow.Status != "ready")
                                 throw new InvalidOperationException("내 등록목록 재등록 차단: " + ownRow.Message +
-                                    ". 등록번호와 제목이 일치하는 물품 행의 버튼을 찾지 못했습니다. 제출하지 않았습니다.");
+                                    ". 등록번호에 직접 연결된 물품 행의 버튼을 찾지 못했습니다. 제출하지 않았습니다.");
                             preRepostStamp = ownRow.Stamp;
                             preRepostListUrl = _web.Source?.AbsoluteUri ?? "";
                             AppendLog("본인 등록글 행 확인: " + job.ListingNumber + " / " + job.Title);
@@ -3006,7 +3007,7 @@ internal sealed partial class AutomationForm : Form
                 var identity = new ListingIdentityEvidence();
                 bool identityOk = exactOwnedRepostConfirmed;
                 if (exactOwnedRepostConfirmed)
-                    AppendLog("재등록 성공 확인: 본인 등록목록의 정확한 등록번호·제목 행에서 제출했고, 사이트 성공 응답을 확인했습니다: " + job.ListingNumber);
+                    AppendLog("재등록 성공 확인: 본인 등록목록의 등록번호에 연결된 행에서 제출했고, 사이트 성공 응답을 확인했습니다: " + job.ListingNumber);
                 else
                 {
                     // NEW registrations must still establish a newly created
@@ -3221,7 +3222,7 @@ internal sealed partial class AutomationForm : Form
         string ownListUrl = OwnedListUrlFor(job);
         if (!MyListingsImport.IsOwnedListUrl(ownListUrl) || !IsAllowedUrl(ownListUrl))
             return new OwnedListRepostResult { Status = "error", Message = "본인 등록목록 주소 또는 거래 방향을 검증할 수 없습니다" };
-        AppendLog("상세 URL에서 글 확인 실패 → 본인 등록목록에서 등록번호·제목을 재검사합니다: " + job.ListingNumber);
+        AppendLog("상세 URL에서 글 확인 실패 → 본인 등록목록의 등록번호·재등록 버튼을 재검사합니다: " + job.ListingNumber);
         if (!MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri) ||
             MyListingsImport.IsSellListUrl(_web.Source?.AbsoluteUri) != MyListingsImport.IsSellListUrl(ownListUrl))
             await NavigateOwnedListAsync(ownListUrl, token);
@@ -3320,7 +3321,7 @@ internal sealed partial class AutomationForm : Form
         // are paging through this list. That moves its row to the newest page,
         // which we may have inspected *before* it moved. Recheck the official
         // first page exactly once. This is read-only; never submit an unverified
-        // row or widen the listing ID/title matching rules.
+        // row or widen the listing ID/control-binding matching rules.
         token.ThrowIfCancellationRequested();
         AppendLog($"관리 목록 {visited.Count}페이지 검사: 표시 확인 {loadedPages}페이지, " +
             $"물품 {visibleListings}건, 미표시 {unrenderedPages}페이지, " +
@@ -3337,7 +3338,7 @@ internal sealed partial class AutomationForm : Form
                     job.SourceListUrl = baseUrl;
                     _config.Save();
                 }
-                AppendLog("최신 관리 목록 첫 페이지에서 정확한 등록번호·제목 재확인 성공: " + job.ListingNumber);
+                AppendLog("최신 관리 목록 첫 페이지에서 등록번호·재등록 버튼 재확인 성공: " + job.ListingNumber);
                 return updated;
             }
             if (updated.Status != "not-found") return updated;
@@ -3398,22 +3399,16 @@ internal sealed partial class AutomationForm : Form
         }
 
         // The import parser and the repost parser intentionally use independent
-        // selectors. If one sees the ID but the other cannot verify its button,
-        // report that difference instead of pretending the listing is absent.
+        // selectors. A parsed ID/title is never enough to click an unbound
+        // button, even when the title happens to match.
         var matches = page.Listings.Where(x =>
             string.Equals(x.ListingNumber, job.ListingNumber, StringComparison.Ordinal)).ToList();
         if (matches.Count > 0)
         {
-            bool titleMatches = matches.Any(x =>
-                string.Equals(string.Concat((x.Title ?? "").Where(c => !char.IsWhiteSpace(c))),
-                    string.Concat((job.Title ?? "").Where(c => !char.IsWhiteSpace(c))),
-                    StringComparison.OrdinalIgnoreCase));
             return (new OwnedListRepostResult
             {
                 Status = "error",
-                Message = titleMatches
-                    ? "목록 추출에서는 등록번호·제목을 확인했지만 재등록 버튼을 연결하지 못했습니다. 페이지 구조를 점검해야 합니다"
-                    : "목록 추출에서 등록번호는 확인했지만 저장된 제목이 현재 사이트와 다릅니다. 제목을 다시 불러오세요",
+                Message = "목록 추출에서는 등록번호를 확인했지만 재등록 버튼에 직접 연결하지 못했습니다. 페이지 구조를 점검해야 합니다 (제목 차이와 무관)",
                 ScannedRows = row.ScannedRows,
                 NumberRows = Math.Max(row.NumberRows, matches.Count),
                 TitleRows = row.TitleRows

@@ -27,7 +27,8 @@ assert.match(fallbackSearch, /await NavigateOwnedListAsync\(baseUrl, token\);[\s
 assert.match(fallbackSearch, /await NavigateOwnedListAsync\(next, token\)/);
 assert.match(fallbackSearch, /page\.Listings\.Count > 0 \|\| page\.IsEmptyList/);
 assert.match(fallbackSearch, /pageNotReady = page\.Listings\.Count == 0 && !page\.IsEmptyList/);
-assert.match(fallbackSearch, /등록번호는 확인했지만 저장된 제목이 현재 사이트와 다릅니다/);
+assert.match(fallbackSearch, /등록번호를 확인했지만 재등록 버튼에 직접 연결하지 못했습니다/);
+assert.doesNotMatch(fallbackSearch, /등록번호는 확인했지만 저장된 제목이 현재 사이트와 다릅니다/);
 assert.match(fallbackSearch, /await Task\.Delay\(750, token\)/);
 assert.match(fallbackSearch, /if \(updated\.Status == "ready" \|\| \(!requireRepostButton && updated\.Status == "found"\)\)/);
 assert.doesNotMatch(fallbackSearch, /InspectOwnedListRepostAsync\(job, true, token\)/);
@@ -70,7 +71,7 @@ assert.match(automation, /identityOk = flow\.Operation == "재등록" \?[\s\S]*?
 assert.match(automation, /job\.PendingRepostBeforeStamp = "";[\s\S]*?job\.PendingRepostAttemptUtc = null;/);
 assert.match(myListingsUi, /ReconcilePendingRepostsAsync\(cancellation\.Token\)/);
 // Uncertain items are reconciled in the background, one at a time, using
-// an exact ID/title match AND a changed server-side stamp. The method must
+// an exact own-list ID binding AND a changed server-side stamp. The method must
 // never assume an old (<2h) pending checkpoint is safe to repost.
 assert.match(automation, /await VerifyOneHeldListingInBackgroundAsync\(candidate\)/);
 const schedulerTick = automation.split('private async Task SchedulerTickAsync()')[1]

@@ -4,7 +4,8 @@ using System.Text.Json;
 namespace LuzenBrowserReplica;
 
 // Account-list reposting is a separate pathway from reposting a single detail URL.
-// The click is constrained to the ONE row with both this item's ID and title.
+// The click is constrained to the ONE authenticated OWN-list row with this ID
+// and an ID-bound repost control. Titles are advisory, not identity keys.
 // Nothing in this script clicks a site-wide toolbar, pays fees or solves checks.
 internal sealed class OwnedListRepostResult
 {
@@ -47,7 +48,7 @@ internal static class OwnedListRepost
         (location.hostname==='itemmania.com'||location.hostname.endsWith('.itemmania.com'));
       const ownList=()=>/^\/myroom\/(sell\/sell_regist|buy\/buy_regist)\.html$/i.test(location.pathname);
       if(!official()||!ownList())return result('error','현재 화면이 내 판매·구매 등록글 목록이 아닙니다');
-      if(!valid(arg.number)||norm(arg.title).length<2)return result('error','등록번호 또는 제목이 유효하지 않습니다');
+      if(!valid(arg.number))return result('error','등록번호가 유효하지 않습니다');
       const visible=e=>!!e&&e.isConnected&&e.getClientRects().length>0&&
         getComputedStyle(e).visibility!=='hidden' && !e.disabled && e.getAttribute('aria-disabled')!=='true';
       const docs=[document];const seen=new Set(docs);
@@ -95,8 +96,8 @@ internal static class OwnedListRepost
         return /M12\s*7v5l4\s*2/.test(paths) && /M3\s*3v5h5/.test(paths);
       };
       const matching=[];const candidateRows=new Set();
-      let numberRows=0,titleRows=0;
-      const actualTitles=[];
+      let numberRows=0,titleRows=0,unsafeNumberRows=0;
+      const rowProblems=[];
       const attrs=['data-tid','data-listing-id','data-goods-id','data-trade-id','data-id'];
       for(const d of docs){
         for(const tr of d.querySelectorAll('tr'))candidateRows.add(tr);
@@ -114,28 +115,37 @@ internal static class OwnedListRepost
         const text=String(row.innerText||row.textContent||'');
         if(text.length>6000)continue;
         const identity=ownedTitleIdentity(row,arg);
-        const titleMatches=identity.ok;
-        if(titleMatches)titleRows++;
+        if(identity.titleMatches)titleRows++;
         const ids=new Set();
+        let strongNumber=false;
         for(const el of [row,...row.querySelectorAll('*')].slice(0,250)){
           for(const name of attrs){
             const value=el.getAttribute?.(name)||'';
-            if(valid(value))ids.add(value);
+            if(valid(value)){
+              ids.add(value);
+              if(value===arg.number)strongNumber=true;
+            }
           }
           for(const name of ['href','onclick','data-url','data-href']){
             const value=el.getAttribute?.(name)||'';
             if(!value.includes(arg.number))continue;
             // Require the exact number, not a prefix of another listing ID.
             if(new RegExp('(?:^|\\D)'+arg.number+'(?!\\d)').test(value))ids.add(arg.number);
+            // A site-native repost handler proves the control belongs to
+            // this exact ID even if the row lacks data-tid attributes.
+            if(name==='onclick' && /^\s*reInsert\s*\(\s*(['"])(\d{8,20})\1\s*,/.test(value) &&
+               value.match(/^\s*reInsert\s*\(\s*(['"])(\d{8,20})\1\s*,/)?.[2]===arg.number)
+              strongNumber=true;
           }
         }
         if(new RegExp('(?:^|\\D)'+arg.number+'(?!\\d)').test(text))ids.add(arg.number);
         if(ids.has(arg.number)){
           numberRows++;
-          if(actualTitles.length<2)actualTitles.push((identity.title||identity.reason).slice(0,120)+
-            (identity.reason?' ['+identity.reason+']':''));
+          if(!strongNumber)unsafeNumberRows++;
+          if((!identity.ok||!strongNumber)&&rowProblems.length<2)
+            rowProblems.push(!strongNumber?'등록번호가 행 데이터·재등록 함수에 직접 연결되지 않음':identity.reason);
         }
-        if(!ids.has(arg.number)||!titleMatches)continue;
+        if(!ids.has(arg.number)||!identity.ok||!strongNumber)continue;
         if(ids.size!==1)return result('error','한 물품 행에 서로 다른 등록번호가 있어 중단했습니다','',
           {scannedRows:candidateRows.size,numberRows,titleRows});
         const controls=[...new Set(row.querySelectorAll(
@@ -154,19 +164,16 @@ internal static class OwnedListRepost
         matching.push({row,actions,stamp});
       }
       const diagnostic={scannedRows:candidateRows.size,numberRows,titleRows};
-      if(matching.length===0&&numberRows>0)return result('mismatch',
-        actualTitles.length
-          ?'등록번호는 있지만 저장된 제목과 사이트 제목이 다릅니다. 저장 제목: '+
-            String(arg.title).slice(0,100)+' / 사이트 제목: '+actualTitles.join(' / ')
-          :'등록번호는 있지만 사이트의 물품 제목 영역을 확인하지 못했습니다. 원본 글을 다시 확인하세요',
+      if(matching.length===0&&numberRows>0)return result(unsafeNumberRows?'error':'mismatch',
+        '등록번호는 있지만 해당 글의 독립 검증에 실패했습니다: '+rowProblems.join(' / '),
         '',diagnostic);
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?
-        '동일 등록번호와 제목의 행이 여러 개라 중단했습니다':
-        '이 페이지에서 등록번호와 제목이 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)','',diagnostic);
-      if(arg.click===null)return result('found','현재 내 등록글 목록에서 해당 등록번호·제목을 다시 확인함',matching[0].stamp,diagnostic);
+        '동일 등록번호의 검증된 행이 여러 개라 중단했습니다':
+        '이 페이지에서 등록번호가 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)','',diagnostic);
+      if(arg.click===null)return result('found','현재 내 등록글 목록의 해당 등록번호·거래 방향을 확인함',matching[0].stamp,diagnostic);
       if(matching[0].actions.length!==1)return result('error',matching[0].actions.length?
         '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 등록번호와 연결된 reInsert 재등록 버튼을 확인하지 못했습니다','',diagnostic);
-      if(!arg.click)return result('ready','해당 등록번호·제목의 재등록 버튼 1개 확인',matching[0].stamp,diagnostic);
+      if(!arg.click)return result('ready','해당 등록번호에 직접 연결된 재등록 버튼 1개 확인',matching[0].stamp,diagnostic);
       const button=matching[0].actions[0];
       // Prefer the native site handler with the two arguments read from the
       // EXACT matched row. This avoids the DOM click path used in older builds.

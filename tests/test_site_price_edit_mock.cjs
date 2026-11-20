@@ -19,7 +19,7 @@ const title = '+ 8 + 레벨 겁화, 작열 삽니다 + 즉시대기중 +';
 
 function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정',
   buttonDesc = '수정', buttonHandler = `modifyItem('${number}')`, count = 1,
-  minQuantity = '', maxQuantity = '' } = {}) {
+  minQuantity = '', maxQuantity = '', splitLabel = '' } = {}) {
   let clicked = 0;
   const titleLink = { textContent: displayedTitle, isConnected: true, disabled: false,
     getClientRects: () => [1], matches: () => true, parentElement: null,
@@ -34,7 +34,8 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   const row = {
     innerText: `${id} ${displayedTitle}`, textContent: `${id} ${displayedTitle}`,
     getAttribute: key => key === 'data-tid' ? id : null,
-    querySelector: key => key === '.trade_title' ? { textContent: displayedTitle } : null,
+    querySelector: key => key === '.trade_title' ? { textContent: displayedTitle } :
+      key === '.sub_trade_title' && splitLabel ? {textContent: splitLabel} : null,
     querySelectorAll: key => key === '*' ? actions : key === '.trade_title' ? [titleLink] :
       key.startsWith('a,button,') ? actions : [],
     closest: () => null
@@ -66,14 +67,19 @@ function ownRowCase({ id = number, displayedTitle = title, buttonText = '수정'
   assert.equal(many.clicked, 0);
 }
 {
-  const maskedTitle = '+ 8 + 레벨 겁화, 작열 삽니다 + 즉시대기중 +';
   const target = ownRowCase({ displayedTitle: '1 ~ 999 레벨 겁화, 작열 삽니다 + 즉시대기중 +',
     minQuantity: '1', maxQuantity: '999' });
-  // Different original punctuation is NOT silently matched just because
-  // an ID and split-range are present; a price submission must remain safe.
-  assert.equal(target.evaluate(false, true).status, 'error');
-  assert.equal(target.clicked, 0);
-  console.log('PASS price-edit title route blocks uncertain masked content');
+  // Different original punctuation is advisory when the signed-in row's
+  // authoritative data-tid and range agree. Actual POST still requires the
+  // current site price and exact edit-form registration ID.
+  assert.equal(target.evaluate(false, true).status, 'ready');
+  assert.equal(target.evaluate(true, true).status, 'opened');
+  assert.equal(target.clicked, 1);
+  const invalidRange = ownRowCase({ displayedTitle: '1 ~ 999 레벨 겁화, 작열 삽니다',
+    minQuantity: '1', maxQuantity: '9995', splitLabel: '[1개~999개]' });
+  assert.equal(invalidRange.evaluate(true, true).status, 'error');
+  assert.equal(invalidRange.clicked, 0);
+  console.log('PASS price-edit navigation ignores title but still rejects conflicting quantities');
 }
 {
   const titleRoute = ownRowCase({ buttonText: '', buttonDesc: '', buttonHandler: '' });
@@ -111,6 +117,9 @@ function detailCase({ pageId = number, pageTitle = title, buttonCount = 1,
   const wrong = detailCase({pageId: '2026070508129999'});
   assert.equal(wrong.evaluate(true).status, 'error');
   assert.equal(wrong.clicked, 0);
+  const changedTitle = detailCase({pageTitle: '제목이 사이트에서 변경된 등록글'});
+  assert.equal(changedTitle.evaluate(true).status, 'opened');
+  assert.equal(changedTitle.clicked, 1);
   const ambiguous = detailCase({buttonCount: 2});
   assert.equal(ambiguous.evaluate(true).status, 'error');
   assert.equal(ambiguous.clicked, 0);
