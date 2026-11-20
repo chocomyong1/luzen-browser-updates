@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.91",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.91/LuzenBrowser_22.2.91_BinaryUpdate.zip",
-  "sha256": "6adff3719abe1d77b2f946ea4caa7f586e4298ea9bda94a03c1a1f0c1b09b8cd",
+  "version": "22.2.92",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.92/LuzenBrowser_22.2.92_BinaryUpdate.zip",
+  "sha256": "6522f66b08a8ec3ec1d9af9065a03d3e43eaa528ea3bc0406a570a925f7b5400",
   "format": "binary",
-  "releaseNotes": "v22.2.91 가격 변경 예약 재수정: 사이트에 반영되기 전 기존 예약 금액을 다시 변경하면 새 금액으로 교체합니다. 다른 글의 사이트 가격 확인이 진행 중에도 일괄수정이 가능하며, 실제 처리 중인 글은 완료 후 새 예약을 반영합니다. 이전 사이트 요청이 끝나도 새 예약을 지우지 않도록 보호합니다. 즉시 중지 및 안전한 자동 업데이트 이후에도 저장된 가격 예약이 유지되며, 다음 정상 자동등록 순번에서만 사이트에 반영합니다."
+  "releaseNotes": "v22.2.92 관리목록 제목 인식 보강: 아이템매니아가 제목에 붙여 보여 주는 1 ~ 9,995 등 분할수량 범위를 제거하고, 잘린 표시 제목 대신 확인 가능한 원본 제목 속성도 비교합니다. 저장된 제목과 사이트 제목이 실제로 일치하는 경우에만 정확한 등록번호의 재등록 버튼을 사용합니다. 제목이 진짜 다르거나 원본 제목을 확인할 수 없는 글은 여전히 제출하지 않고, 오류 알림에 저장 제목과 사이트 제목을 함께 표시합니다."
 }
