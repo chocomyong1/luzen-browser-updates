@@ -188,6 +188,34 @@ function evaluate(rows, { number = id, name = title, click = false,
   console.log('PASS conflicting original title attribute defeats quantity-mask fallback');
 }
 {
+  // User's B VPN v22.2.93 failure, where only the first of two level 10
+  // tokens is masked by the exact verified split quantity range.
+  const saved = '10 10 레벨 겁작 구매합니다';
+  const shown = '1 ~ 999 10 레벨 겁작 구매합니다';
+  const rows = [makeRealMarkupRow(id, shown)];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: shown, getAttribute: () => null } : null;
+  const args = { name: saved, minQuantity: '1', maxQuantity: '999' };
+  assert.equal(evaluate(rows, args).status, 'ready');
+  assert.equal(evaluate(rows, { ...args, click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS verified split range masks only the first of two leading level tokens');
+}
+{
+  const saved = '10 10 레벨 겁작 구매합니다';
+  const shown = '1 ~ 999 10 레벨 겁작 구매합니다';
+  const rows = [makeRealMarkupRow(id, shown)];
+  rows[0].row.querySelector = selector => selector === '.trade_title'
+    ? { textContent: shown, getAttribute: () => null } : null;
+  const exact = { name: saved, click: true, minQuantity: '1', maxQuantity: '999' };
+  assert.equal(evaluate(rows, { ...exact, maxQuantity: '9995' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...exact, name: '10 10 레벨 작열 구매합니다' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...exact, name: '10 9 레벨 겁작 구매합니다' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...exact, number: other }).status, 'not-found');
+  assert.deepEqual(rows[0].clicks, []);
+  console.log('PASS repeated leading levels still require matching number, range and suffix');
+}
+{
   const rows = [makeRealMarkupRow(id, '10레벨 작열 보석 구매합니다')];
   rows[0].row.querySelector = selector => selector === '.trade_title'
     ? { textContent: '10레벨 작열 보석 구매합니다' } : null;
