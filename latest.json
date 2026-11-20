@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.2.93",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.93/LuzenBrowser_22.2.93_BinaryUpdate.zip",
-  "sha256": "f0f1bd3f310cb5bdf1dbed20ce4286d58337e537c4ac25fad37b9fd96bbb4156",
+  "version": "22.2.94",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.2.94/LuzenBrowser_22.2.94_BinaryUpdate.zip",
+  "sha256": "6aaccc13576dfb5343c072f9f8653266742453ac373c80170b9f355d7e57d2d6",
   "format": "binary",
-  "releaseNotes": "v22.2.93 관리목록 제목 선두 레벨 마스킹 보정: 저장 제목이 10 레벨 작열 삽니다 24 시인데 사이트 표시가 1 ~ 9,995 레벨 작열 삽니다 24 시로 나오는 사례 수정. 표시된 분할수량이 물품 설정의 최소·최대수량과 정확히 같고, 등록번호와 나머지 제목 전체가 일치할 때만 해당 행을 재등록합니다. 수량이 다르거나 제목의 나머지 문구 또는 원본 제목 속성이 다르면 제출을 차단합니다. 기존 자동등록 간격·시간당 제한을 유지합니다."
+  "releaseNotes": "v22.2.94 아이템매니아 제목 인식 추가 보완: 10 10 레벨 겁작 구매합니다가 1 ~ 999 10 레벨 겁작 구매합니다로 보이는 사례를 수정합니다. 제목 맨 앞의 레벨 숫자 하나만 분할수량 표시에 가려져도 뒤에 남은 여러 레벨 숫자와 전체 문구를 정확히 비교합니다. 원본 등록번호와 저장된 분할수량 범위가 일치할 때만 재등록하며, 다른 제목·수량 또는 등록번호는 계속 차단합니다."
 }
