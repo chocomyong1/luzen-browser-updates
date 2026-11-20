@@ -23,6 +23,48 @@ internal sealed partial class AutomationForm
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
 
+    // Type as a user would: focus the audited price control, select its
+    // existing value, deliver browser key-down/up events, then blur. Site
+    // validators bound to real keyboard/change events can now run normally.
+    // This method never presses the re-registration button.
+    private async Task TypeVerifiedSitePriceAsync(double x, double y, long desired, CancellationToken token)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || x <= 0 || y <= 0 ||
+            desired < 1000 || desired % 10 != 0)
+            throw new InvalidOperationException("사이트 가격 입력 조건을 확인하지 못했습니다");
+        var core = _web.CoreWebView2 ?? throw new InvalidOperationException("사이트 브라우저 연결 없음");
+        async Task MouseAsync(string type, string button, int buttons, int clicks) =>
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                System.Text.Json.JsonSerializer.Serialize(new { type, x, y, button, buttons, clickCount = clicks }));
+        async Task KeyAsync(string type, string key, string code, int vk, int modifiers = 0,
+            string text = "") =>
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",
+                System.Text.Json.JsonSerializer.Serialize(new
+                { type, key, code, windowsVirtualKeyCode = vk, modifiers, text, unmodifiedText = text }));
+
+        token.ThrowIfCancellationRequested();
+        await MouseAsync("mouseMoved", "none", 0, 0);
+        if (!string.Equals(await core.ExecuteScriptAsync(SitePriceEdit.VerifyNativePriceInputScript),
+                "true", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("가격 입력 직전 대상 입력칸 검증 실패. 제출하지 않았습니다");
+        await MouseAsync("mousePressed", "left", 1, 1);
+        await MouseAsync("mouseReleased", "left", 0, 1);
+        if (!string.Equals(await core.ExecuteScriptAsync(SitePriceEdit.VerifyNativePriceFocusScript),
+                "true", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("사이트 가격 입력칸에 키보드 포커스를 확인하지 못해 제출하지 않았습니다");
+        await KeyAsync("keyDown", "a", "KeyA", 65, 2);
+        await KeyAsync("keyUp", "a", "KeyA", 65, 2);
+        foreach (char digit in desired.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        {
+            token.ThrowIfCancellationRequested();
+            string key = digit.ToString();
+            await KeyAsync("keyDown", key, "Digit" + key, 48 + (digit - '0'), text: key);
+            await KeyAsync("keyUp", key, "Digit" + key, 48 + (digit - '0'));
+        }
+        await KeyAsync("keyDown", "Tab", "Tab", 9);
+        await KeyAsync("keyUp", "Tab", "Tab", 9);
+    }
+
     // Only for one explicitly approved, exact-ID BUY form. A browser mouse
     // input activates the site's own click/submit handlers; it is NOT a
     // direct form POST, synthetic fetch, or bypass of site validation.
@@ -642,15 +684,22 @@ internal sealed partial class AutomationForm
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
                         job.Title, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity,
-                        titleRestoreApproved, trustedOneClick: true)));
+                        titleRestoreApproved, trustedOneClick: true, nativeKeyboardPrice: true)));
                 submitScriptNote = result.Message;
-                if (result.Status != "armed")
-                    throw new InvalidOperationException("사이트 가격 수정 버튼 준비 실패: " + result.Message);
-                AppendLog("구매글 가격 수정 폼 검증: " + result.Message);
+                if (result.Status != "input-ready")
+                    throw new InvalidOperationException("사이트 가격 입력칸 검증 실패: " + result.Message);
+                AppendLog("사이트 가격칸 실제 입력 준비: " + result.Message);
+                await TypeVerifiedSitePriceAsync(result.X, result.Y, desired, token);
+                var final = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.FinalizeNativePriceScript));
+                submitScriptNote = final.Message;
+                if (final.Status != "armed")
+                    throw new InvalidOperationException("사이트 키보드 입력 후 폼 검증 실패: " + final.Message);
+                AppendLog("사이트 키보드 입력 후 제출폼 검증: " + final.Message);
                 // Exactly one native browser click, and only after the
                 // uncertain-result review checkpoint was saved above.
-                await DispatchVerifiedSitePriceClickAsync(result.X, result.Y, token);
-                submitScriptNote = "검증된 사이트 재등록 버튼에 실제 브라우저 클릭 1회 (서버 반영은 별도 확인)";
+                await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token);
+                submitScriptNote = "가격칸 실제 키보드 입력 후 검증된 재등록 버튼 브라우저 클릭 1회 (서버 반영은 별도 확인)";
             }
             catch (Exception ex)
             {

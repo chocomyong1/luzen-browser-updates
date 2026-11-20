@@ -19,7 +19,21 @@ permissions:
   contents: write
 
 jobs:
+  browser-input:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install isolated browser test tools
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium --with-deps
+      - name: Verify actual Chromium keyboard events and title protection offline
+        run: node tests/test_native_keyboard_price_browser.cjs
   windows-binary:
+    needs: browser-input
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -174,15 +188,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.6'
+          $version = '22.3.7'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.6
-          path: LuzenBrowser_22.3.6_BinaryUpdate.zip
+          name: vanta-windows-v22.3.7
+          path: LuzenBrowser_22.3.7_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -190,7 +204,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.6'
+          $version = '22.3.7'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -202,7 +216,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.6 사이트 구매글 가격 단건 시험 입력 방식 수정. 기존 자바스크립트 합성 클릭 대신 검증된 버튼 좌표에 브라우저 기본 마우스 입력을 한 번만 전송합니다. 원본 제목 보호와 제출 전 보류 저장을 유지하고, 제출 이벤트 취소·제목 변형 여부를 읽기 전용으로 진단합니다. 사이트 실제 가격 변경은 등록번호·가격·원본 제목 관리목록 재확인으로만 성공 처리하며 실패·불확실 시 재제출하지 않습니다. 예약·일괄 자동 가격 제출은 계속 차단합니다.'
+            releaseNotes = 'v22.3.7 구매글 가격 단건 시험의 입력 경로 개선. 가격 값을 자바스크립트로 덮어쓰지 않고 검증된 가격칸에 브라우저의 실제 키 입력·변경 이벤트로 입력한 뒤 가격·원본 제목·등록번호 및 비가격 필드 변경을 재검증합니다. 제목은 사이트 제출 직전 캡처와 버블 단계에서 모두 보호합니다. Chromium 브라우저 입력 검증을 통과한 빌드만 배포하며, 아이템매니아 실사이트 반영은 본인 관리목록에서 등록번호·가격·제목이 모두 일치할 때만 성공 처리합니다. 확인 불가 글 재제출·예약·일괄 자동 가격 제출은 계속 차단합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
