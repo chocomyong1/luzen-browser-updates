@@ -37,6 +37,7 @@ internal sealed class ListingJob
     public DateTime NextDueUtc { get; set; }
     public string LastStatus { get; set; } = "";
     public DateTime? PendingRepostAttemptUtc { get; set; }
+    public string PendingRepostBeforeStamp { get; set; } = "";
 }
 
 internal static class GameServerCatalog
@@ -60,6 +61,7 @@ internal static class Program
     private static ListingJob Job(string price = "30,000") => new()
     {
         ListingNumber = Number, SiteId = "slshrn124", ImportedFromSite = true,
+        Operation = "재등록",
         OriginalTradeSide = "구매", Game = "로스트아크", Server = "카마인",
         Title = Title, Price = price, Quantity = "1", Unit = "개",
         SourceListUrl = MyListingsImport.BuyListingsUrl,
@@ -198,6 +200,51 @@ internal static class Program
             invalid.PriceObservations[0].Note.Contains("미확인"), "invalid price is diagnosed but never copied");
         Check(MyListingsImport.Prepare(new[] { Row() }, new[] { Job() }, "A", "different-account")
             .Updates.Count == 0, "account mismatch never overwrites");
+
+        // A successful two-sided, all-pages scan may OFFER removal of old
+        // imported IDs. It must never touch a newly posted live ID, a manual
+        // draft, a different account, or an unresolved prior submission.
+        var live = Job("35,100");
+        var staleBuy = Job("25,000"); staleBuy.ListingNumber = "2026070508123457";
+        var staleSell = Job("80,000"); staleSell.ListingNumber = "2026070508123458";
+        staleSell.OriginalTradeSide = "판매";
+        staleSell.SourceListUrl = MyListingsImport.SellListingsUrl;
+        var manualDraft = Job(); manualDraft.ListingNumber = "2026070508123459";
+        manualDraft.ImportedFromSite = false;
+        var otherAccount = Job(); otherAccount.ListingNumber = "2026070508123460";
+        otherAccount.SiteId = "other-account";
+        var pending = Job(); pending.ListingNumber = "2026070508123461";
+        pending.PendingRepostAttemptUtc = DateTime.UtcNow;
+        var pendingStamp = Job(); pendingStamp.ListingNumber = "2026070508123462";
+        pendingStamp.PendingRepostBeforeStamp = "11-20 21:23";
+        var uncertain = Job(); uncertain.ListingNumber = "2026070508123463";
+        uncertain.LastStatus = "제출 결과 확인 필요";
+        var unsafeUrl = Job(); unsafeUrl.ListingNumber = "2026070508123464";
+        unsafeUrl.SourceListUrl = "https://itemmania.com.evil.invalid/myroom/buy/buy_regist.html";
+        var oldJobs = new[] { live, staleBuy, staleSell, manualDraft, otherAccount,
+            pending, pendingStamp, uncertain, unsafeUrl };
+        var verifiedSides = new[] { "구매", "판매" };
+        var staleCandidates = MyListingsImport.FindStaleImportedJobs(new[] { Row() }, oldJobs,
+            "slshrn124", true, verifiedSides);
+        Check(staleCandidates.Count == 2 && staleCandidates.Contains(staleBuy) &&
+            staleCandidates.Contains(staleSell),
+            "only deleted exact IDs from this account's site imports are proposed for removal");
+        Check(MyListingsImport.FindStaleImportedJobs(new[] { Row() }, oldJobs,
+            "slshrn124", false, verifiedSides).Count == 0,
+            "partial or failed scans cannot remove any previously saved job");
+        Check(MyListingsImport.FindStaleImportedJobs(new[] { Row() }, oldJobs,
+            "slshrn124", true, new[] { "구매" }).Count == 0,
+            "both owned BUY and SELL lists must have been read");
+        Check(MyListingsImport.FindStaleImportedJobs(Array.Empty<ExistingListingRecord>(), oldJobs,
+            "slshrn124", true, verifiedSides).Count == 0,
+            "empty/unrendered result is never proof of site deletion");
+        Check(MyListingsImport.FindStaleImportedJobs(new[] { Row() }, oldJobs,
+            "", true, verifiedSides).Count == 0,
+            "a missing account ID forbids any removal");
+        var liveRanged = Row(); liveRanged.Title = "[1개~999개] 9 9 레벨 겁화 구매합니다";
+        Check(!MyListingsImport.FindStaleImportedJobs(new[] { liveRanged }, new[] { live },
+            "slshrn124", true, verifiedSides).Any(),
+            "even a corrupted-looking live title must be kept by exact listing ID");
         Console.WriteLine("PASS exact owned-listing price refresh; all mismatch and schedule guards");
     }
 }

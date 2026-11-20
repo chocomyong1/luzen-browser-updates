@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -147,6 +148,11 @@ internal sealed partial class AutomationForm
             }
             var account = ItemManiaAccountStore.Load(_system);
             var plan = MyListingsImport.Prepare(records, _jobs, _defaultSubId, account.UserId);
+            var stale = MyListingsImport.FindStaleImportedJobs(records, _jobs, account.UserId,
+                scan.CompletedAllPages && !scan.LoginRequired && scan.NavigationFailures == 0,
+                scan.VerifiedTradeSides);
+            if (stale.Count > 0)
+                AppendLog($"사이트에 없는 기존 등록번호 {stale.Count}건 정리 후보 확인 (아직 삭제하지 않음)");
             var priceChanges = plan.Updates.Where(u => u.UpdateVerifiedPrice).ToList();
             string selectedNumber = _selected?.ListingNumber ?? "";
             var checkedPrices = plan.PriceObservations
@@ -162,7 +168,7 @@ internal sealed partial class AutomationForm
             string observedSection = plan.PriceObservations.Count > 0
                 ? $"\n\n기존 글 사이트 가격 비교 (선택 글 우선, {plan.PriceObservations.Count}건 중 일부):\n" + observedPrices
                 : "\n\n기존 등록번호와 일치하여 가격을 비교한 글이 없습니다.";
-            if (plan.NewJobs.Count == 0 && plan.Updates.Count == 0)
+            if (plan.NewJobs.Count == 0 && plan.Updates.Count == 0 && stale.Count == 0)
             {
                 ReportMyListingsImport($"조회 완료 · {records.Count}건 확인 · 추가/변경 없음", MyListingsImportPhase.Completed);
                 MessageBox.Show(this,
@@ -170,6 +176,7 @@ internal sealed partial class AutomationForm
                     $"이미 목록에 있음: {plan.Duplicates}건 / 정보 부족: {plan.Invalid}건\n\n" +
                     $"추가하거나 보완할 물품이 없습니다. 제출 결과 자동 확인: {reconciled}건\n" +
                     "사이트에서 확인되지 않은 값은 빈칸으로 유지됩니다. 기존 글의 일정이나 제출 보류 상태는 변경하지 않았습니다." +
+                    (!scan.CompletedAllPages ? "\n일부 관리 페이지를 확인하지 못해 삭제된 글 정리는 수행하지 않았습니다." : "") +
                     observedSection,
                     "내 등록글 자동 조회");
                 return;
@@ -177,13 +184,20 @@ internal sealed partial class AutomationForm
             string pricePreview = string.Join("\n", priceChanges.Take(6).Select(u =>
                 $"  {u.Target.Server} · {u.Target.ListingNumber}: {u.Target.Price}원 → {u.Price}원"));
             if (priceChanges.Count > 6) pricePreview += $"\n  외 {priceChanges.Count - 6}건";
+            string stalePreview = string.Join("\n", stale.Take(10).Select(j =>
+                $"  {j.OriginalTradeSide} · {j.Server} · {j.ListingNumber} · {j.Title}"));
+            if (stale.Count > 10) stalePreview += $"\n  외 {stale.Count - 10}건";
             string confirm = $"판매·구매 등록글 {records.Count}건 확인 ({scan.PagesVisited}페이지 검사)\n\n" +
                 $"새로 가져오기: {plan.NewJobs.Count}건 / 기존 정보 보완·갱신: {plan.Updates.Count}건\n" +
+                $"사이트에 없는 예전 등록번호 정리: {stale.Count}건\n" +
                 $"사이트 가격으로 갱신: {priceChanges.Count}건\n" +
                 $"이미 목록에 있음: {plan.Duplicates}건\n" +
                 $"정보 부족: {plan.Invalid}건 / 일부 정보 미표시: {incomplete}건\n" +
                 $"개별 상세 URL 없는 글: {plan.WithoutUrl}건 (관리 목록에서 대상 행 확인 후 재등록 시도)\n\n" +
                 (priceChanges.Count > 0 ? "가격 변경 미리보기:\n" + pricePreview + "\n\n" : "") +
+                (stale.Count > 0 ? "프로그램 목록에서 제거할 예전 글:\n" + stalePreview + "\n\n" +
+                    "제거 전 별도의 JSON 복구 파일을 저장합니다. 실제 사이트 글은 삭제하지 않습니다.\n\n" : "") +
+                (!scan.CompletedAllPages ? "일부 페이지 조회가 불완전해 예전 글 정리는 보류합니다.\n\n" : "") +
                 (plan.PriceObservations.Count > 0 ? "기존 글 사이트 가격 비교:\n" + observedPrices + "\n\n" : "") +
                 "새로 가져온 글은 '기존 글 재등록' 대상으로 저장하며 자동실행은 꺼 둡니다.\n" +
                 "등록번호·계정·거래 방향이 일치하는 기존 글은 사이트 가격과 표시 제목을 확인합니다.\n" +
@@ -191,7 +205,7 @@ internal sealed partial class AutomationForm
                 "기존 글의 자동 실행 여부·시간 설정은 유지됩니다.\n" +
                 "등록번호·상세 URL·가격이 확인된 글은 불필요한 '확인 필요' 표시를 제거합니다.\n" +
                 "사이트에서 확인되지 않은 글과 제출 결과가 불분명한 글의 보류는 유지합니다.\n" +
-                "불러오기만으로 사이트에 등록 또는 재등록하지 않습니다.\n\n물품 목록에 추가할까요?";
+                "불러오기만으로 사이트에 등록 또는 재등록하지 않습니다.\n\n위 변경을 프로그램 목록에 반영할까요?";
             ReportMyListingsImport($"{records.Count}건 확인 · 추가 {plan.NewJobs.Count} / 갱신 {plan.Updates.Count} · 적용 여부 확인 대기");
             if (MessageBox.Show(this, confirm, "기존 등록글 가져오기", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question) != DialogResult.Yes)
@@ -199,20 +213,30 @@ internal sealed partial class AutomationForm
                 ReportMyListingsImport("조회 완료 · 사용자 선택으로 변경하지 않음", MyListingsImportPhase.Completed);
                 return;
             }
+            cancellation.Token.ThrowIfCancellationRequested();
+            string backupPath = stale.Count > 0 ? BackupStaleImportedJobs(account.UserId, stale) : "";
             foreach (var update in plan.Updates) update.Apply();
             foreach (var item in plan.NewJobs) _jobs.Add(item);
+            var removedIds = new HashSet<string>(stale.Select(j => j.Id), StringComparer.Ordinal);
             // The editor may still contain the PRE-import empty values. Clear
             // its selection before refreshing so SaveSelectedJob cannot undo
             // the just-enriched fields during the refresh.
             _selected = null;
-            _config.Jobs = _jobs.ToList();
-            _config.Save();
+            // Save the new snapshot BEFORE removing old rows from the visible
+            // grid. A failed save must not remove records from the UI.
+            var priorConfigJobs = _config.Jobs;
+            _config.Jobs = _jobs.Where(j => !removedIds.Contains(j.Id)).ToList();
+            try { _config.Save(); }
+            catch { _config.Jobs = priorConfigJobs; throw; }
+            foreach (var old in stale) _jobs.Remove(old);
             ResetFiltersToAll();
             RefreshFilterChoices();
-            RefreshFilteredLists(plan.NewJobs.FirstOrDefault()?.Id ?? plan.Updates.First().Target.Id);
+            RefreshFilteredLists(plan.NewJobs.FirstOrDefault()?.Id ??
+                plan.Updates.FirstOrDefault()?.Target.Id ?? _jobs.FirstOrDefault()?.Id);
             ShowItemRegistrationView();
-            AppendLog($"내 등록글 자동 조회 완료: {plan.NewJobs.Count}건 추가 · {plan.Updates.Count}건 정보 보완·갱신 (가격 {priceChanges.Count}건) · {plan.Duplicates}건 중복 제외 · 재등록 결과 확인 {reconciled}건");
-            ReportMyListingsImport($"완료 · {plan.NewJobs.Count}건 추가 / {plan.Updates.Count}건 갱신 (가격 {priceChanges.Count}건)", MyListingsImportPhase.Completed);
+            AppendLog($"내 등록글 자동 조회 완료: {plan.NewJobs.Count}건 추가 · {plan.Updates.Count}건 정보 보완·갱신 (가격 {priceChanges.Count}건) · 옛 등록번호 {stale.Count}건 목록 정리 · {plan.Duplicates}건 중복 제외 · 재등록 결과 확인 {reconciled}건");
+            if (stale.Count > 0) AppendLog("프로그램 목록에서 제거한 기존 글의 복구 파일: " + backupPath);
+            ReportMyListingsImport($"완료 · {plan.NewJobs.Count}건 추가 / {plan.Updates.Count}건 갱신 / 예전 글 {stale.Count}건 정리", MyListingsImportPhase.Completed);
             if (!scan.CompletedAllPages)
                 AppendLog("주의: 일부 페이지를 읽지 못했거나 페이지 제한에 도달했습니다. 모든 등록글을 확인했다고 판단하지 마세요.");
         }
@@ -294,6 +318,7 @@ internal sealed partial class AutomationForm
     private sealed class MyListingsScan
     {
         public List<ExistingListingRecord> Records { get; } = new();
+        public HashSet<string> VerifiedTradeSides { get; } = new(StringComparer.Ordinal);
         public bool LoginRequired { get; set; }
         public bool CompletedAllPages { get; set; } = true;
         public int PagesVisited { get; set; }
@@ -356,12 +381,20 @@ internal sealed partial class AutomationForm
                     }
                     continue;
                 }
-                if (!MyListingsImport.IsOwnedListUrl(page.PageUrl))
+                if (!MyListingsImport.IsOwnedListUrl(page.PageUrl) ||
+                    MyListingsImport.IsSellListUrl(page.PageUrl) != MyListingsImport.IsSellListUrl(url))
                 {
                     result.CompletedAllPages = false;
-                    AppendLog("목록을 읽지 않음: 로그인 전환 또는 다른 경로로 이동함");
+                    AppendLog("목록을 읽지 않음: 로그인 전환 또는 구매·판매 방향과 다른 경로로 이동함");
                     continue;
                 }
+                if (page.Listings.Count == 0 && !page.IsEmptyList)
+                {
+                    result.CompletedAllPages = false;
+                    AppendLog("목록을 읽지 않음: 빈 목록이라는 증거 없이 물품 행이 표시되지 않았습니다.");
+                    continue;
+                }
+                result.VerifiedTradeSides.Add(MyListingsImport.IsSellListUrl(url) ? "판매" : "구매");
                 AppendLog($"조회 결과: {page.Listings.Count}건" +
                     (string.IsNullOrWhiteSpace(page.Error) ? "" : " / " + page.Error));
                 foreach (var record in page.Listings.Take(1000))
@@ -395,6 +428,102 @@ internal sealed partial class AutomationForm
             AppendLog($"목록 조회를 {maxPages}페이지에서 중단했습니다. 일부 페이지는 누락될 수 있습니다.");
         }
         return result;
+    }
+
+    // Keep a separate permanent snapshot before removing obsolete local jobs.
+    // automation.json.bak can be replaced by future saves, so it is not a
+    // sufficient recovery copy for an intentional large cleanup.
+    private string BackupStaleImportedJobs(string siteId, IReadOnlyList<ListingJob> stale)
+    {
+        string directory = Path.Combine(_config.StorageDirectory, "RemovedListings");
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory,
+            "removed-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + ".json");
+        using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        JsonSerializer.Serialize(file, new
+        {
+            SavedUtc = DateTime.UtcNow,
+            System = _system,
+            SiteId = siteId,
+            Reason = "Signed-in OWN-list full-scan stale ID cleanup",
+            Jobs = stale
+        }, new JsonSerializerOptions { WriteIndented = true });
+        return path;
+    }
+
+    private void RestoreStaleImportedJobs()
+    {
+        if (_busy || _schedulerRunning || _myListingsImportRunning)
+        {
+            MessageBox.Show(this, "자동등록과 조회를 중지한 뒤 복구하세요.", "이전 목록 복구");
+            return;
+        }
+        string directory = Path.Combine(_config.StorageDirectory, "RemovedListings");
+        if (!Directory.Exists(directory))
+        {
+            MessageBox.Show(this, "이 시스템에서 이전에 정리한 게시글 백업이 없습니다.", "이전 목록 복구");
+            return;
+        }
+        using var picker = new OpenFileDialog
+        {
+            InitialDirectory = directory,
+            Filter = "정리 백업 (*.json)|*.json",
+            Title = "복구할 이전 목록 백업 선택"
+        };
+        if (picker.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(picker.FileName));
+            var root = document.RootElement;
+            string savedSystem = root.GetProperty("System").GetString() ?? "";
+            string savedAccount = root.GetProperty("SiteId").GetString() ?? "";
+            string currentAccount = ItemManiaAccountStore.Load(_system).UserId;
+            if (!string.Equals(savedSystem, _system, StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(currentAccount) ||
+                !string.Equals(savedAccount, currentAccount, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("백업의 시스템 또는 아이템매니아 계정이 현재 설정과 다릅니다.");
+            var savedJobs = JsonSerializer.Deserialize<List<ListingJob>>(
+                root.GetProperty("Jobs").GetRawText()) ?? new List<ListingJob>();
+            var knownIds = new HashSet<string>(_jobs.Select(j => j.Id), StringComparer.Ordinal);
+            var restored = savedJobs.Where(j => j.ImportedFromSite &&
+                string.Equals(j.SiteId, currentAccount, StringComparison.OrdinalIgnoreCase) &&
+                ListingIdentity.HasNumber(j.ListingNumber) &&
+                MyListingsImport.IsOwnedListUrl(j.SourceListUrl) &&
+                knownIds.Add(j.Id)).ToList();
+            if (restored.Count == 0)
+            {
+                MessageBox.Show(this, "복구 가능한 항목이 없거나 이미 목록에 있습니다.", "이전 목록 복구");
+                return;
+            }
+            if (MessageBox.Show(this,
+                $"기존 등록글 {restored.Count}건을 프로그램 목록에 복구할까요?\n\n" +
+                "안전을 위해 모두 자동 OFF·확인 대기 상태로 복구합니다. 사이트에는 아무것도 제출하지 않습니다.",
+                "이전 목록 복구", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            foreach (var job in restored)
+            {
+                job.Enabled = false;
+                job.RequiresReview = true;
+                job.NextDueUtc = DateTime.MaxValue;
+                job.PendingSitePriceTarget = "";
+                job.LastStatus = "정리 백업에서 복구함: 사이트 등록번호 확인 필요";
+            }
+            var previous = _config.Jobs;
+            _config.Jobs = _jobs.Concat(restored).ToList();
+            try { _config.Save(); }
+            catch { _config.Jobs = previous; throw; }
+            foreach (var job in restored) _jobs.Add(job);
+            _selected = null;
+            ResetFiltersToAll();
+            RefreshFilterChoices();
+            RefreshFilteredLists(restored[0].Id);
+            AppendLog($"예전 목록 복구 완료: {restored.Count}건 · 자동 OFF · 사이트 제출 없음");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "이전 목록 복구에 실패했습니다. 기존 목록은 삭제하지 않았습니다.\n" + ex.Message,
+                "복구 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
 

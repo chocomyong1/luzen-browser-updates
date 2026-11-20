@@ -216,6 +216,47 @@ internal static class MyListingsImport
         return long.TryParse(raw.Replace(",", "", StringComparison.Ordinal), out _);
     }
 
+    // A site import normally MERGES: obsolete local jobs are never removed
+    // merely because they were absent from one page. Offer cleanup only after
+    // the authenticated SELL and BUY lists were both read to completion. The
+    // caller must confirm deletion and retain a local recovery snapshot.
+    public static IReadOnlyList<ListingJob> FindStaleImportedJobs(
+        IEnumerable<ExistingListingRecord> records, IEnumerable<ListingJob> existing,
+        string siteId, bool completedAllPages, IEnumerable<string> verifiedTradeSides)
+    {
+        if (!completedAllPages || string.IsNullOrWhiteSpace(siteId))
+            return Array.Empty<ListingJob>();
+        var sides = new HashSet<string>(verifiedTradeSides, StringComparer.Ordinal);
+        if (!sides.Contains("판매") || !sides.Contains("구매"))
+            return Array.Empty<ListingJob>();
+        var observed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in records)
+        {
+            string number = (row.ListingNumber ?? "").Trim();
+            if (!Regex.IsMatch(number, @"^\d{8,20}$") || !IsOwnedListUrl(row.SourceListUrl) ||
+                row.TradeSide is not ("구매" or "판매") ||
+                IsSellListUrl(row.SourceListUrl) != (row.TradeSide == "판매"))
+                continue;
+            observed.Add(row.TradeSide + ":" + number);
+        }
+        // An empty or untrusted result cannot prove that previously imported
+        // posts were deleted; the site might simply have failed to render.
+        if (observed.Count == 0) return Array.Empty<ListingJob>();
+        return existing.Where(job =>
+            job.ImportedFromSite && job.Operation == "재등록" &&
+            string.Equals(job.SiteId, siteId, StringComparison.OrdinalIgnoreCase) &&
+            (job.OriginalTradeSide is "구매" or "판매") &&
+            Regex.IsMatch((job.ListingNumber ?? "").Trim(), @"^\d{8,20}$") &&
+            IsOwnedListUrl(job.SourceListUrl) &&
+            // An unresolved submission can still be moving between status
+            // pages. Never dispose of the evidence needed to reconcile it.
+            !job.PendingRepostAttemptUtc.HasValue &&
+            string.IsNullOrWhiteSpace(job.PendingRepostBeforeStamp) &&
+            !(job.LastStatus ?? "").Contains("제출 결과 확인 필요", StringComparison.Ordinal) &&
+            !observed.Contains(job.OriginalTradeSide + ":" + (job.ListingNumber ?? "").Trim()))
+            .ToList();
+    }
+
     public static ExistingListingMergeSummary Prepare(IEnumerable<ExistingListingRecord> records, IEnumerable<ListingJob> existing,
         string subId, string siteId)
     {
