@@ -242,6 +242,18 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const wrong = editFormCase({approvedSubmit: true, formTitle: '10 10 레벨 겁화 구매합니다'});
   assert.equal(wrong.evaluate(true, number, '10000', true).status, 'error');
   assert.equal(wrong.clicked, 0);
+  assert.match(wrong.evaluate(false, number, '10000', true).message, /사이트 수정폼: 10 10 레벨 겁화 구매합니다/);
+  assert.match(wrong.evaluate(false, number, '10000', true).message, /프로그램 저장:/);
+  // Cosmetic spacing on the native edit page is allowed. Numerals, suffixes,
+  // punctuation and quantity-range prefixes cannot be silently normalized.
+  const spacing = editFormCase({approvedSubmit: true,
+    formTitle: '+8+레벨 겁화,작열 삽니다+즉시대기중+'});
+  assert.equal(spacing.evaluate(true, number, '10000', true).status, 'submitted');
+  assert.equal(spacing.clicked, 1);
+  const prefixed = editFormCase({approvedSubmit: true,
+    formTitle: '[1개~999개] '+title});
+  assert.equal(prefixed.evaluate(true, number, '10000', true).status, 'error');
+  assert.equal(prefixed.clicked, 0);
   console.log('PASS explicit single-item native site button changes only price; title mutation blocks submission');
 }
 
