@@ -36,7 +36,11 @@ internal static class ListingIdentity
     public static bool IsConfirmedExisting(ListingIdentityEvidence e, ListingJob job) =>
         HasNumber(job.ListingNumber) && HasNumber(e.Number) &&
         string.Equals(e.Number, job.ListingNumber, StringComparison.Ordinal) &&
-        e.TitlePresent && e.DetailPage && string.IsNullOrWhiteSpace(e.Error);
+        e.DetailPage && string.IsNullOrWhiteSpace(e.Error) &&
+        // A title mismatch is not a veto when the official detail URL
+        // explicitly carries this exact listing ID. Otherwise use the
+        // authenticated own-list fallback instead of guessing.
+        (e.TitlePresent || e.Source.Split(',').Contains("page-url", StringComparer.Ordinal));
 
     // Only official URLs and listing-scoped identifiers are read. Never infer
     // a target from an unrelated number elsewhere in a My Room list.
@@ -107,7 +111,8 @@ internal static class ListingIdentity
       if(numbers.size===0 && pairs.length===1 && titlePresent) add(pairs[0].number,'detail-link');
       // An exact matching current detail URL takes precedence over unrelated
       // IDs in linked recommendations, but never over a contradictory labelled
-      // registration number. Both URL and title must match this job.
+      // registration number. A title match is only supporting evidence for
+      // a detail URL already independently bound to this listing ID.
       const labels=[...text.matchAll(labeled)].map(m=>m[1]);
       const contradicts=labels.some(id=>valid(expectedNumber)&&id!==expectedNumber);
       const urlBound=!ownList && currentIds.length===1 && currentIds[0]===expectedNumber &&

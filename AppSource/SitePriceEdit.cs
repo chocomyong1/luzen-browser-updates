@@ -3,9 +3,9 @@ using System.Text.Json;
 
 namespace LuzenBrowserReplica;
 
-// Runs only after the user explicitly requests a price change. A list row is
-// matched by its registration number AND title; the edit form must independently
-// prove the registration number and old price before any real-site submission.
+// Runs only after the user explicitly requests a price change. The signed-in
+// OWN-list row is matched by an ID-bound control/attribute, not its decorative
+// title; the edit form must independently prove the ID and old price.
 internal sealed class SitePriceEditResult
 {
     public string Status { get; set; } = "";
@@ -51,7 +51,7 @@ internal static class SitePriceEdit
       const official=location.protocol==='https:'&&/(^|\.)itemmania\.com$/i.test(location.hostname);
       const own=/^\/myroom\/(sell\/sell_regist|buy\/buy_regist)\.html$/i.test(location.pathname);
       if(!official||!own)return result('error','본인 판매·구매 관리목록 화면이 아닙니다');
-      if(!/^\d{8,20}$/.test(a.number)||norm(a.title).length<3)return result('error','등록번호 또는 제목이 유효하지 않습니다');
+      if(!/^\d{8,20}$/.test(a.number))return result('error','등록번호가 유효하지 않습니다');
       const exact=new RegExp('(?:^|\\D)'+a.number+'(?!\\d)');
       const candidates=new Set();
       const docs=[document],seen=new Set(docs);
@@ -72,27 +72,41 @@ internal static class SitePriceEdit
         }
       }
       const matching=[];
+      let identityProblem='';
       for(const row of candidates){
         const text=String(row.innerText||row.textContent||'');
         const ids=new Set();
+        let strongNumber=false;
         for(const e of [row,...row.querySelectorAll('*')].slice(0,300)){
           for(const attr of ['data-tid','data-listing-id','data-goods-id','data-trade-id','data-id']){
-            const id=e.getAttribute?.(attr)||'';if(/^\d{8,20}$/.test(id))ids.add(id);
+            const id=e.getAttribute?.(attr)||'';
+            if(/^\d{8,20}$/.test(id)){
+              ids.add(id);
+              if(id===a.number)strongNumber=true;
+            }
           }
           for(const attr of ['onclick','href','data-url','data-href']){
             const val=e.getAttribute?.(attr)||'';
             if(exact.test(val))ids.add(a.number);
+            // In current My Room markup the exact native repost/edit handler
+            // binds the listing even if there is no data-tid on the row.
+            if(attr==='onclick' && /^\s*(?:reInsert|modifyItem|editItem)\s*\(\s*(['"])(\d{8,20})\1\s*[,)]/.exec(val)?.[2]===a.number)
+              strongNumber=true;
           }
         }
         if(exact.test(text))ids.add(a.number);
         if(!ids.has(a.number))continue;
         const identity=ownedTitleIdentity(row,a);
-        if(!identity.ok)continue;
+        if(!identity.ok||!strongNumber){
+          identityProblem=!strongNumber?'등록번호가 행 데이터·수정 함수에 직접 연결되지 않았습니다':identity.reason;
+          continue;
+        }
         if(ids.size!==1)return result('error','해당 행에 서로 다른 등록번호가 있어 수정하지 않았습니다');
         matching.push(row);
       }
       if(matching.length!==1)return result('error',matching.length?
-        '등록번호·제목이 일치하는 행이 여러 개입니다':'등록번호·제목이 일치하는 행이 없습니다',matching.length);
+        '동일 등록번호의 검증된 행이 여러 개입니다':
+        (identityProblem||'등록번호가 연결된 본인 물품 행이 없습니다'),matching.length);
       const row=matching[0];
       const visible=e=>e.isConnected&&e.getClientRects().length>0&&!e.disabled&&
         (e.ownerDocument?.defaultView?.getComputedStyle(e)||getComputedStyle(e)).visibility!=='hidden';
@@ -110,7 +124,7 @@ internal static class SitePriceEdit
         const clickable=target!==titleNode||titleNode.matches?.('a[href],a[onclick],button,[onclick]')||
           getComputedStyle(titleNode).cursor==='pointer';
         if(!clickable)return result('error','제목은 보이지만 클릭할 수 있는 링크·동작을 확인하지 못했습니다');
-        if(!a.click)return result('ready','등록번호·제목이 일치하는 상세 화면 제목 링크 확인',1);
+        if(!a.click)return result('ready','등록번호가 일치하는 상세 화면 링크 확인',1);
         target.click();
         return result('opened','검증된 등록글 제목 클릭',1);
       }
@@ -134,7 +148,7 @@ internal static class SitePriceEdit
       if(edit.length!==1)return result('error',(edit.length?
         '해당 글의 수정 버튼이 여러 개라 중단했습니다':'해당 글의 수정 버튼을 찾지 못했습니다')+
         ' [진단: 문서 '+docs.length+'개, 후보 '+debug.join(' | ').slice(0,650)+']',edit.length);
-      if(!a.click)return result('ready','정확한 등록번호·제목의 수정 버튼을 확인했습니다',1);
+      if(!a.click)return result('ready','정확한 등록번호의 수정 버튼을 확인했습니다',1);
       edit[0].click();
       return result('opened','검증된 등록글의 수정 화면 열기 요청',1);
     })()
@@ -149,24 +163,23 @@ internal static class SitePriceEdit
       const a=__ARG__;
       const result=(status,message='',candidates=0)=>({status,message,candidates});
       const norm=s=>String(s||'').replace(/\s+/g,'').toLowerCase();
-      const core=s=>norm(s).replace(/^\[[\d,]+개[~〜-][\d,]+개\]/,'');
       if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname))
         return result('error','아이템매니아 공식 HTTPS 화면이 아닙니다');
       const isList=/^\/myroom\/(sell\/sell_regist|buy\/buy_regist)\.html$/i.test(location.pathname);
       const isKnownDetail=/^\/myroom\/(sell\/sell_regist_view|buy\/buy_regist_view)\.html$/i.test(location.pathname);
       if(isList)return result('error','물품 상세 화면이 아닌 관리 목록입니다');
-      if(!/^\d{8,20}$/.test(a.number)||core(a.title).length<3)
-        return result('error','등록번호 또는 제목이 유효하지 않습니다');
+      if(!/^\d{8,20}$/.test(a.number))
+        return result('error','등록번호가 유효하지 않습니다');
       const exact=new RegExp('(?:^|\\D)'+a.number+'(?!\\d)');
       const page=String(document.body?.innerText||'');
       const path=location.pathname+location.search;
       const displayedIds=[...new Set([...page.matchAll(/#\s*(\d{8,20})(?!\d)/g)].map(m=>m[1]))];
+      if(displayedIds.length>1||(displayedIds.length===1&&displayedIds[0]!==a.number))
+        return result('error','상세 화면에 다른 등록번호가 표시되어 수정하지 않았습니다');
       const independentlyIdentified=exact.test(path)||
         (isKnownDetail&&displayedIds.length===1&&displayedIds[0]===a.number);
       if(!independentlyIdentified||!exact.test(page))
         return result('error','상세 화면의 등록번호를 독립적으로 확인하지 못했습니다');
-      if(!core(page).includes(core(a.title)))
-        return result('error','상세 화면 제목이 선택한 등록글과 다릅니다');
       const visible=e=>e.isConnected&&e.getClientRects().length>0&&!e.disabled&&
         getComputedStyle(e).visibility!=='hidden';
       const buttons=[...document.querySelectorAll('a,button,input[type="button"],input[type="submit"],[role="button"]')]
@@ -174,7 +187,7 @@ internal static class SitePriceEdit
           e.getAttribute('title')].filter(Boolean).join(' '))==='수정하기');
       if(buttons.length!==1)return result('error',buttons.length?
         '상세 화면의 수정하기 버튼이 여러 개입니다':'상세 화면의 수정하기 버튼을 찾지 못했습니다',buttons.length);
-      if(!a.click)return result('ready','등록번호·제목·수정하기 버튼을 확인했습니다',1);
+      if(!a.click)return result('ready','등록번호·수정하기 버튼을 확인했습니다',1);
       buttons[0].click();
       return result('opened','검증된 상세 화면의 수정하기 버튼을 눌렀습니다',1);
     })()

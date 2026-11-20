@@ -270,7 +270,7 @@ internal sealed partial class AutomationForm
             await NavigateOwnedListAsync(url, token);
             var matched = await LocateOwnedListRepostAsync(job, token, requireRepostButton: false);
             if (matched.Status != "found")
-                throw new InvalidOperationException("등록번호·제목이 일치하는 본인 물품 행을 확인할 수 없습니다: " + matched.Message);
+                throw new InvalidOperationException("등록번호에 직접 연결된 본인 물품 행을 확인할 수 없습니다: " + matched.Message);
             var page = MyListingsImport.DecodePage(await _web.CoreWebView2.ExecuteScriptAsync(MyListingsImport.ExtractPageScript));
             var records = page.Listings.Where(x => x.ListingNumber == job.ListingNumber &&
                 x.TradeSide == job.OriginalTradeSide &&

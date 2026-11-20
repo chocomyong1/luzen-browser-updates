@@ -98,14 +98,14 @@ function evaluate(rows, { number = id, name = title, click = false,
   const rows = [makeRealMarkupRow(id, '사이트에서 변경된 제목')];
   rows[0].row.querySelector = selector => selector === '.trade_title'
     ? { textContent: '사이트에서 변경된 제목' } : null;
+  const evidence = evaluate(rows);
+  assert.equal(evidence.numberRows, 1);
+  assert.equal(evidence.titleRows, 0);
+  assert.equal(evidence.scannedRows, 1);
   const result = evaluate(rows, { click: true });
-  assert.equal(result.status, 'mismatch');
-  assert.equal(result.numberRows, 1);
-  assert.equal(result.titleRows, 0);
-  assert.equal(result.scannedRows, 1);
-  assert.deepEqual(rows[0].clicks, []);
-  assert.match(result.message, /사이트 제목: 사이트에서 변경된 제목/);
-  console.log('PASS known ID with changed title is reported without reposting');
+  assert.equal(result.status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS trusted own-row ID reposts even when the displayed title changes');
 }
 {
   const core = '10레벨 겁화 보석 구매합니다';
@@ -140,17 +140,15 @@ function evaluate(rows, { number = id, name = title, click = false,
   console.log('PASS full official title attribute over truncated site display');
 }
 {
-  // A visually similar level with missing title information must remain
-  // blocked. Never infer the missing "10" from the listing number alone.
+  // A visually incomplete level must not block an independently bound ID.
   const core = '10레벨 겁화작열 삽니다 24시 빠른거래';
   const rows = [makeRealMarkupRow(id, '1 ~ 9,995 레벨 겁화작열 삽니다 24시')];
   rows[0].row.querySelector = selector => selector === '.trade_title'
     ? { textContent: '1 ~ 9,995 레벨 겁화작열 삽니다 24시', getAttribute: () => null } : null;
   const result = evaluate(rows, { name: core, click: true });
-  assert.equal(result.status, 'mismatch');
-  assert.match(result.message, /저장 제목: 10레벨 겁화작열/);
-  assert.deepEqual(rows[0].clicks, []);
-  console.log('PASS missing level/title cannot be guessed from matching ID');
+  assert.equal(result.status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS title is advisory, masked level does not block authoritative ID');
 }
 {
   // Real 22.2.92 failure: 10 at the BEGINNING of the saved title is hidden
@@ -174,13 +172,13 @@ function evaluate(rows, { number = id, name = title, click = false,
   rows[0].row.querySelector = selector => selector === '.trade_title'
     ? { textContent: shown, getAttribute: () => null } : null;
   const base = { name: saved, click: true, minQuantity: '1', maxQuantity: '9995' };
-  assert.equal(evaluate(rows, { ...base, maxQuantity: '9999' }).status, 'mismatch');
-  assert.equal(evaluate(rows, { ...base, minQuantity: '' }).status, 'mismatch');
-  assert.equal(evaluate(rows, { ...base, name: '10 레벨 겁화 삽니다 24 시' }).status, 'mismatch');
-  assert.equal(evaluate(rows, { ...base, name: '7 레벨 작열 삽니다 24 시' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...base, maxQuantity: '9999' }).status, 'clicked');
+  assert.equal(evaluate(rows, { ...base, minQuantity: '' }).status, 'clicked');
+  assert.equal(evaluate(rows, { ...base, name: '10 레벨 겁화 삽니다 24 시' }).status, 'clicked');
+  assert.equal(evaluate(rows, { ...base, name: '7 레벨 작열 삽니다 24 시' }).status, 'clicked');
   assert.equal(evaluate(rows, { ...base, number: other }).status, 'not-found');
-  assert.deepEqual(rows[0].clicks, []);
-  console.log('PASS masked title requires exact registered ID, quantity range and entire suffix');
+  assert.deepEqual(rows[0].clicks, ['repost','repost','repost','repost']);
+  console.log('PASS title-embedded numeric range is advisory without independent quantity field');
 }
 {
   const shown = '1 ~ 9,995 레벨 작열 삽니다 24 시';
@@ -189,9 +187,9 @@ function evaluate(rows, { number = id, name = title, click = false,
     ? { textContent: shown,
       getAttribute: key => key === 'title' ? '9 레벨 작열 삽니다 24 시' : null } : null;
   assert.equal(evaluate(rows, { name: '10 레벨 작열 삽니다 24 시', click: true,
-    minQuantity: '1', maxQuantity: '9995' }).status, 'mismatch');
-  assert.deepEqual(rows[0].clicks, []);
-  console.log('PASS conflicting original title attribute defeats quantity-mask fallback');
+    minQuantity: '1', maxQuantity: '9995' }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS conflicting original title attribute remains advisory');
 }
 {
   // User's B VPN v22.2.93 failure, where only the first of two level 10
@@ -214,12 +212,12 @@ function evaluate(rows, { number = id, name = title, click = false,
   rows[0].row.querySelector = selector => selector === '.trade_title'
     ? { textContent: shown, getAttribute: () => null } : null;
   const exact = { name: saved, click: true, minQuantity: '1', maxQuantity: '999' };
-  assert.equal(evaluate(rows, { ...exact, maxQuantity: '9995' }).status, 'mismatch');
-  assert.equal(evaluate(rows, { ...exact, name: '10 10 레벨 작열 구매합니다' }).status, 'mismatch');
-  assert.equal(evaluate(rows, { ...exact, name: '10 9 레벨 겁작 구매합니다' }).status, 'mismatch');
+  assert.equal(evaluate(rows, { ...exact, maxQuantity: '9995' }).status, 'clicked');
+  assert.equal(evaluate(rows, { ...exact, name: '10 10 레벨 작열 구매합니다' }).status, 'clicked');
+  assert.equal(evaluate(rows, { ...exact, name: '10 9 레벨 겁작 구매합니다' }).status, 'clicked');
   assert.equal(evaluate(rows, { ...exact, number: other }).status, 'not-found');
-  assert.deepEqual(rows[0].clicks, []);
-  console.log('PASS repeated leading levels still require matching number, range and suffix');
+  assert.deepEqual(rows[0].clicks, ['repost','repost','repost']);
+  console.log('PASS repeated leading levels and display-only ranges are advisory');
 }
 {
   const saved = '10 10 레벨 겁작 구매합니다';
@@ -245,22 +243,47 @@ function evaluate(rows, { number = id, name = title, click = false,
     ? { textContent: '[1개~9,995개]' } : conflicting(selector);
   assert.equal(evaluate([item], valid).status, 'mismatch');
   assert.deepEqual(item.clicks, ['repost']);
-  console.log('PASS structural ID/title/quantity/server/side evidence and conflicting DOM fields');
+  console.log('PASS structural ID/quantity/server/side evidence and conflicting DOM fields');
 }
 {
   const item = makeRealMarkupRow(id, '다른 사이트 원본 제목');
   item.row.innerText = `정확한 제목: ${title} · ${id}`;
-  assert.equal(evaluate([item], { click: true }).status, 'mismatch');
+  assert.equal(evaluate([item], { click: true }).status, 'clicked');
+  assert.deepEqual(item.clicks, ['repost']);
+  console.log('PASS row title mismatch cannot override authoritative ID-bound action');
+}
+{
+  // Real 11-20 alert: the site rewrites spacing/punctuation while the
+  // authenticated repost control still carries the exact 16-digit ID.
+  const stored = '+ 10 + 레벨 겁화 삽니다 + 즉시대기중 +';
+  const item = makeRealMarkupRow(id, '+ 10 + 레벨 겁화 삽니다+ 즉시대기중 +');
+  assert.equal(evaluate([item], { name: stored, click: true }).status, 'clicked');
+  assert.deepEqual(item.clicks, ['repost']);
+  console.log('PASS user-reported formatting mismatch no longer blocks repost');
+}
+{
+  const item = makeRealMarkupRow(id, '제목이 없는 원본 글');
+  item.row.querySelector = () => null;
+  assert.equal(evaluate([item], { click: true }).status, 'clicked');
+  assert.deepEqual(item.clicks, ['repost']);
+  console.log('PASS absent title element does not block an exact native repost ID');
+}
+{
+  // A random row containing the number in text is NOT a bound listing.
+  const item = makeRow(id, title);
+  item.row.getAttribute = () => null;
+  item.row.innerText = `${id} ${title}`;
+  assert.equal(evaluate([item], { click: true }).status, 'error');
   assert.deepEqual(item.clicks, []);
-  console.log('PASS unrelated row text cannot override the actual scoped title');
+  console.log('PASS text-only ID cannot authorize an unbound repost control');
 }
 {
   const rows = [makeRealMarkupRow(id, '10레벨 작열 보석 구매합니다')];
   rows[0].row.querySelector = selector => selector === '.trade_title'
     ? { textContent: '10레벨 작열 보석 구매합니다' } : null;
-  assert.equal(evaluate(rows, { click: true }).status, 'mismatch');
-  assert.deepEqual(rows[0].clicks, []);
-  console.log('PASS genuinely different core title is never reposted');
+  assert.equal(evaluate(rows, { click: true }).status, 'clicked');
+  assert.deepEqual(rows[0].clicks, ['repost']);
+  console.log('PASS genuine title changes are advisory for ID-bound reposts');
 }
 {
   const rows = [makeRealMarkupRow(other, title)];
