@@ -3433,7 +3433,8 @@ internal sealed partial class AutomationForm : Form
             return new OwnedListRepostResult { Status = "error", Message = "내 등록글 목록 화면이 아닙니다" };
         try
         {
-            string js = OwnedListRepost.BuildScript(job.ListingNumber, job.Title, click);
+            string js = OwnedListRepost.BuildScript(job.ListingNumber, job.Title, click,
+                job.MinQuantity, job.MaxQuantity);
             string raw = await _web.CoreWebView2.ExecuteScriptAsync(js);
             return OwnedListRepost.Decode(raw);
         }
