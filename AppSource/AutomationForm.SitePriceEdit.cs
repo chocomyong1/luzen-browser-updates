@@ -62,7 +62,7 @@ internal sealed partial class AutomationForm
         var changed = selected.Where(job =>
             !TrySitePrice(job.Price, out long oldPrice) || oldPrice != amountValue).ToList();
         var existing = changed.Where(job => !IsUnsubmittedNewListing(job)).ToList();
-        if (existing.Count > 20 || existing.Any(job =>
+        if (existing.Any(job =>
             !IsRegisteredOwnedBuyPriceTarget(job) || job.RequiresReview ||
             (job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
              (job.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
@@ -70,7 +70,7 @@ internal sealed partial class AutomationForm
             !ListingIdentity.HasNumber(job.ListingNumber) ||
             !MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job))))
         {
-            problem = "기존글 가격 반영은 등록번호·관리목록이 확인된 본인 구매글만 시스템당 최대 20건까지 가능합니다. " +
+            problem = "기존글 가격 반영은 등록번호·관리목록이 확인된 본인 구매글만 가능합니다. " +
                 "판매글·확인 대기 중인 글은 변경하지 않았습니다.";
             return false;
         }
@@ -122,11 +122,6 @@ internal sealed partial class AutomationForm
         if (targets.Count == 0)
         {
             MessageBox.Show(this, "가격을 변경할 물품의 왼쪽 체크박스를 선택해 주세요.", "선택한 물품 없음");
-            return;
-        }
-        if (targets.Count > 20)
-        {
-            MessageBox.Show(this, "한 번에 최대 20개까지 가격을 예약할 수 있습니다. 나누어 선택해 주세요.", "예약 수량 제한");
             return;
         }
         var invalid = targets.Where(j => !_jobs.Contains(j) ||

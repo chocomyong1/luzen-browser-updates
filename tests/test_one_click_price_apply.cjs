@@ -32,7 +32,7 @@ for (const required of ['!job.ImportedFromSite', '!ListingIdentity.HasNumber(job
   assert.ok(draft.includes(required), `Draft predicate missing: ${required}`);
 assert.match(draft, /var changed = selected\.Where\(job =>/);
 assert.match(draft, /var existing = changed\.Where\(job => !IsUnsubmittedNewListing\(job\)\)/);
-assert.match(draft, /existing\.Count > 20/);
+assert.doesNotMatch(draft, /existing\.Count\s*>\s*20|최대 20건/);
 assert.match(draft, /!IsRegisteredOwnedBuyPriceTarget\(job\) \|\| job\.RequiresReview/);
 assert.match(draft, /MyListingsImport\.IsOwnedListUrl\(OwnedListUrlFor\(job\)\)/);
 assert.match(draft, /ItemManiaAccountStore\.Load\(_system\)\.UserId/);

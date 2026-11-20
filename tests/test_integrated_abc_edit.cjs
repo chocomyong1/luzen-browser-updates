@@ -48,7 +48,7 @@ assert.match(edits, /_myListingsImportRunning \|\| _sitePriceBatchRunning/);
 assert.match(edits, /_currentlyExecutingJob is null/);
 const pricePlan = read('AutomationForm.SitePriceEdit.cs');
 assert.match(edits, /TryPlanAutomaticPriceApply\(items, value, out _, out problem\)/);
-assert.match(pricePlan, /existing\.Count > 20/);
+assert.doesNotMatch(pricePlan, /existing\.Count\s*>\s*20|최대 20건/);
 assert.match(pricePlan, /!IsRegisteredOwnedBuyPriceTarget\(job\) \|\| job\.RequiresReview/);
 assert.match(pricePlan, /MyListingsImport\.IsOwnedListUrl\(OwnedListUrlFor\(job\)\)/);
 assert.match(pricePlan, /existing\.Select\(job => job\.SiteId\)\.Distinct/);

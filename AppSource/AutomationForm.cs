@@ -797,18 +797,16 @@ internal sealed partial class AutomationForm : Form
             MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(job)) &&
             string.Equals(job.SiteId, reference.SiteId, StringComparison.OrdinalIgnoreCase) &&
             TrySitePrice(job.Price, out var price) && price == amount).ToList();
-        var batch = matched.Take(20).ToList();
-        foreach (var job in _jobs) job.SelectedForBulk = batch.Contains(job);
+        foreach (var job in _jobs) job.SelectedForBulk = matched.Contains(job);
         _jobsGrid.Refresh();
         _autoGrid.Refresh();
         RefreshBatchSummary();
         RefreshSelectAllHeaderVisuals();
-        AppendLog($"같은 가격 선택: {reference.SiteId} · {amount:N0}원 · {matched.Count}건 중 {batch.Count}건 (본인 구매글만)");
+        AppendLog($"같은 가격 선택: {reference.SiteId} · {amount:N0}원 · {matched.Count}건 (본인 구매글만)");
         MessageBox.Show(this,
-            $"{reference.SiteId} · {amount:N0}원인 본인 구매글 {matched.Count}건 중 {batch.Count}건을 체크했습니다.\n\n" +
+            $"{reference.SiteId} · {amount:N0}원인 본인 구매글 {matched.Count}건을 체크했습니다.\n\n" +
             "[일괄수정]에서 새 금액을 적용하고 [예]를 누르면 다음 자동등록 순번에 예약됩니다.\n" +
-            "확인 대기·판매글·다른 계정 물품은 제외됩니다. 한 번에 최대 20개씩 예약할 수 있습니다.\n" +
-            (matched.Count > 20 ? "나머지는 첫 묶음을 예약한 뒤 조건을 다시 선택해 주세요." : ""),
+            "확인 대기·판매글·다른 계정 물품은 제외됩니다.\n",
             "같은 가격 선택 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
