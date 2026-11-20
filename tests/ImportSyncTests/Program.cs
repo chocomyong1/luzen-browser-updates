@@ -15,6 +15,7 @@ internal sealed class ListingJob
     public string Game { get; set; } = "";
     public string Server { get; set; } = "";
     public string Title { get; set; } = "";
+    public string SiteObservedTitle { get; set; } = "";
     public string ItemCategory { get; set; } = "";
     public string TradingMethod { get; set; } = "";
     public string MinQuantity { get; set; } = "";
@@ -82,11 +83,24 @@ internal static class Program
             "10레벨 겁화작열 삽니다", "unbracketed split-trade prefix removed");
         Check(MyListingsImport.CleanImportedTitle("10레벨 겁화 보석 구매합니다") ==
             "10레벨 겁화 보석 구매합니다", "normal title stays unchanged");
+        Check(MyListingsImport.HasSuspiciousDuplicatedLevel("1 ~ 999 9 9 레벨 겁화 구매합니다"),
+            "duplicated level following split-range metadata must require review");
+        Check(MyListingsImport.HasSuspiciousDuplicatedLevel("10 10 10 레벨 작열 구매합니다"),
+            "triple duplicate level must require review");
+        Check(!MyListingsImport.HasSuspiciousDuplicatedLevel("10레벨 겁화 보석 구매합니다"),
+            "a normal level should not be quarantined");
         var rangedRow = Row();
         rangedRow.Title = "[1개~9,995개] " + Title;
         var firstImport = MyListingsImport.Prepare(new[] { rangedRow }, Array.Empty<ListingJob>(), "A", "slshrn124");
         Check(firstImport.NewJobs.Count == 1 && firstImport.NewJobs[0].Title == Title,
             "new imports save the actual product title, not displayed quantity range");
+        Check(firstImport.NewJobs[0].SiteObservedTitle == rangedRow.Title,
+            "raw site-rendered title is retained separately from saved title");
+        var repeatedRow = Row(); repeatedRow.Title = "[1개~999개] 9 9 레벨 겁화 구매합니다";
+        var repeatedImport = MyListingsImport.Prepare(new[] { repeatedRow },
+            Array.Empty<ListingJob>(), "A", "slshrn124");
+        Check(repeatedImport.NewJobs.Count == 1 && repeatedImport.NewJobs[0].RequiresReview &&
+            !repeatedImport.NewJobs[0].Enabled, "repeated level title is held on its first import");
 
         var current = Job();
         var plan = MyListingsImport.Prepare(new[] { Row() }, new[] { current }, "A", "slshrn124");
@@ -158,6 +172,17 @@ internal static class Program
         sameIdChangedTitle.Updates[0].Apply();
         Check(changedTitleJob.Price == "35,100" && changedTitleJob.Title == Title,
             "update price only, retain the user's existing title");
+        Check(changedTitleJob.SiteObservedTitle == "다른 물품",
+            "exact-ID re-import records current site title even when it differs from original");
+        var samePriceDifferentTitle = Job("35,100");
+        samePriceDifferentTitle.SiteObservedTitle = Title;
+        var titleOnlyPlan = MyListingsImport.Prepare(new[] { mismatchedTitle },
+            new[] { samePriceDifferentTitle }, "A", "slshrn124");
+        Check(titleOnlyPlan.Updates.Count == 1 && !titleOnlyPlan.Updates[0].UpdateVerifiedPrice,
+            "even an unchanged price must not hide a changed site title");
+        titleOnlyPlan.Updates[0].Apply();
+        Check(samePriceDifferentTitle.Title == Title && samePriceDifferentTitle.SiteObservedTitle == "다른 물품",
+            "a title-only refresh retains the authored title unchanged");
         var wrongSide = Row(); wrongSide.TradeSide = "판매";
         Check(MyListingsImport.Prepare(new[] { wrongSide }, new[] { Job() }, "A", "slshrn124")
             .Updates.Count == 0, "trade side mismatch blocks price overwrite");

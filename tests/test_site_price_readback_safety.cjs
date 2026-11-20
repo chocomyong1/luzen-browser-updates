@@ -7,7 +7,7 @@ const code = fs.readFileSync(path.join(__dirname,
   '../AppSource/AutomationForm.SitePriceEdit.cs'), 'utf8');
 const start = code.indexOf('private async Task<bool> ApplySitePriceAsync(');
 const pending = code.indexOf('bool unresolvedPriceAttempt', start);
-const submit = code.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true)', start);
+const submit = code.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true, job.Title)', start);
 assert(start >= 0 && pending > start && submit > pending,
   '가격 확인 대기 차단은 실제 사이트 제출보다 먼저 실행돼야 합니다');
 assert.match(code.slice(pending, submit), /if \(job\.RequiresReview \|\| unresolvedPriceAttempt\)/);

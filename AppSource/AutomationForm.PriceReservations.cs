@@ -21,6 +21,10 @@ internal sealed partial class AutomationForm
         var snapshots = new List<PriceReservationSnapshot>();
         foreach (var job in _jobs.Where(j => !string.IsNullOrWhiteSpace(j.PendingSitePriceTarget)))
         {
+            if (!SitePriceEdit.AutomaticPriceSubmissionEnabled)
+            {
+                snapshots.Add(new(job, "제목 보호 모드 · 사이트 가격 자동 제출 중지", null, 0)); continue;
+            }
             if (job.RequiresReview)
             {
                 snapshots.Add(new(job, "확인 필요 · 자동 보류", null, 0)); continue;

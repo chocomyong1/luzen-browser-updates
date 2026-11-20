@@ -62,6 +62,11 @@ internal sealed partial class AutomationForm
         var changed = selected.Where(job =>
             !TrySitePrice(job.Price, out long oldPrice) || oldPrice != amountValue).ToList();
         var existing = changed.Where(job => !IsUnsubmittedNewListing(job)).ToList();
+        if (existing.Count > 0 && !SitePriceEdit.AutomaticPriceSubmissionEnabled)
+        {
+            problem = "제목 보호 모드에서는 기존 등록글의 가격 자동 재등록이 중지됩니다. 사이트에서 직접 수정해 주세요.";
+            return false;
+        }
         if (existing.Any(job =>
             !IsRegisteredOwnedBuyPriceTarget(job) || job.RequiresReview ||
             (job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
@@ -124,6 +129,13 @@ internal sealed partial class AutomationForm
             MessageBox.Show(this, "가격을 변경할 물품의 왼쪽 체크박스를 선택해 주세요.", "선택한 물품 없음");
             return;
         }
+        if (!SitePriceEdit.AutomaticPriceSubmissionEnabled)
+        {
+            MessageBox.Show(this, "제목 보호 모드에서는 기존 글의 가격 자동 변경 예약을 받지 않습니다.\n" +
+                "사이트에서 직접 재등록하면 기존 제목의 추가 변형을 방지할 수 있습니다.", "제목 보호 모드",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         var invalid = targets.Where(j => !_jobs.Contains(j) ||
             !IsRegisteredOwnedBuyPriceTarget(j) || j.RequiresReview ||
             (j.LastStatus.Contains("가격", StringComparison.Ordinal) &&
@@ -182,6 +194,13 @@ internal sealed partial class AutomationForm
         bool fromScheduler = false)
     {
         _lastSitePriceEditFailure = "";
+        if (!SitePriceEdit.AutomaticPriceSubmissionEnabled)
+        {
+            _lastSitePriceEditFailure = "제목 보호 모드: 사이트 가격 자동 제출 중지 (기존 예약도 제출하지 않음)";
+            if (!bulkApproval) MessageBox.Show(this, _lastSitePriceEditFailure + "\n사이트에서 직접 수정해 주세요.",
+                "제목 보호 모드", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
         if (fromScheduler && !_schedulerRunning) return false;
         if (_sitePriceBatchRunning && !bulkApproval)
         {
@@ -272,6 +291,10 @@ internal sealed partial class AutomationForm
                 MyListingsImport.IsOwnedListUrl(x.SourceListUrl)).ToList();
             if (records.Count != 1 || !TrySitePrice(records[0].Price, out var current))
                 throw new InvalidOperationException("해당 등록번호의 현재 사이트 단가를 정확히 읽지 못했습니다. 수정하지 않았습니다.");
+            if (MyListingsImport.HasSuspiciousDuplicatedLevel(job.Title) ||
+                MyListingsImport.HasSuspiciousDuplicatedLevel(records[0].Title) ||
+                PriceReadbackTitle(records[0].Title) != PriceReadbackTitle(job.Title))
+                throw new InvalidOperationException("원본 제목과 사이트 제목이 다르거나 레벨 숫자가 중복되어 있습니다. 제목을 복구하기 전에는 가격 재등록을 하지 않습니다.");
             job.VerifiedSitePrice = current.ToString();
             job.VerifiedSitePriceUtc = DateTime.UtcNow;
             _config.Save();
@@ -375,7 +398,7 @@ internal sealed partial class AutomationForm
                 await Task.Delay(attempt == 0 ? 1100 : 650, token);
                 if (!IsAllowedCurrentPage()) throw new InvalidOperationException("수정 화면이 아이템매니아 공식 사이트를 벗어났습니다.");
                 form = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                    SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), false)));
+                    SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), false, job.Title)));
                 if (form.Status is "ready" or "diagnostic") break;
             }
             if (form.Status == "diagnostic")
@@ -433,7 +456,7 @@ internal sealed partial class AutomationForm
             try
             {
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                    SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true)));
+                    SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true, job.Title)));
                 submitScriptNote = result.Message;
                 if (result.Status != "submitted")
                     AppendLog("구매글 가격 수정 제출 결과 불확실 (자동 재시도 금지): " + result.Message);
@@ -585,9 +608,9 @@ internal sealed partial class AutomationForm
         return readback.ExactIdVerified;
     }
 
-    private static string PriceReadbackTitle(string? title) => Regex.Replace(
-        Regex.Replace(title ?? "", @"^\s*\[[\d,]+\s*개\s*[~〜-]\s*[\d,]+\s*개\]\s*", ""),
-        @"\s+", "").Trim().ToLowerInvariant();
+    private static string PriceReadbackTitle(string? title) =>
+        Regex.Replace(MyListingsImport.CleanImportedTitle(title), @"\s+", "")
+            .Trim().ToLowerInvariant();
 
     // Scan the authenticated OWN list, never public search results. New IDs
     // are only reported as candidates; identity is not silently reassigned.
@@ -652,8 +675,14 @@ internal sealed partial class AutomationForm
         string summary = $"관리목록 {visited.Count}페이지 / {totalRows}건 검사. ";
         var oldPrices = matchingOld.Select(r => r.Price).Distinct().ToList();
         if (matchingOld.Count == 1 && TrySitePrice(matchingOld[0].Price, out var current) && current == target)
+        {
+            if (PriceReadbackTitle(matchingOld[0].Title) != expectedTitle ||
+                MyListingsImport.HasSuspiciousDuplicatedLevel(matchingOld[0].Title))
+                return new SitePriceReadback { ExactIdVerified = false,
+                    Message = summary + "가격은 변경됐지만 사이트 제목이 저장된 원본과 다르거나 중복 레벨이 감지됐습니다. 자동 작업을 중지하고 제목을 확인하세요." };
             return new SitePriceReadback { ExactIdVerified = true,
-                Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 확인." };
+                Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 및 제목 일치 확인." };
+        }
         if (oldPrices.Count > 0)
             summary += $"기존 등록번호 {job.ListingNumber} 조회 단가: {string.Join(", ", oldPrices)}원. ";
         else summary += $"기존 등록번호 {job.ListingNumber}는 검사한 목록에서 찾지 못함. ";

@@ -5,7 +5,8 @@ namespace LuzenBrowserReplica;
 
 // Account-list reposting is a separate pathway from reposting a single detail URL.
 // The click is constrained to the ONE authenticated OWN-list row with this ID
-// and an ID-bound repost control. Titles are advisory, not identity keys.
+// and an ID-bound repost control. Titles are NOT identity keys, but a
+// contradictory title is a veto before the site's own reInsert can mutate it.
 // Nothing in this script clicks a site-wide toolbar, pays fees or solves checks.
 internal sealed class OwnedListRepostResult
 {
@@ -161,7 +162,7 @@ internal static class OwnedListRepost
         const stampNodes=[...row.querySelectorAll('td.flex_box p.f_gray')];
         const stampText=stampNodes.length===1?String(stampNodes[0].textContent||'').trim():'';
         const stamp=/^\d{2}-\d{2}\s+\d{2}:\d{2}$/.test(stampText)?stampText.replace(/\s+/g,' '):'';
-        matching.push({row,actions,stamp});
+        matching.push({row,actions,stamp,identity});
       }
       const diagnostic={scannedRows:candidateRows.size,numberRows,titleRows};
       if(matching.length===0&&numberRows>0)return result(unsafeNumberRows?'error':'mismatch',
@@ -171,6 +172,14 @@ internal static class OwnedListRepost
         '동일 등록번호의 검증된 행이 여러 개라 중단했습니다':
         '이 페이지에서 등록번호가 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)','',diagnostic);
       if(arg.click===null)return result('found','현재 내 등록글 목록의 해당 등록번호·거래 방향을 확인함',matching[0].stamp,diagnostic);
+      // The official reInsert handler's title behavior is unverified. Never
+      // invoke it on an already changed or repeated-level title. A read-only
+      // exact-ID lookup (click=null) still works for diagnosing the listing.
+      const repeatedLevel=/(?<!\d)(?<level>8|9|10)(?:\s+\k<level>)+\s*레벨/;
+      if(!matching[0].identity.titleMatches ||
+         repeatedLevel.test(matching[0].identity.title) || repeatedLevel.test(String(arg.title||'')))
+        return result('unsafe-title','사이트 표시 제목과 저장 제목이 다르거나 레벨 숫자가 중복되었습니다. 자동 재등록을 차단하고 원본 확인이 필요합니다',
+          matching[0].stamp,diagnostic);
       if(matching[0].actions.length!==1)return result('error',matching[0].actions.length?
         '해당 행에 재등록 버튼이 여러 개입니다':'해당 물품 행에서 등록번호와 연결된 reInsert 재등록 버튼을 확인하지 못했습니다','',diagnostic);
       if(!arg.click)return result('ready','해당 등록번호에 직접 연결된 재등록 버튼 1개 확인',matching[0].stamp,diagnostic);

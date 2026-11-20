@@ -16,6 +16,9 @@ internal sealed class SitePriceEditResult
 
 internal static class SitePriceEdit
 {
+    // Deliberately hard-locked until a safe price-only endpoint or native
+    // submit contract is proven on the actual service. See EditFormScript.
+    public static bool AutomaticPriceSubmissionEnabled => false;
     public static SitePriceEditResult Decode(string? raw)
     {
         try
@@ -39,8 +42,9 @@ internal static class SitePriceEdit
     public static string BuildDetailEditScript(string number, string title, bool click) =>
         DetailEditScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, title, click }), StringComparison.Ordinal);
 
-    public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit) =>
-        EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, oldPrice, newPrice, submit }), StringComparison.Ordinal);
+    public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit,
+        string expectedTitle = "") =>
+        EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new { number, oldPrice, newPrice, submit, expectedTitle }), StringComparison.Ordinal);
 
     public const string OwnedRowScript = """
     (() => {
@@ -272,71 +276,32 @@ internal static class SitePriceEdit
         form?.tagName==='FORM'&&formName==='frmBuy'&&priceName==='user_division_price';
       const formOwnedId=isAuditedBuyForm&&[...form.querySelectorAll('input[type="hidden"]')]
         .some(e=>String(e.value||'')===a.number);
+      // A price change sends the site's ENTIRE re-registration form, not just
+      // the amount. Never send it unless its original title survives intact.
+      // Do not "repair" a corrupted title by guessing from quantity/level.
+      const cleanTitle=s=>String(s||'').replace(/\s+/g,' ').trim();
+      const titleName=/^(?:title|subject|goods_?title|item_?title|user_?title|goods_?subject|item_?subject|user_?subject|goods_?name|item_?name|user_?item_?name)$/i;
+      const titleInputs=form?[...form.querySelectorAll('input,textarea')].filter(e=>
+        titleName.test(String(e.getAttribute?.('name')||e.name||e.getAttribute?.('id')||''))):[];
+      const originalTitle=cleanTitle(a.expectedTitle);
+      const siteTitle=titleInputs.length===1?cleanTitle(titleInputs[0].value):'';
+      const titlePreserved=originalTitle.length>=3&&titleInputs.length===1&&
+        siteTitle===originalTitle;
       const siteSubmit=isAuditedBuyForm?[...form.querySelectorAll('button[type="submit"]')].filter(e=>
         visible(e)&&attr(e,'id')==='ok_btn'&&attr(e,'class').split(/\s+/).includes('buy_re_reg')&&
         String(e.innerText||e.textContent||'').replace(/\s+/g,'')==='재등록'):[];
       // All of path, form, old site price, hidden listing ID, and the EXACT
       // native submit control must agree. A character-name save cannot pass.
       if(formOwnedId&&siteSubmit.length===1){
-        if(!a.submit)return result('ready','구매글 등록번호·현재 단가·frmBuy/ok_btn 재등록 제출 확인',old,1);
-        // The owner's manual edit captured one multipart POST to this exact
-        // first-party endpoint. Neither a synthetic click (22.2.56) nor a
-        // requestSubmit call (22.2.57) emitted that POST. Send the CURRENT
-        // validated form's FormData over a single same-origin POST, including
-        // all of its existing hidden fields, without ever copying their values
-        // into C# or logs. The server still decides whether to accept it.
-        const currentAction=String(form.getAttribute('action')||'').trim().split('?')[0];
-        if(currentAction&&!['buy_re_reg_ok.php','./buy_re_reg_ok.php',
-          '/myroom/buy/buy_re_reg_ok.php'].includes(currentAction))
-          return result('error','사이트 수정 폼의 제출 경로가 확인된 공식 경로와 다릅니다');
-        const currentMethod=String(form.getAttribute('method')||'').trim().toLowerCase();
-        if(currentMethod&&currentMethod!=='post')
-          return result('error','사이트 수정 폼의 전송 방식이 POST가 아닙니다');
-        if(typeof FormData!=='function'||typeof fetch!=='function')
-          return result('error','브라우저가 사이트 폼 전송을 지원하지 않습니다');
-        if(money(priceInput.value)!==old)return result('error','제출 직전 사이트 단가가 달라졌습니다');
-        const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
-        if(!setter)return result('error','사이트 단가 변경을 지원하지 않는 입력칸입니다');
-        setter.call(priceInput,desired);
-        priceInput.dispatchEvent(new Event('input',{bubbles:true}));
-        priceInput.dispatchEvent(new Event('change',{bubbles:true}));
-        if(money(priceInput.value)!==desired)return result('error','단가 입력 확인에 실패했습니다');
-        // Native HTML validation can block a submit silently. Check without
-        // submitting and report only input NAMES, never other field values.
-        const invalid=[...(form.querySelectorAll?.(':invalid')||[])].filter(e=>e.willValidate!==false)
-          .map(e=>attr(e,'name')||attr(e,'id')||'이름없음').slice(0,10);
-        if(form.checkValidity?.()===false||invalid.length)
-          return result('error','사이트 폼 검증 실패 (버튼 클릭 전 중단). 입력칸: '+invalid.join(', '),old,invalid.length);
-        if(form.dataset?.luzenPricePostStarted==='1')
-          return result('error','같은 수정 화면에서 중복 가격 제출을 차단했습니다');
-        let payload;
-        try{
-          payload=new FormData(form);
-          const amounts=payload.getAll('user_division_price');
-          if(amounts.length!==1||money(amounts[0])!==desired)
-            return result('error','전송 폼에 변경 단가가 정확히 반영되지 않았습니다');
-          if(![...payload.values()].some(v=>typeof v==='string'&&v.trim()===a.number))
-            return result('error','전송 폼에 원본 등록번호가 포함되지 않아 제출하지 않습니다');
-          const submitName=String(siteSubmit[0].getAttribute('name')||'').trim();
-          if(submitName)payload.append(submitName,String(siteSubmit[0].value||''));
-        }catch{
-          return result('error','사이트 폼 데이터를 안전하게 구성하지 못했습니다');
-        }
-        // Exactly ONE request. No fallback click, requestSubmit or retry.
-        // Keep FormData inside the signed-in page so all authenticated form
-        // fields remain browser-private. The network observer and own-list
-        // readback are the only sources of submission outcome.
-        form.dataset.luzenPricePostStarted='1';
-        try{
-          fetch('/myroom/buy/buy_re_reg_ok.php',{
-            method:'POST',body:payload,credentials:'same-origin',mode:'same-origin',
-            redirect:'follow',cache:'no-store'
-          }).catch(()=>{});
-        }catch{
-          return result('error','사이트 전송을 시작하지 못했습니다');
-        }
-        return result('submitted','확인된 사이트 주소에 원본 수정폼 multipart POST 요청 시작 (필드 '+
-          [...payload.keys()].length+'개, 값은 기록하지 않음)',desired,1);
+        if(!titlePreserved)return result('error',titleInputs.length!==1?
+          '가격 수정은 제목까지 재등록하므로 제목 입력칸을 유일하게 확인할 때까지 제출을 차단합니다':
+          '사이트 수정폼 제목과 저장된 원본 제목이 다릅니다. 가격만 수정해도 제목이 바뀔 수 있어 제출을 차단합니다');
+        // Safety interlock: the former code posted the ENTIRE site form with
+        // fetch(FormData(form)), bypassing the site's submit handler. This can
+        // rewrite the listing title even when only its price was edited. Until
+        // the server-side title behavior is verified, NEVER send that POST.
+        // Preview and submit requests are deliberately read-only.
+        return result('blocked','제목 보호 모드: 구매글 가격 자동 수정은 중지됐습니다. 사이트에서 직접 재등록하세요.',old,1);
       }
       const diag=`경로:${safe(location.pathname)}; 가격칸:${priceName}; 폼:${formName}/${formAction}; `+
         `폼 등록번호:${formOwnedId?'일치':'미확인'}; 제출후보:${siteSubmit.length}개; `+

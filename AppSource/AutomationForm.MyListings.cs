@@ -186,7 +186,8 @@ internal sealed partial class AutomationForm
                 (priceChanges.Count > 0 ? "가격 변경 미리보기:\n" + pricePreview + "\n\n" : "") +
                 (plan.PriceObservations.Count > 0 ? "기존 글 사이트 가격 비교:\n" + observedPrices + "\n\n" : "") +
                 "새로 가져온 글은 '기존 글 재등록' 대상으로 저장하며 자동실행은 꺼 둡니다.\n" +
-                "등록번호·계정·거래 방향이 일치하는 기존 글은 사이트 가격을 적용합니다.\n" +
+                "등록번호·계정·거래 방향이 일치하는 기존 글은 사이트 가격과 표시 제목을 확인합니다.\n" +
+                "사이트 제목이 달라도 저장된 원래 제목은 덮어쓰지 않고 목록에 함께 표시합니다.\n" +
                 "기존 글의 자동 실행 여부·시간 설정은 유지됩니다.\n" +
                 "등록번호·상세 URL·가격이 확인된 글은 불필요한 '확인 필요' 표시를 제거합니다.\n" +
                 "사이트에서 확인되지 않은 글과 제출 결과가 불분명한 글의 보류는 유지합니다.\n" +
@@ -544,6 +545,13 @@ internal sealed partial class AutomationForm
     private sealed class OwnedListLoginPendingException : Exception
     {
         public OwnedListLoginPendingException(string message) : base(message) { }
+    }
+
+    // A verified listing can still have an altered title; pause this job
+    // permanently before invoking the site's title-affecting reInsert action.
+    private sealed class SiteTitleSafetyException : Exception
+    {
+        public SiteTitleSafetyException(string message) : base(message) { }
     }
 
     // A management page that cannot be reached is a pre-submit network

@@ -33,6 +33,10 @@ internal sealed class ListingJob
     public string CharacterLevel { get; set; } = "";
     public string ListingMacro { get; set; } = "직접설정";
     public string Title { get; set; } = "";
+    // Latest title text observed on the authenticated OWN listing page.
+    // Never substitute it for the owner-authored Title: the site can render a
+    // split-quantity range in place of the first level number.
+    public string SiteObservedTitle { get; set; } = "";
     public string Quantity { get; set; } = "1";
     public string Unit { get; set; } = "개";
     public string Price { get; set; } = "";
@@ -116,6 +120,10 @@ internal sealed class ListingJob
         }
     }
     public string ViewTitle => $"[{Operation}] {Title}";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool SiteTitleDiffers => !string.IsNullOrWhiteSpace(SiteObservedTitle) &&
+        !string.Equals(MyListingsImport.CleanImportedTitle(SiteObservedTitle),
+            MyListingsImport.CleanImportedTitle(Title), StringComparison.Ordinal);
     public string NextDueLocal => RequiresReview ? "확인 필요" :
         InitialCompleted && !AutoRepost && Operation != "재등록" ? "완료" :
         !Enabled ? "자동 꺼짐" :
