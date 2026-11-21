@@ -81,6 +81,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Read-only actual-site submit event inspection test failed' }
           node tests/test_site_submit_validator_source_readonly.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Read-only first-party submit validator inspection test failed' }
+          node tests/test_site_price_async_flow.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'First-party asynchronous price-submit flow safety test failed' }
           node tests/test_native_single_price_gate.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Native single-item price pilot safety test failed' }
           node tests/test_title_integrity_interlock.cjs
@@ -194,15 +196,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.16'
+          $version = '22.3.17'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.16
-          path: LuzenBrowser_22.3.16_BinaryUpdate.zip
+          name: vanta-windows-v22.3.17
+          path: LuzenBrowser_22.3.17_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -210,7 +212,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.16'
+          $version = '22.3.17'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -222,7 +224,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.16 사이트 가격 수정폼 분석·복사 (제출 없음) 기능을 메인 관리 메뉴에 추가했습니다. v22.3.15에서는 기능이 물품 편집의 추가 작업 메뉴에만 있어 관리에서 찾을 수 없던 문제를 해결했습니다. 한 건을 선택한 뒤 관리 메뉴에서 실행하면 공식 구매 수정폼의 정적 JS 검증 코드가 복사되며, 실제 가격 변경은 제출하지 않습니다.'
+            releaseNotes = 'v22.3.17 아이템매니아 원본 buy_re_reg.js의 FormChecker 비동기 제출 경로에 맞춰 구매글 가격 변경을 재구성했습니다. 정상적인 첫 submit 취소를 최종 실패로 단정하지 않고, 연락처·카테고리·에디터 AJAX 단계를 요청 내용 없이 관찰합니다. 공식 사이트 alert는 닫아 숨겨진 브라우저의 검증 정체를 방지하고, 카테고리 변경은 추가 사용자 승인만 허용합니다. 실제 수정 전 제출 핸들러·에디터·AJAX·소독기 초기화를 확인하며, 기존 등록번호·제목 보호·최종 사이트 가격 재검증과 자동 일괄 제출 차단은 유지합니다. 실사이트 최종 성공은 본인 한 건 검증 전까지 보장하지 않습니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
