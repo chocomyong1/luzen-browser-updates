@@ -19,7 +19,9 @@ const target = '35100';
 const url = 'https://www.itemmania.com/myroom/buy/buy_re_reg.html';
 
 async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit=false,
-  dom0Cancels=false) {
+  dom0Cancels=false, multiLevel=false) {
+  const recordTitle=multiLevel?'10 10 10 레벨 작열 구매합니다':title;
+  const editTitle=multiLevel?'1 ~ 999 10 10 레벨 작열 구매합니다':siteTitle;
   const context = await browser.newContext({viewport:{width:1100,height:750}});
   const page = await context.newPage();
   const requests = [];
@@ -28,7 +30,7 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
     <!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
     <form id="frmBuy" action="/myroom/buy/buy_re_reg_ok.php" method="post">
       <input type="hidden" name="registration_id" value="${listingId}">
-      <label>제목<input name="user_title" value="${siteTitle}"></label>
+      <label>제목<input name="user_title" value="${editTitle}"></label>
       <table><tr><th>구매금액</th><td><input name="user_division_price" value="10,000"></td></tr></table>
       <button type="submit" id="ok_btn" class="buy_re_reg">재등록</button>
     </form>
@@ -67,8 +69,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   assert.equal(await page.locator('[name=user_division_price]').inputValue(),'10,000');
   const prepared=await page.evaluate(script('EditFormScript').replace('__ARG__',JSON.stringify({
     number:listingId,oldPrice:'10000',newPrice:target,submit:true,
-    expectedTitle:title,nativeSingleApproval:true,verifiedMinQuantity:'1',
-    verifiedMaxQuantity:'9995',allowVerifiedTitleRestore:true,
+    expectedTitle:recordTitle,nativeSingleApproval:true,verifiedMinQuantity:'1',
+    verifiedMaxQuantity:multiLevel?'999':'9995',allowVerifiedTitleRestore:true,
     trustedOneClick:true,nativeKeyboardPrice:true
   })));
   assert.equal(prepared.status,'input-ready',JSON.stringify(prepared));
@@ -151,7 +153,7 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   if(mutateTitle){
     assert.match(probe,/제목 보호 차단:예/);
   }else{
-    assert.equal(site.title,title);
+    assert.equal(site.title,recordTitle);
     assert.match(probe,/제목 보호 차단:아니오/);
   }
   await context.close();
@@ -163,7 +165,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   const browser=await chromium.launch(options);
   try{await oneTrial(browser,false);await oneTrial(browser,true);
     await oneTrial(browser,false,true);await oneTrial(browser,false,false,true);
-    await oneTrial(browser,false,false,false,true);}
+    await oneTrial(browser,false,false,false,true);
+    await oneTrial(browser,false,false,false,false,true);}
   finally{await browser.close();}
   console.log('PASS real Chromium key input triggers site validators; only one native click; late title mutation blocked');
 })().catch(error=>{console.error(error);process.exitCode=1;});

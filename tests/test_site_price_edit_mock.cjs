@@ -420,6 +420,63 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
 }
 
 {
+  // Real-world failure: the edit form replaced only the first level token
+  // in a multi-level OWN-list title. Older code supported "10 레벨" only.
+  const savedTitle = '10 10 10 레벨 작열 구매합니다';
+  const siteFormTitle = '1 ~ 999 10 10 레벨 작열 구매합니다';
+  const restored = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
+  const beforeApproval = restored.evaluate(false,number,'10000',true,'1','999');
+  assert.equal(beforeApproval.status,'restore-needed',beforeApproval.message);
+  assert.equal(restored.titleInput.value,siteFormTitle,'Inspection must not edit the site title');
+  assert.equal(restored.clicked,0);
+  assert.equal(restored.evaluate(true,number,'10000',true,'1','999').status,'restore-needed');
+  assert.equal(restored.prices[0].value,'10,000');
+  const prepared = restored.evaluate(true,number,'10000',true,'1','999',true);
+  assert.equal(prepared.status,'input-ready',prepared.message);
+  assert.equal(restored.titleInput.value,savedTitle,'Restore every level token, not just the last one');
+  restored.simulateTyping();
+  assert.equal(restored.finalize().status,'armed');
+  assert.equal(restored.verifyNativeClick(),true);
+  restored.simulateOneBrowserClick();
+  assert.equal(restored.acceptedNativeSubmits,1);
+  assert.equal(restored.titleInput.value,savedTitle,'Submission must retain the exact OWN-list title');
+
+  const secondary = editFormCase({approvedSubmit:true,
+    savedTitle:'9 9 레벨 겁화 삽니다',formTitle:'1 ~ 9,995 9 레벨 겁화 삽니다'});
+  assert.equal(secondary.evaluate(false,number,'10000',true,'1','9995').status,'restore-needed');
+  assert.equal(secondary.evaluate(true,number,'10000',true,'1','9995',true).status,'input-ready');
+  assert.equal(secondary.titleInput.value,'9 9 레벨 겁화 삽니다');
+
+  // A wrong range, a changed level token, or a changed suffix can never be
+  // repaired solely because the registration ID matches.
+  for (const [formTitle, min, max] of [
+    ['1 ~ 998 10 10 레벨 작열 구매합니다','1','999'],
+    ['1 ~ 999 10 9 레벨 작열 구매합니다','1','999'],
+    ['1 ~ 999 10 레벨 작열 구매합니다','1','999'],
+    ['1 ~ 999 10 10 레벨 겁화 구매합니다','1','999'],
+    ['1 ~ 999 10 10 레벨 작열 구매합니다','1','9995'],
+    ['[1개~999개] '+savedTitle,'1','999'],
+  ]) {
+    const unsafe = editFormCase({approvedSubmit:true,savedTitle,formTitle});
+    assert.equal(unsafe.evaluate(true,number,'10000',true,min,max,true).status,'error',formTitle);
+    assert.equal(unsafe.clicked,0);
+    assert.equal(unsafe.titleInput.value,formTitle);
+  }
+  const wrongId = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
+  assert.equal(wrongId.evaluate(true,'2026070508129999','10000',true,'1','999',true).status,'error');
+  assert.equal(wrongId.clicked,0);
+  const modifiedOnClick = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle,
+    clickMutatesTitle:true});
+  assert.equal(modifiedOnClick.evaluate(true,number,'10000',true,'1','999',true).status,'input-ready');
+  modifiedOnClick.simulateTyping();
+  assert.equal(modifiedOnClick.finalize().status,'armed');
+  modifiedOnClick.simulateOneBrowserClick();
+  assert.equal(modifiedOnClick.acceptedNativeSubmits,0,
+    'Changing the restored title again must cancel the form submission');
+  console.log('PASS multi-level split-range title restoration and unsafe mismatch rejections');
+}
+
+{
   const native = editFormCase({approvedSubmit: true});
   assert.equal(native.evaluate(false, number, '10000', true).status, 'ready');
   assert.equal(native.clicked, 0);

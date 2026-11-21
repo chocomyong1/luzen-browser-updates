@@ -728,14 +728,14 @@ internal static class SitePriceEdit
       const siteTitle=titleInputs.length===1?cleanTitle(titleInputs[0].value):'';
       const titlePreserved=originalTitle.length>=3&&titleInputs.length===1&&
         titleSignature(siteTitle)===titleSignature(originalTitle);
-      // The site's BUY edit form sometimes REPLACES the first actual level
-      // with the split-quantity range (e.g. "10 레벨 ..." becomes
-      // "1 ~ 9,995 레벨 ..."). Posting that field unchanged corrupts a real
-      // listing title. Repair is permitted ONLY for one manually approved
-      // listing when the exact signed-in OWN row independently supplied the
-      // SAME min/max range and every character after "레벨" is identical.
-      const savedLevel=originalTitle.match(/^(8|9|10)\s*레벨([\s\S]*)$/);
-      const rangeTitle=siteTitle.match(/^\[?\s*([\d,]+)\s*(?:개)?\s*[~〜～–-]\s*([\d,]+)\s*(?:개)?\s*\]?\s*레벨([\s\S]*)$/);
+      // The site's BUY edit form sometimes REPLACES the FIRST level token
+      // with the split-quantity range. This also happens with multi-token
+      // titles: "10 10 10 레벨 ..." -> "1 ~ 999 10 10 레벨 ...".
+      // Validate the entire remaining level sequence and suffix against the
+      // independent OWN-list title. Never infer how many level digits belong
+      // in a title or normalize away any of its numbers/punctuation.
+      const savedLevel=originalTitle.match(/^(8|9|10)((?:\s+(?:8|9|10))*\s*레벨[\s\S]*)$/);
+      const rangeTitle=siteTitle.match(/^\[?\s*([\d,]+)\s*(?:개)?\s*[~〜～–-]\s*([\d,]+)\s*(?:개)?\s*\]?\s*([\s\S]*)$/);
       const quantity=s=>String(s||'').replace(/,/g,'').trim();
       const verifiedMin=quantity(a.verifiedMinQuantity),verifiedMax=quantity(a.verifiedMaxQuantity);
       const verifiedRange=/^[1-9]\d{0,6}$/.test(verifiedMin)&&/^[1-9]\d{0,6}$/.test(verifiedMax)&&
@@ -760,7 +760,7 @@ internal static class SitePriceEdit
           '내 등록목록 제목: '+displayTitle(originalTitle)+'\n'+
           '원래 제목과 다를 때는 자동으로 제목을 고치거나 가격을 제출하지 않습니다.');
         if(mayRestoreTitle&&!a.allowVerifiedTitleRestore)return result('restore-needed',
-          '사이트가 첫 레벨 숫자를 검증된 분할 수량 범위로 바꾼 것을 확인했습니다.\n'+
+          '사이트가 제목의 첫 레벨 숫자를 검증된 분할 수량 범위로 바꾼 것을 확인했습니다.\n'+
           '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
           '내 등록목록 제목: '+displayTitle(originalTitle)+'\n'+
           '원래 제목으로 폼을 복구하는 별도 승인이 있어야만 1건 제출할 수 있습니다.',old,1);
