@@ -7,6 +7,8 @@ const path=require('node:path');
 const vm=require('node:vm');
 const src=fs.readFileSync(path.join(__dirname,'../AppSource/SitePriceEdit.cs'),'utf8');
 const flow=fs.readFileSync(path.join(__dirname,'../AppSource/AutomationForm.SitePriceEdit.cs'),'utf8');
+const main=fs.readFileSync(path.join(__dirname,'../AppSource/MainForm.cs'),'utf8');
+const automation=fs.readFileSync(path.join(__dirname,'../AppSource/AutomationForm.cs'),'utf8');
 const script=src.match(/public const string SubmitValidatorSourceScript = """([\s\S]*?)""";/)?.[1];
 assert(script,'Missing read-only site script analyzer');
 new vm.Script(script.replace('__ARG__',JSON.stringify({number:'2026112100145715'})));
@@ -66,6 +68,11 @@ async function inspect({host='www.itemmania.com',number=listing,hasButton=true}=
   assert.equal((await inspect({hasButton:false})).result.status,'error');
   assert.equal((await inspect({host:'fake-itemmania.com'})).result.status,'error');
   assert.match(flow,/BuildSubmitValidatorSourceScript\(job\.ListingNumber\)/);
+  // The real top toolbar's 관리 menu must expose the diagnostic. A prior
+  // release only wired it to the hidden edit-only extra-actions menu.
+  assert.match(main,/moreMenu\.Items\.Add\("사이트 가격 수정폼 분석·복사 \(제출 없음\)"/);
+  assert.match(main,/_module\.InspectSelectedPriceSubmitFromHeaderAsync\(\)/);
+  assert.match(automation,/public Task InspectSelectedPriceSubmitFromHeaderAsync\(\) => InspectSelectedPriceSubmitBindingsAsync\(\);/);
   assert.match(flow,/SitePriceEdit\.SubmitValidatorSourceStatusScript/);
   assert.match(flow,/DateTime\.UtcNow\.AddSeconds\(12\)/);
   assert.match(flow,/브라우저 스크립트가 결과를 반환하지 않았습니다/);
