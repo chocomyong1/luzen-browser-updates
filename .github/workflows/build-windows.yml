@@ -119,6 +119,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Passive site request recording safety test failed' }
           node tests/test_price_submission_checkpoint_and_stages.cjs
           if ($LASTEXITCODE -ne 0) { throw 'One-item price click checkpoint and first-party stage diagnosis safety test failed' }
+          node tests/test_disabled_price_reservation_cleanup.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Unsubmitted price reservation cancellation and safe review-hold guard failed' }
           node tests/test_dual_system_isolation.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Dual system isolation safety test failed' }
           node tests/test_menu_layout.cjs
@@ -202,15 +204,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.21'
+          $version = '22.3.22'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.21
-          path: LuzenBrowser_22.3.21_BinaryUpdate.zip
+          name: vanta-windows-v22.3.22
+          path: LuzenBrowser_22.3.22_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -218,7 +220,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.21'
+          $version = '22.3.22'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -230,7 +232,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.21 구매글 단건 가격 수정에서 공식 사이트의 연락처 검사→카테고리 검사→최종 POST 단계 중 어디서 중단됐는지 오류창에 직접 표시합니다. 실제 버튼 누름 직전에만 결과 확인 대기를 저장하므로 가격 입력·버튼 검증 실패는 미제출 상태로 복구합니다. 최종 사이트 반영은 기존과 같이 본인 관리목록에서 별도 확인하고 불명확하면 중복 제출하지 않습니다. 실제 사이트 가격 수정 성공은 아직 별도 검증이 필요합니다.'
+            releaseNotes = 'v22.3.22 기존 가격 자동 수정이 중지된 상태에서 적용 불가능한 오래된 예약을 미적용 가격 요청으로 정확히 표시합니다. 단순 예약을 프로그램 시작 때 확인 필요로 잘못 바꾸지 않고, 가격 요청 현황의 선택 요청 취소 버튼으로 미제출 예약만 안전하게 해제할 수 있습니다. 기존 제출 결과가 불확실한 글의 확인 필요는 해제하지 않습니다. 자동 시작 대상 0건이면 해당 A/B/C 시스템의 자동 ON·확인 필요·재등록 OFF 건수를 표시합니다. 실제 사이트 가격 변경은 실행하지 않습니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

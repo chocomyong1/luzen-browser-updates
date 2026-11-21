@@ -173,15 +173,22 @@ internal sealed partial class AutomationForm : Form
                     oldJob.LastStatus = "제목 숫자 중복 의심: 원본 확인 전 자동 작업 금지";
                 }
             }
-            // Existing price reservations cannot be safely honored while the
-            // site's full-form price POST is locked. Hold them immediately
-            // instead of waiting for the scheduler to treat each as a failure.
+            // Price automation is disabled. A pre-existing local reservation
+            // is NOT evidence of a submitted site request. Do not turn every
+            // such reservation into an unrelated "확인 필요" hold on startup.
+            // An old hold carrying this exact legacy reason was also created
+            // only at startup (no POST); genuine uncertain submissions keep
+            // their own status/snapshot and must NEVER be auto-released.
             if (!SitePriceEdit.AutomaticPriceSubmissionEnabled &&
-                !string.IsNullOrWhiteSpace(oldJob.PendingSitePriceTarget) && !oldJob.RequiresReview)
+                !string.IsNullOrWhiteSpace(oldJob.PendingSitePriceTarget) &&
+                (!oldJob.RequiresReview ||
+                 (oldJob.LastStatus == "제목 보호 모드: 가격 예약 자동 제출 중지" &&
+                  !oldJob.PendingRepostAttemptUtc.HasValue &&
+                  string.IsNullOrWhiteSpace(oldJob.PendingRepostBeforeStamp) &&
+                  string.IsNullOrWhiteSpace(oldJob.PriceEditSiteTitleSnapshot))))
             {
                 oldJob.Enabled = false;
-                oldJob.RequiresReview = true;
-                oldJob.NextDueUtc = DateTime.MaxValue;
+                oldJob.RequiresReview = false;
                 oldJob.LastStatus = "제목 보호 모드: 가격 예약 자동 제출 중지";
             }
         }
@@ -1019,7 +1026,8 @@ internal sealed partial class AutomationForm : Form
             _system == "B" && _schedulerRunning && _bConnectionRecoveryUtc > DateTime.UtcNow
             ? "B VPN 연결 대기" : _sitePriceBatchRunning ? _state.Text :
             _schedulerRunning ? "자동 실행 중" : "중지/대기";
-        _autoSummary.Text = $"전체 {_jobs.Count}개     ·     자동 사용 {enabled}개     ·     가격 예약 {scheduledPrices}개     ·     확인 필요 {pending}개     ·     {state}";
+        string priceLabel = SitePriceEdit.AutomaticPriceSubmissionEnabled ? "가격 예약" : "미적용 가격 요청";
+        _autoSummary.Text = $"전체 {_jobs.Count}개     ·     자동 사용 {enabled}개     ·     {priceLabel} {scheduledPrices}개     ·     확인 필요 {pending}개     ·     {state}";
     }
 
     private void EditAutoSelectedJob()
@@ -2391,8 +2399,17 @@ internal sealed partial class AutomationForm : Form
             ListingIdentity.HasNumber(j.ListingNumber) && MyListingsImport.IsOwnedListUrl(OwnedListUrlFor(j)));
         if (enabled.Count == 0 && !canCheckHeld)
         {
-            if (!silent) MessageBox.Show(this, "자동 실행할 물품이나 사이트에서 재검증할 수 있는 보류 물품이 없습니다.");
-            else AppendLog("Windows 자동 시작 생략: 자동 사용 물품 및 확인할 보류 물품 없음");
+            int autoOn = _jobs.Count(j => j.Enabled);
+            int review = _jobs.Count(j => j.RequiresReview);
+            int completed = _jobs.Count(j => j.Enabled && !j.RequiresReview && j.InitialCompleted &&
+                j.Operation != "재등록" && !j.AutoRepost);
+            string reason = $"{_system} 시스템에는 지금 실행 가능한 물품이 0건입니다.\n\n" +
+                $"자동 ON {autoOn}건 · 확인 필요 {review}건 · 완료 후 재등록 OFF {completed}건\n" +
+                "자동 ON 숫자는 '실행 가능' 숫자와 다릅니다. 다른 시스템(A/B/C)의 물품은 별도로 시작해야 합니다.\n" +
+                "물품 목록의 확인 필요·자동 OFF·재등록 설정을 확인해 주세요. 자동으로 보류를 해제하거나 제출하지 않았습니다.";
+            if (!silent) MessageBox.Show(this, reason, "자동 시작 가능한 물품 없음");
+            else AppendLog("Windows 자동 시작 생략: " + _system + " · 자동 ON " + autoOn +
+                "건 / 확인 필요 " + review + "건 / 완료 후 재등록 OFF " + completed + "건");
             return;
         }
         foreach (var job in enabled)

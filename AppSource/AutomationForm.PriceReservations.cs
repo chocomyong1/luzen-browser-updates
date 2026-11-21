@@ -9,6 +9,68 @@ internal readonly record struct PriceReservationSnapshot(
 
 internal sealed partial class AutomationForm
 {
+    // Cancel only an unsubmitted LOCAL price target. This never touches the
+    // browser or the actual site price; keep any uncertain submit evidence.
+    internal bool TryCancelUnsubmittedPriceReservation(ListingJob job, out string problem)
+    {
+        problem = "";
+        if (!_jobs.Contains(job) || string.IsNullOrWhiteSpace(job.PendingSitePriceTarget))
+        {
+            problem = "이 시스템에 취소할 가격 요청이 없습니다.";
+            return false;
+        }
+        if (_busy || _myListingsImportRunning || _sitePriceBatchRunning ||
+            ReferenceEquals(job, _activeSitePriceJob) || ReferenceEquals(job, _currentlyExecutingJob))
+        {
+            problem = "사이트 작업 중에는 가격 요청을 취소할 수 없습니다. 작업이 끝난 뒤 다시 시도하세요.";
+            return false;
+        }
+        bool legacyHold = job.RequiresReview &&
+            job.LastStatus == "제목 보호 모드: 가격 예약 자동 제출 중지";
+        if ((job.RequiresReview && !legacyHold) ||
+            job.PendingRepostAttemptUtc.HasValue ||
+            !string.IsNullOrWhiteSpace(job.PendingRepostBeforeStamp) ||
+            !string.IsNullOrWhiteSpace(job.PriceEditSiteTitleSnapshot))
+        {
+            problem = "이 글은 과거 제출 결과가 불확실할 수 있어 예약만 취소할 수 없습니다. " +
+                "먼저 '가격 변경 결과 재조회 (제출 없음)'로 사이트 상태를 확인해 주세요.";
+            return false;
+        }
+        string beforeTarget = job.PendingSitePriceTarget;
+        string beforeStatus = job.LastStatus;
+        bool beforeReview = job.RequiresReview;
+        bool beforeEnabled = job.Enabled;
+        DateTime beforeDue = job.NextDueUtc;
+        try
+        {
+            job.PendingSitePriceTarget = "";
+            if (legacyHold)
+            {
+                job.RequiresReview = false;
+                job.Enabled = false;
+                job.NextDueUtc = DateTime.MaxValue;
+            }
+            job.LastStatus = "미제출 가격 요청 취소 · 사이트 가격 미변경";
+            _config.Jobs = _jobs.ToList();
+            _config.Save();
+            AppendLog("가격 예약 취소(사이트 미제출): " + job.Server + " · " + job.ListingNumber);
+            _jobsGrid.Refresh();
+            _autoGrid.Refresh();
+            RefreshAutoSummary();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            job.PendingSitePriceTarget = beforeTarget;
+            job.LastStatus = beforeStatus;
+            job.RequiresReview = beforeReview;
+            job.Enabled = beforeEnabled;
+            job.NextDueUtc = beforeDue;
+            problem = "예약 취소 내용을 저장하지 못해 변경을 되돌렸습니다: " + ex.Message;
+            return false;
+        }
+    }
+
     // Read-only view of the live scheduler. EstimatedUtc is NOT a promised
     // execution timestamp: site login, shared quotas and processing time can
     // delay it, and stopped/held systems intentionally show no estimate.

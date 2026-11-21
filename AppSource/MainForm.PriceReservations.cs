@@ -57,14 +57,16 @@ internal sealed partial class MainForm
 
         var header = new Label
         {
-            Text = "가격 변경 예약", Dock = DockStyle.Fill, AutoSize = false,
+            Text = "가격 변경 요청 현황", Dock = DockStyle.Fill, AutoSize = false,
             Font = new Font("Segoe UI", 15F, FontStyle.Bold), ForeColor = UiTheme.Text,
             TextAlign = ContentAlignment.MiddleLeft
         };
         layout.Controls.Add(header, 0, 0);
         var explanation = new Label
         {
-            Text = "실제 확인된 사이트 가격과 새 예약 가격을 구분합니다. 반영은 해당 글의 다음 자동등록 차례에만 진행됩니다.",
+            Text = SitePriceEdit.AutomaticPriceSubmissionEnabled
+                ? "실제 확인된 사이트 가격과 새 예약 가격을 구분합니다. 다음 자동등록 차례에 반영됩니다."
+                : "현재 사이트 가격 자동 수정은 중지되어 있습니다. 표시된 금액은 미적용 요청이며 사이트 가격이 아닙니다.",
             Dock = DockStyle.Fill, ForeColor = UiTheme.Muted, TextAlign = ContentAlignment.MiddleLeft
         };
         layout.Controls.Add(explanation, 0, 1);
@@ -101,7 +103,7 @@ internal sealed partial class MainForm
         Column(nameof(PriceReservationRow.SystemName), "시스템", 78);
         Column(nameof(PriceReservationRow.Item), "서버 · 물품", 340, fill: true);
         Column(nameof(PriceReservationRow.VerifiedPrice), "현재 사이트 가격", 145);
-        Column(nameof(PriceReservationRow.TargetPrice), "예약 가격", 130);
+        Column(nameof(PriceReservationRow.TargetPrice), "미적용 요청 가격", 142);
         Column(nameof(PriceReservationRow.Estimated), "예상 반영", 120);
         Column(nameof(PriceReservationRow.State), "상태", 160);
         layout.Controls.Add(grid, 0, 2);
@@ -123,14 +125,17 @@ internal sealed partial class MainForm
         close.Click += (_, _) => dialog.Close();
         var edit = new Button { Text = "예약 가격 다시 수정", Width = 165, Height = 34 };
         UiTheme.StyleButton(edit, UiTheme.ButtonTone.Primary);
+        var cancelRequest = new Button { Text = "선택 요청 취소", Width = 136, Height = 34 };
+        UiTheme.StyleButton(cancelRequest);
         var refresh = new Button { Text = "새로고침", Width = 108, Height = 34 };
         UiTheme.StyleButton(refresh);
         bottom.Controls.Add(close);
+        bottom.Controls.Add(cancelRequest);
         bottom.Controls.Add(edit);
         bottom.Controls.Add(refresh);
         bottom.Controls.Add(new Label
         {
-            Text = "※ 예상 시간은 로그인·사이트 등록 제한·대기 순번에 따라 변동됩니다.",
+            Text = "※ 취소해도 실제 사이트 가격과 저장된 물품 금액은 바뀌지 않습니다.",
             AutoSize = true, Padding = new Padding(0, 10, 14, 0), ForeColor = UiTheme.Muted
         });
         layout.Controls.Add(bottom, 0, 4);
@@ -140,7 +145,8 @@ internal sealed partial class MainForm
         void ShowSelected()
         {
             var selected = Selected();
-            edit.Enabled = selected is not null;
+            edit.Enabled = selected is not null && SitePriceEdit.AutomaticPriceSubmissionEnabled;
+            cancelRequest.Enabled = selected is not null;
             if (selected is null)
             {
                 selectedCard.Text = "대기 중인 가격 변경 예약이 없습니다.";
@@ -150,7 +156,7 @@ internal sealed partial class MainForm
             string verifiedAt = selected.Job.VerifiedSitePriceUtc?.ToLocalTime().ToString("MM-dd HH:mm") ?? "확인 기록 없음";
             selectedCard.Text = $"{selected.SystemName}  ·  {selected.Item}\n" +
                 $"현재 사이트 가격   {verified}  ({verifiedAt} 확인)\n" +
-                $"변경 예약 가격   {selected.TargetPrice}     예상 반영   {selected.Estimated} ({selected.State})";
+                $"미적용 요청 가격   {selected.TargetPrice}     예상 반영   {selected.Estimated} ({selected.State})";
         }
         grid.SelectionChanged += (_, _) => ShowSelected();
         void Reload()
@@ -171,12 +177,32 @@ internal sealed partial class MainForm
                     {
                         grid.CurrentCell = gridRow.Cells[0]; break;
                     }
-            header.Text = $"가격 변경 예약  ·  {rows.Count}건";
+            header.Text = (SitePriceEdit.AutomaticPriceSubmissionEnabled ? "가격 변경 예약" : "미적용 가격 요청") +
+                $"  ·  {rows.Count}건";
             ShowSelected();
         }
         refresh.Click += (_, _) => Reload();
+        cancelRequest.Click += (_, _) =>
+        {
+            var selected = Selected();
+            if (selected is null) return;
+            if (MessageBox.Show(dialog,
+                    selected.SystemName + " · " + selected.Item + "\n\n" +
+                    "미적용 가격 요청 " + selected.TargetPrice + "을(를) 취소할까요?\n" +
+                    "사이트에 제출하지 않으며, 실제 사이트 가격과 저장된 물품 가격은 바꾸지 않습니다.\n" +
+                    "이전 제출이 불확실한 물품은 취소할 수 없습니다.",
+                    "가격 요청 1건 취소 · 사이트 미제출", MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            if (!IntegratedOwner(selected.System).TryCancelUnsubmittedPriceReservation(selected.Job, out var problem))
+            {
+                MessageBox.Show(dialog, problem, "가격 요청 취소 불가", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            Reload();
+        };
         edit.Click += (_, _) =>
         {
+            if (!SitePriceEdit.AutomaticPriceSubmissionEnabled) return;
             var selected = Selected();
             if (selected is null) return;
             using var prompt = new Form
