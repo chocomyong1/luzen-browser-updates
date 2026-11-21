@@ -250,11 +250,7 @@ internal sealed partial class AutomationForm
         }
         if (job.RequiresReview)
         {
-            MessageBox.Show(this,
-                "이 글은 이전 제출 결과가 확인 대기 중입니다. 같은 등록번호를 다시 제출하지 않습니다.\n" +
-                "먼저 '가격 변경 결과 재조회 (제출 없음)'로 사이트 상태를 확인해 주세요.",
-                "중복 수정 방지", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
+            if (!await ReconcileHeldPriceBeforeImmediateEditAsync(job)) return;
         }
         using var dialog = new Form
         {
@@ -292,6 +288,109 @@ internal sealed partial class AutomationForm
         if (_schedulerRunning) PauseScheduler();
         await ApplySitePriceAsync(job, bulkApproval: false, nativeSingleApproval: true,
             manuallyApprovedPrice: (long)amount.Value);
+    }
+
+    // The same per-row action first reconciles an old uncertain submission.
+    // If the exact listing already has the intended price, commit the verified
+    // result WITHOUT posting. A fresh attempt is possible only when the
+    // original ID/title/old price are all proven unchanged, the full owned
+    // list scan found no replacement, and the user independently confirms
+    // no other listing was created. No automatic hold release is inferred
+    // from a missing network event alone.
+    private async Task<bool> ReconcileHeldPriceBeforeImmediateEditAsync(ListingJob job)
+    {
+        if (!job.LastStatus.Contains("가격", StringComparison.Ordinal) ||
+            !TrySitePrice(job.PendingSitePriceTarget, out var attemptedTarget))
+        {
+            MessageBox.Show(this, "확인 대기 원인이나 이전 요청 금액을 확인할 수 없습니다.\n" +
+                "사이트의 중복 등록 여부를 직접 확인한 뒤 보류를 해제해 주세요.",
+                "중복 제출 방지", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+        if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
+        {
+            MessageBox.Show(this, "독립 VPN 연결이 확인되지 않아 사이트를 조회하지 않습니다.", "연결 확인");
+            return false;
+        }
+        var account = ItemManiaAccountStore.Load(_system).UserId;
+        if (string.IsNullOrWhiteSpace(account) ||
+            !string.Equals(account, job.SiteId, StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(this, "현재 사이트 계정과 이 등록글의 계정이 일치하지 않습니다.", "계정 확인");
+            return false;
+        }
+        if (_schedulerRunning) PauseScheduler();
+        if (_busy) return false;
+        _busy = true;
+        _state.Text = "이전 가격 수정 결과 재조회 중 (재제출 없음)";
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        try
+        {
+            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
+            if (_web.CoreWebView2 is null) throw new InvalidOperationException("사이트 브라우저 연결 없음");
+            if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(cancellation.Token);
+            var readback = await ReadSitePriceAfterRepostAsync(job, attemptedTarget, cancellation.Token);
+            AppendLog("1건 즉시 수정 전 확인 대기 재조회 (제출 없음): " + job.ListingNumber + " · " + readback.Message);
+            if (readback.ExactIdVerified)
+            {
+                job.Price = attemptedTarget.ToString("N0");
+                job.VerifiedSitePrice = attemptedTarget.ToString();
+                job.VerifiedSitePriceUtc = DateTime.UtcNow;
+                job.PendingSitePriceTarget = "";
+                job.PriceEditSiteTitleSnapshot = "";
+                job.RequiresReview = false;
+                job.Enabled = false; // A single manual check never restarts the scheduler.
+                job.NextDueUtc = DateTime.MaxValue;
+                job.LastStatus = "가격 수정 결과 확인: " + attemptedTarget.ToString("N0") + "원 (자동 OFF)";
+                _config.Jobs = _jobs.ToList();
+                _config.Save();
+                MessageBox.Show(this, "이전 가격 수정이 실제 사이트에 반영되어 있습니다.\n\n" +
+                    readback.Message + "\n\n중복 제출 없이 확인 대기만 해제했습니다. 자동 실행은 꺼져 있습니다.",
+                    "기존 수정 반영 확인 · 추가 제출 없음", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
+            if (!readback.OriginalUnchangedNoReplacement)
+            {
+                MessageBox.Show(this, "사이트에서 기존 수정 결과를 안전하게 확정하지 못했습니다.\n\n" +
+                    readback.Message + "\n\n추가 제출하지 않았고 확인 대기를 유지합니다. " +
+                    "아이템매니아에서 중복 글과 등록번호를 확인해 주세요.",
+                    "기존 수정 결과 불확실 · 중복 제출 방지", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            if (MessageBox.Show(this,
+                "이전 가격 수정 이후에도 원래 등록번호·제목·기존 금액이 그대로이고, " +
+                "검색한 본인 관리목록에 새 등록글 후보가 없음을 확인했습니다.\n\n" +
+                readback.Message + "\n\n" +
+                "아이템매니아 사이트에서도 새 글이나 중복 글이 생기지 않았음을 직접 확인했습니까?\n" +
+                "[예]를 누르면 이 1건의 확인 대기를 해제하고 새 가격 수정 화면으로 진행합니다. " +
+                "아직 사이트에 재제출하지 않았습니다.",
+                "기존 가격 수정 결과 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
+            job.RequiresReview = false;
+            job.Enabled = false;
+            job.NextDueUtc = DateTime.MaxValue;
+            job.LastStatus = "사이트 기존 가격 유지 확인 · 사용자 확인 후 1건 수정 준비 (자동 OFF)";
+            _config.Jobs = _jobs.ToList();
+            _config.Save();
+            AppendLog("사이트 원본 글 유지 검증·사용자 중복 부재 확인 · 단건 수정 재진입: " + job.ListingNumber);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog("기존 수정 결과 재조회 실패: " + ex.GetType().Name + " · " + ex.Message);
+            MessageBox.Show(this, "사이트 확인 중 오류가 발생했습니다. 가격을 제출하지 않았습니다.\n" + ex.Message,
+                "가격 결과 재조회 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+            _state.Text = _schedulerRunning ? "자동 실행 중" : "중지/대기";
+            _jobsGrid.Refresh();
+            _autoGrid.Refresh();
+            RefreshAutoSummary();
+            DispatchQueuedMyListingsImport();
+        }
     }
 
     // Never edits a field or submits a listing. This uses the same exact-ID
@@ -1013,6 +1112,7 @@ internal sealed partial class AutomationForm
     private sealed class SitePriceReadback
     {
         public bool ExactIdVerified { get; set; }
+        public bool OriginalUnchangedNoReplacement { get; set; }
         public string Message { get; set; } = "";
     }
 
@@ -1164,6 +1264,14 @@ internal sealed partial class AutomationForm
             return new SitePriceReadback { ExactIdVerified = true,
                 Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 및 제출 전 제목 유지 확인." };
         }
+        bool originalUnchangedNoReplacement = matchingOld.Count == 1 &&
+            TrySitePrice(matchingOld[0].Price, out var currentOld) &&
+            TrySitePrice(job.VerifiedSitePrice, out var previouslyVerifiedOld) &&
+            currentOld == previouslyVerifiedOld && currentOld != target &&
+            !legacyTitleFallback && expectedTitle.Length > 0 &&
+            PriceReadbackTitle(matchingOld[0].Title) == expectedTitle &&
+            Regex.Replace(matchingOld[0].Server ?? "", @"\s+", "").ToLowerInvariant() == expectedServer &&
+            newCandidates.Count == 0 && queue.Count == 0 && visited.Count < maxPages;
         if (oldPrices.Count > 0)
             summary += $"기존 등록번호 {job.ListingNumber} 조회 단가: {string.Join(", ", oldPrices)}원. ";
         else summary += $"기존 등록번호 {job.ListingNumber}는 검사한 목록에서 찾지 못함. ";
@@ -1174,7 +1282,8 @@ internal sealed partial class AutomationForm
             summary += $"새 등록번호 후보 {newCandidates.Count}건: " +
                 string.Join(", ", newCandidates.Keys.Take(4)) + ". 동일 물품을 특정할 수 없음.";
         else summary += "변경 가격과 제목·서버가 모두 일치하는 새 등록번호 후보 없음.";
-        return new SitePriceReadback { Message = summary };
+        return new SitePriceReadback { OriginalUnchangedNoReplacement = originalUnchangedNoReplacement,
+            Message = summary };
     }
 
     private void HandleSitePriceEditScriptDialog(Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogOpeningEventArgs e)
