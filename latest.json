@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.16",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.16/LuzenBrowser_22.3.16_BinaryUpdate.zip",
-  "sha256": "88a3213a579672ebf76d985c500c7dc5a1410ba43b70cac20bb6aeafd74a5ebc",
+  "version": "22.3.17",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.17/LuzenBrowser_22.3.17_BinaryUpdate.zip",
+  "sha256": "af02a18fe225589669e79c0ecff4a325671f36210b9293580908d2d97d9a6c96",
   "format": "binary",
-  "releaseNotes": "v22.3.16 사이트 가격 수정폼 분석·복사 (제출 없음) 기능을 메인 관리 메뉴에 추가했습니다. v22.3.15에서는 기능이 물품 편집의 추가 작업 메뉴에만 있어 관리에서 찾을 수 없던 문제를 해결했습니다. 한 건을 선택한 뒤 관리 메뉴에서 실행하면 공식 구매 수정폼의 정적 JS 검증 코드가 복사되며, 실제 가격 변경은 제출하지 않습니다."
+  "releaseNotes": "v22.3.17 아이템매니아 원본 buy_re_reg.js의 FormChecker 비동기 제출 경로에 맞춰 구매글 가격 변경을 재구성했습니다. 정상적인 첫 submit 취소를 최종 실패로 단정하지 않고, 연락처·카테고리·에디터 AJAX 단계를 요청 내용 없이 관찰합니다. 공식 사이트 alert는 닫아 숨겨진 브라우저의 검증 정체를 방지하고, 카테고리 변경은 추가 사용자 승인만 허용합니다. 실제 수정 전 제출 핸들러·에디터·AJAX·소독기 초기화를 확인하며, 기존 등록번호·제목 보호·최종 사이트 가격 재검증과 자동 일괄 제출 차단은 유지합니다. 실사이트 최종 성공은 본인 한 건 검증 전까지 보장하지 않습니다."
 }
