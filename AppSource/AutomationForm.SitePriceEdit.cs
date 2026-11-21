@@ -556,10 +556,17 @@ internal sealed partial class AutomationForm
                 MyListingsImport.IsOwnedListUrl(x.SourceListUrl)).ToList();
             if (records.Count != 1 || !TrySitePrice(records[0].Price, out var current))
                 throw new InvalidOperationException("해당 등록번호의 현재 사이트 단가를 정확히 읽지 못했습니다. 수정하지 않았습니다.");
-            if (!diagnosticOnly && (MyListingsImport.HasSuspiciousDuplicatedLevel(job.Title) ||
-                MyListingsImport.HasSuspiciousDuplicatedLevel(records[0].Title) ||
-                PriceReadbackTitle(records[0].Title) != PriceReadbackTitle(job.Title)))
-                throw new InvalidOperationException("원본 제목과 사이트 제목이 다르거나 레벨 숫자가 중복되어 있습니다. 제목을 복구하기 전에는 가격 재등록을 하지 않습니다.");
+            // Only the exact signed-in OWN-list number, side and server identify
+            // this target. A historical VANTA title may differ from the site.
+            // Capture the CURRENT site title solely to prevent the whole-form
+            // price edit from silently rewriting it; never copy job.Title into
+            // the edit form or use it to veto an otherwise verified listing.
+            string siteTitleSnapshot = records[0].Title;
+            if (string.IsNullOrWhiteSpace(siteTitleSnapshot))
+                throw new InvalidOperationException("해당 등록번호의 현재 사이트 제목을 읽지 못해 전체 수정폼 제출을 중단했습니다.");
+            if (!string.IsNullOrWhiteSpace(records[0].Server) &&
+                !string.Equals(records[0].Server.Trim(), job.Server.Trim(), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("등록번호는 일치하지만 사이트 서버와 저장 서버가 달라 수정하지 않았습니다.");
             if (!diagnosticOnly)
             {
                 job.VerifiedSitePrice = current.ToString();
@@ -583,7 +590,7 @@ internal sealed partial class AutomationForm
             if (!diagnosticOnly && !CanRunNow(job, out var quotaReason))
                 throw new InvalidOperationException("가격 변경 시 등록 작업 간격을 확인해야 합니다. " + quotaReason);
             var ask = $"아이템매니아 구매 등록글 1건의 가격을 변경할까요?\n\n" +
-                $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n제목: {job.Title}\n\n" +
+                $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n사이트 현재 제목: {siteTitleSnapshot}\n\n" +
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
                 (nativeSingleApproval ?
                     "아직 실사이트 결과가 검증되지 않은 단건 시험 기능입니다. 제목 변형 위험이 남아 있습니다.\n" +
@@ -601,7 +608,7 @@ internal sealed partial class AutomationForm
             {
                 AppendLog("실제 수정 화면 경로: 본인 등록글의 제목을 열고 상세 화면에서 수정하기 탐색 · " + job.ListingNumber);
                 var titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                    SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, false,
+                    SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, siteTitleSnapshot, false,
                         job.MinQuantity, job.MaxQuantity, job.Server, job.OriginalTradeSide)));
                 if (titleLink.Status == "ready")
                 {
@@ -610,7 +617,7 @@ internal sealed partial class AutomationForm
                     try
                     {
                         titleLink = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                            SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, job.Title, true,
+                            SitePriceEdit.BuildOwnedTitleScript(job.ListingNumber, siteTitleSnapshot, true,
                                 job.MinQuantity, job.MaxQuantity, job.Server, job.OriginalTradeSide)));
                         if (titleLink.Status != "opened") throw new InvalidOperationException(titleLink.Message);
                     }
@@ -642,7 +649,7 @@ internal sealed partial class AutomationForm
                     if (!IsAllowedCurrentPage())
                         throw new InvalidOperationException("상세 화면이 아이템매니아 공식 사이트를 벗어났습니다");
                     detail = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                        SitePriceEdit.BuildDetailEditScript(job.ListingNumber, job.Title, false)));
+                        SitePriceEdit.BuildDetailEditScript(job.ListingNumber, siteTitleSnapshot, false)));
                     if (detail.Status == "ready") break;
                 }
                 if (detail.Status != "ready")
@@ -651,7 +658,7 @@ internal sealed partial class AutomationForm
                 try
                 {
                     detail = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                        SitePriceEdit.BuildDetailEditScript(job.ListingNumber, job.Title, true)));
+                        SitePriceEdit.BuildDetailEditScript(job.ListingNumber, siteTitleSnapshot, true)));
                     if (detail.Status != "opened") throw new InvalidOperationException(detail.Message);
                 }
                 catch (Exception ex) when (IsAllowedCurrentPage() &&
@@ -675,7 +682,7 @@ internal sealed partial class AutomationForm
                 if (!IsAllowedCurrentPage()) throw new InvalidOperationException("수정 화면이 아이템매니아 공식 사이트를 벗어났습니다.");
                 form = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), false,
-                        job.Title, nativeSingleApproval || diagnosticOnly,
+                        siteTitleSnapshot, nativeSingleApproval || diagnosticOnly,
                         records[0].MinQuantity, records[0].MaxQuantity)));
                 if (form.Status is "ready" or "diagnostic" or "restore-needed") break;
             }
@@ -726,7 +733,7 @@ internal sealed partial class AutomationForm
                 // make the one-item title-restoration risk explicit to the user.
                 if (MessageBox.Show(this,
                     "사이트 수정 화면의 제목이 원본과 다르게 만들어졌습니다.\n\n" + form.Message +
-                    "\n\n승인하면 단 한 건의 수정폼 제목을 저장된 원본으로 되돌리고 가격을 변경합니다." +
+                    "\n\n승인하면 단 한 건의 수정폼 제목을 관리목록에서 확인한 제목으로 되돌리고 가격을 변경합니다." +
                     "\n사이트가 제출 중 제목을 다시 바꿀 위험은 아직 실사이트에서 검증되지 않았습니다." +
                     "\n\n이 구매글 한 건만 시험할까요?",
                     "원본 제목 복구 후 단건 가격 변경 시험", MessageBoxButtons.YesNo,
@@ -759,6 +766,7 @@ internal sealed partial class AutomationForm
             // submit outcome is uncertain, the user can verify this exact
             // target later WITHOUT clicking the site's submit button again.
             if (nativeSingleApproval) job.PendingSitePriceTarget = desired.ToString();
+            job.PriceEditSiteTitleSnapshot = siteTitleSnapshot;
             _config.Jobs = _jobs.ToList();
             _config.Save();
             _armedSitePriceEditNumber = job.ListingNumber;
@@ -770,7 +778,7 @@ internal sealed partial class AutomationForm
             {
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
-                        job.Title, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity,
+                        siteTitleSnapshot, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity,
                         titleRestoreApproved, trustedOneClick: true, nativeKeyboardPrice: true)));
                 submitScriptNote = result.Message;
                 if (result.Status != "input-ready")
@@ -837,7 +845,7 @@ internal sealed partial class AutomationForm
             if (observed.NetworkFinished) await Task.Delay(950, token);
 
             _state.Text = "구매글 가격 변경 결과 확인 중";
-            if (!await ConfirmChangedSitePriceAsync(job, desired, token))
+            if (!await ConfirmChangedSitePriceAsync(job, desired, token, siteTitleSnapshot))
                 throw new InvalidOperationException((observed.RequestObserved ?
                     "구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " :
                     "수정 POST 요청을 감지하지 못했고 관리목록에서도 변경된 단가를 확인하지 못했습니다. ") +
@@ -860,6 +868,7 @@ internal sealed partial class AutomationForm
                 job.Price = desired.ToString("N0");
                 job.PendingSitePriceTarget = "";
             }
+            job.PriceEditSiteTitleSnapshot = "";
             job.LastSucceededUtc = DateTime.UtcNow;
             job.InitialCompleted = true;
             job.NextDueUtc = previousDue == DateTime.MaxValue ? previousDue :
@@ -947,7 +956,7 @@ internal sealed partial class AutomationForm
             if (confirmLocalOnExact && readback.ExactIdVerified)
             {
                 if (MessageBox.Show(this,
-                    "사이트 관리목록에서 기존 등록번호·원본 제목·변경 단가가 모두 일치합니다.\n\n" +
+                    "사이트 관리목록에서 기존 등록번호·제출 전 확인한 제목·변경 단가가 모두 일치합니다.\n\n" +
                     readback.Message + "\n\n프로그램의 저장 금액을 이 가격으로 맞출까요? " +
                     "확인 대기와 자동등록 중지는 그대로 유지합니다. 사이트 재제출은 하지 않습니다.",
                     "읽기 전용 검증 완료", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
@@ -957,6 +966,7 @@ internal sealed partial class AutomationForm
                     job.VerifiedSitePrice = target.ToString();
                     job.VerifiedSitePriceUtc = DateTime.UtcNow;
                     job.PendingSitePriceTarget = "";
+                    job.PriceEditSiteTitleSnapshot = "";
                     job.RequiresReview = true;
                     job.Enabled = false;
                     job.NextDueUtc = DateTime.MaxValue;
@@ -987,9 +997,10 @@ internal sealed partial class AutomationForm
         }
     }
 
-    private async Task<bool> ConfirmChangedSitePriceAsync(ListingJob job, long target, CancellationToken token)
+    private async Task<bool> ConfirmChangedSitePriceAsync(ListingJob job, long target, CancellationToken token,
+        string siteTitleSnapshot)
     {
-        var readback = await ReadSitePriceAfterRepostAsync(job, target, token);
+        var readback = await ReadSitePriceAfterRepostAsync(job, target, token, siteTitleSnapshot);
         _sitePriceReadbackNote = readback.Message;
         AppendLog("구매글 재등록 후 사이트 가격 읽기: " + readback.Message);
         return readback.ExactIdVerified;
@@ -1002,7 +1013,7 @@ internal sealed partial class AutomationForm
     // Scan the authenticated OWN list, never public search results. New IDs
     // are only reported as candidates; identity is not silently reassigned.
     private async Task<SitePriceReadback> ReadSitePriceAfterRepostAsync(ListingJob job, long target,
-        CancellationToken token)
+        CancellationToken token, string? titleSnapshot = null)
     {
         string firstPage = job.OriginalTradeSide == "판매"
             ? MyListingsImport.SellListingsUrl : MyListingsImport.BuyListingsUrl;
@@ -1018,7 +1029,14 @@ internal sealed partial class AutomationForm
         var newCandidates = new Dictionary<string, ExistingListingRecord>(StringComparer.Ordinal);
         int totalRows = 0;
         const int maxPages = 25;
-        string expectedTitle = PriceReadbackTitle(job.Title);
+        // For a new/held price submission, use the saved CURRENT SITE snapshot,
+        // never the historical VANTA title. Older pending attempts without a
+        // snapshot retain the conservative legacy check rather than guessing.
+        string titleBeforeSubmit = !string.IsNullOrWhiteSpace(titleSnapshot) ? titleSnapshot :
+            !string.IsNullOrWhiteSpace(job.PriceEditSiteTitleSnapshot) ? job.PriceEditSiteTitleSnapshot : job.Title;
+        string expectedTitle = PriceReadbackTitle(titleBeforeSubmit);
+        bool legacyTitleFallback = string.IsNullOrWhiteSpace(titleSnapshot) &&
+            string.IsNullOrWhiteSpace(job.PriceEditSiteTitleSnapshot);
         string expectedServer = Regex.Replace(job.Server ?? "", @"\s+", "").ToLowerInvariant();
         while (queue.Count > 0 && visited.Count < maxPages)
         {
@@ -1064,11 +1082,11 @@ internal sealed partial class AutomationForm
         if (matchingOld.Count == 1 && TrySitePrice(matchingOld[0].Price, out var current) && current == target)
         {
             if (PriceReadbackTitle(matchingOld[0].Title) != expectedTitle ||
-                MyListingsImport.HasSuspiciousDuplicatedLevel(matchingOld[0].Title))
+                (legacyTitleFallback && MyListingsImport.HasSuspiciousDuplicatedLevel(matchingOld[0].Title)))
                 return new SitePriceReadback { ExactIdVerified = false,
-                    Message = summary + "가격은 변경됐지만 사이트 제목이 저장된 원본과 다르거나 중복 레벨이 감지됐습니다. 자동 작업을 중지하고 제목을 확인하세요." };
+                    Message = summary + "가격은 변경됐지만 제출 전 사이트 제목과 달라졌거나 이전 시도의 제목 기준을 확인할 수 없습니다. 자동 작업을 중지하고 제목을 확인하세요." };
             return new SitePriceReadback { ExactIdVerified = true,
-                Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 및 제목 일치 확인." };
+                Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 및 제출 전 제목 유지 확인." };
         }
         if (oldPrices.Count > 0)
             summary += $"기존 등록번호 {job.ListingNumber} 조회 단가: {string.Join(", ", oldPrices)}원. ";

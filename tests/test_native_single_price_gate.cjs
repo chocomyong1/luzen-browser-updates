@@ -46,8 +46,8 @@ assert.match(app, /nativeSingleApproval && \(fromScheduler \|\| bulkApproval \|\
 assert.match(app, /!SitePriceEdit\.AutomaticPriceSubmissionEnabled && !nativeSingleApproval/);
 assert.match(app, /_jobs\.Any\(other => !ReferenceEquals\(other, job\)/);
 assert.match(app, /!string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)/);
-assert.match(app, /SitePriceEdit\.BuildEditFormScript\(job\.ListingNumber, current\.ToString\(\), desired\.ToString\(\), true,\s*job\.Title, nativeSingleApproval, records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
-assert.match(app, /ConfirmChangedSitePriceAsync\(job, desired, token\)/);
+assert.match(app, /SitePriceEdit\.BuildEditFormScript\(job\.ListingNumber, current\.ToString\(\), desired\.ToString\(\), true,\s*siteTitleSnapshot, nativeSingleApproval, records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
+assert.match(app, /ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
 assert.match(app, /if \(nativeSingleApproval\) job\.PendingSitePriceTarget = desired\.ToString\(\)/);
 assert.match(app, /TypeVerifiedSitePriceAsync\(result\.X, result\.Y, desired, token\)/);
 assert.match(app, /ReplaceVerifiedSitePriceTextOnceAsync\(desired, token\)/);
@@ -58,7 +58,7 @@ assert.match(app, /CallDevToolsProtocolMethodAsync\("Input\.dispatchMouseEvent"/
 assert.match(app, /core\.ExecuteScriptAsync\(SitePriceEdit\.VerifyNativeClickScript\)/);
 assert.match(app, /trustedOneClick: true/);
 assert.doesNotMatch(app, /if \(!observed\.RequestObserved\)\s*throw/);
-assert.ok(app.indexOf('ConfirmChangedSitePriceAsync(job, desired, token)') >
+assert.ok(app.indexOf('ConfirmChangedSitePriceAsync(job, desired, token, siteTitleSnapshot)') >
   app.indexOf('var observed = await submissionObserver.WaitAsync(token)'),
   'Even a missing POST event must be followed by read-only OWN-list price/title verification');
 assert.match(app, /private async Task RecheckSelectedPriceWithoutSubmitAsync\(\)/);

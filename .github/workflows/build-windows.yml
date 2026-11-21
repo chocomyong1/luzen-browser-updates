@@ -75,6 +75,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Live batch edit safety test failed' }
           node tests/test_site_price_edit_mock.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Site price update safety test failed' }
+          node tests/test_price_id_only_site_title.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'ID-only price target and current site title preservation test failed' }
           node tests/test_site_submit_bindings_readonly.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Read-only actual-site submit event inspection test failed' }
           node tests/test_native_single_price_gate.cjs
@@ -190,15 +192,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.12'
+          $version = '22.3.13'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.12
-          path: LuzenBrowser_22.3.12_BinaryUpdate.zip
+          name: vanta-windows-v22.3.13
+          path: LuzenBrowser_22.3.13_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -206,7 +208,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.12'
+          $version = '22.3.13'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -218,7 +220,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.12 사이트 익명 onsubmit 호환성 보완. 단건 가격 시험 중 제출 이벤트의 preventDefault 함수를 덮어쓰던 계측 코드를 제거하고 수동적인 제출 상태·DOM0 핸들러·폼 action 경로 진단으로 교체했습니다. 읽기 전용 수정폼 검사에는 호출 함수와 사이트 스크립트 경로 정보를 추가했습니다. 제목 보호, 단건 승인, 결과 불확실 시 보류 및 자동 가격 제출 제한을 그대로 유지합니다. 실사이트 가격 수정 성공은 별도 검증이 필요합니다.'
+            releaseNotes = 'v22.3.13 가격 변경 대상을 본인 관리목록의 정확한 등록번호·거래방향·서버로 식별합니다. 저장된 예전 제목과 현재 사이트 제목이 다르다는 이유로 단건 가격 수정을 막지 않고, 사이트에서 확인한 현재 제목을 수정폼 보호 및 결과 조회에 사용합니다. 제출 전 사이트 제목은 보류 상태에서도 재조회할 수 있도록 안전하게 저장합니다. 사이트 자체의 onsubmit 취소 및 미감지 POST 문제는 별도 검증이 필요하며, 자동 일괄 가격 제출은 비활성 상태를 유지합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

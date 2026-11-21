@@ -96,6 +96,7 @@ assert(diagnosticStart > 0 && actualPostObserver > diagnosticStart,
   'Diagnostic must exit before setting up any real price edit submission');
 assert.match(flow.slice(diagnosticStart, actualPostObserver), /return true;/);
 assert.match(flow, /if \(!diagnosticOnly && \(job\.RequiresReview \|\| unresolvedPriceAttempt\)\)/);
-assert.match(flow, /if \(!diagnosticOnly && \(MyListingsImport\.HasSuspiciousDuplicatedLevel/);
+assert.match(flow, /string siteTitleSnapshot = records\[0\]\.Title;/);
+assert.doesNotMatch(flow, /if \(!diagnosticOnly && \(MyListingsImport\.HasSuspiciousDuplicatedLevel/);
 assert.match(flow, /if \(!bulkApproval && !diagnosticOnly\) SaveSelectedJob\(false\)/);
 console.log('PASS read-only form inspection, privacy filtering, mismatch rejection, and pre-submission exit');
