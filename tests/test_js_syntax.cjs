@@ -28,6 +28,7 @@ const snippets = [
   ['AutomationForm.cs', 'private async Task ConfirmExactRegistrationDialogAsync'],
   ['AutomationForm.SiteDiagnostics.cs', 'private async Task ExportSiteDiagnosticsAsync'],
   ['SitePriceEdit.cs', 'public const string OwnedRowScript'],
+  ['SitePriceEdit.cs', 'public const string SubmitBindingsInspectionScript'],
   ['SitePriceEdit.cs', 'public const string EditFormScript']
 ];
 for (const [file, marker] of snippets) {
