@@ -26,7 +26,7 @@ assert.match(submit, /LocateOwnedListRepostAsync\(job, token, requireRepostButto
 assert.match(submit, /records\.Count != 1/);
 assert.match(submit, /HourlyServerQuota\.MarkAttempt/);
 assert.match(submit, /job\.RequiresReview = true/);
-assert.match(submit, /ConfirmChangedSitePriceAsync\(job, desired, token\)/);
+assert.match(submit, /ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
 const copies=from(app,'private void CopySelectedToOtherServers(', 'private void ImportJobsCsv(');
 for (const x of ['copy.PendingSitePriceTarget = ""','copy.PendingRepostBeforeStamp = ""','copy.PendingRepostAttemptUtc = null',
  'job.PendingSitePriceTarget = ""','job.PendingRepostBeforeStamp = ""','job.PendingRepostAttemptUtc = null',

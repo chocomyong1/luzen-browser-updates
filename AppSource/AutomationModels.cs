@@ -45,6 +45,10 @@ internal sealed class ListingJob
     // this empty and use their new amount on first registration.
     // Keep the exact planned amount for mismatch detection before submission.
     public string PendingSitePriceTarget { get; set; } = "";
+    // Exact title captured from the authenticated OWN-list immediately before
+    // a site price submission. Used only to detect unintended title changes
+    // during read-only recovery after restart; NEVER an identity key.
+    public string PriceEditSiteTitleSnapshot { get; set; } = "";
     // Last price verified on the authenticated OWN listing, not the editable
     // local target. Persist separately so reservations survive restart/update.
     // Empty means the current live site price has not yet been verified.

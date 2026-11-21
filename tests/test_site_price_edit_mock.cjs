@@ -288,6 +288,28 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
 }
 
 {
+  // The saved VANTA title may be stale. Passing the fresh OWN-list title
+  // into this script must allow the exact-ID form without rewriting it.
+  const currentSiteTitle = '10 레벨 작열 삽니다 24시';
+  const differentOldVantaTitle = '10 10 레벨 작열 삽니다 24시';
+  assert.notEqual(currentSiteTitle, differentOldVantaTitle);
+  const edit = editFormCase({approvedSubmit:true,
+    formTitle:currentSiteTitle,savedTitle:currentSiteTitle});
+  assert.equal(edit.evaluate(false,number,'10000',true).status,'ready');
+  assert.equal(edit.evaluate(true,number,'10000',true).status,'input-ready');
+  edit.simulateTyping();
+  assert.equal(edit.finalize().status,'armed');
+  edit.simulateOneBrowserClick();
+  assert.equal(edit.acceptedNativeSubmits,1);
+  assert.equal(edit.titleInput.value,currentSiteTitle,
+    'A price-only change must not rewrite the real site title');
+  const changedInsideSite = editFormCase({approvedSubmit:true,
+    formTitle:currentSiteTitle+' 수정',savedTitle:currentSiteTitle});
+  assert.equal(changedInsideSite.evaluate(true,number,'10000',true).status,'error',
+    'Even with an exact ID, a different edit-form title cannot be submitted');
+}
+
+{
   const savedTitle = '10 레벨 겁화 삽니다 24 시';
   const siteFormTitle = '1 ~ 9,995 레벨 겁화 삽니다 24 시';
   const restored = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
@@ -449,7 +471,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(wrong.evaluate(true, number, '10000', true).status, 'error');
   assert.equal(wrong.clicked, 0);
   assert.match(wrong.evaluate(false, number, '10000', true).message, /사이트 수정폼: 10 10 레벨 겁화 구매합니다/);
-  assert.match(wrong.evaluate(false, number, '10000', true).message, /프로그램 저장:/);
+  assert.match(wrong.evaluate(false, number, '10000', true).message, /내 등록목록 제목:/);
   // Cosmetic spacing on the native edit page is allowed. Numerals, suffixes,
   // punctuation and quantity-range prefixes cannot be silently normalized.
   const spacing = editFormCase({approvedSubmit: true,

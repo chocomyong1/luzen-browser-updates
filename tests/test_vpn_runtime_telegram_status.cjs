@@ -38,5 +38,5 @@ assert.match(status,/job\.LastSucceededUtc\.HasValue/);
 assert.match(status,/job\.PendingSitePriceTarget/);
 assert.match(status,/job\.RequiresReview/);
 assert.match(status,/job\.Enabled/);
-assert.match(price,/ConfirmChangedSitePriceAsync\(job, desired, token\)/);
+assert.match(price,/ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
 console.log('PASS B running WARP local-proxy repair + private-only Telegram read-only status');

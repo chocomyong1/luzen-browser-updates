@@ -1530,7 +1530,8 @@ internal sealed partial class AutomationForm : Form
             // Site-specific deep links must not be reused for another server.
             copy.EntryUrl = ""; copy.SourceListUrl = ""; copy.ListingNumber = ""; copy.OriginalTradeSide = "";
             copy.ImportedFromSite = false; copy.ImportedUtc = null;
-            copy.PendingSitePriceTarget = ""; copy.PendingRepostBeforeStamp = ""; copy.PendingRepostAttemptUtc = null;
+            copy.PendingSitePriceTarget = ""; copy.PriceEditSiteTitleSnapshot = "";
+            copy.PendingRepostBeforeStamp = ""; copy.PendingRepostAttemptUtc = null;
             copy.Enabled = false; copy.InitialCompleted = false; copy.RequiresReview = false;
             copy.NextDueUtc = DateTime.MinValue; copy.LastSucceededUtc = null;
             copy.LastSiteAuditUtc = null; copy.SiteAuditMismatchCount = 0;
@@ -1567,7 +1568,8 @@ internal sealed partial class AutomationForm : Form
         // Cloning an existing account listing must NEVER re-use its listing ID or URL.
         job.ListingNumber = ""; job.SourceListUrl = ""; job.OriginalTradeSide = ""; job.ImportedFromSite = false;
         job.ImportedUtc = null; job.EntryUrl = "";
-        job.PendingSitePriceTarget = ""; job.PendingRepostBeforeStamp = ""; job.PendingRepostAttemptUtc = null;
+        job.PendingSitePriceTarget = ""; job.PriceEditSiteTitleSnapshot = "";
+        job.PendingRepostBeforeStamp = ""; job.PendingRepostAttemptUtc = null;
         job.InitialCompleted = false; job.RequiresReview = false;
         job.NextDueUtc = DateTime.MinValue; job.LastSucceededUtc = null; job.LastStatus = "대기"; job.Enabled = false;
         job.LastSiteAuditUtc = null; job.SiteAuditMismatchCount = 0;

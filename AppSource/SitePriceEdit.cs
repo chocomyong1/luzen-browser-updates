@@ -533,7 +533,8 @@ internal static class SitePriceEdit
       const formOwnedId=isAuditedBuyForm&&[...form.querySelectorAll('input[type="hidden"]')]
         .some(e=>String(e.value||'')===a.number);
       // A price change sends the site's ENTIRE re-registration form, not just
-      // the amount. Never send it unless its original title survives intact.
+      // the amount. Never send it unless the title captured from the exact
+      // signed-in OWN-list row survives intact. Saved local titles may be old.
       // Do not "repair" a corrupted title by guessing from quantity/level.
       const cleanTitle=s=>String(s||'').normalize('NFC').replace(/\s+/g,' ').trim();
       // The edit form sometimes changes only spacing ("9 레벨" vs
@@ -577,12 +578,12 @@ internal static class SitePriceEdit
           '가격 수정은 제목까지 재등록하므로 제목 입력칸을 유일하게 확인할 때까지 제출을 차단합니다':
           '실제 제목 내용이 달라 가격 제출을 막았습니다.\n'+
           '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
-          '프로그램 저장: '+displayTitle(originalTitle)+'\n'+
+          '내 등록목록 제목: '+displayTitle(originalTitle)+'\n'+
           '원래 제목과 다를 때는 자동으로 제목을 고치거나 가격을 제출하지 않습니다.');
         if(mayRestoreTitle&&!a.allowVerifiedTitleRestore)return result('restore-needed',
           '사이트가 첫 레벨 숫자를 검증된 분할 수량 범위로 바꾼 것을 확인했습니다.\n'+
           '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
-          '프로그램 원문: '+displayTitle(originalTitle)+'\n'+
+          '내 등록목록 제목: '+displayTitle(originalTitle)+'\n'+
           '원래 제목으로 폼을 복구하는 별도 승인이 있어야만 1건 제출할 수 있습니다.',old,1);
         // The scheduler and batch paths never get this explicit one-item
         // approval. Never synthesize fetch(FormData(form)) or form.submit():
