@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.11",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.11/LuzenBrowser_22.3.11_BinaryUpdate.zip",
-  "sha256": "6aa018ffc767b08d0df6ce6a07c9a90c96ca26a1dd4e769e148ce4e241ea417f",
+  "version": "22.3.12",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.12/LuzenBrowser_22.3.12_BinaryUpdate.zip",
+  "sha256": "199200add29f282488c5fe05905f71547a9454ea4d2753b6d0ea79410ae9f1fa",
   "format": "binary",
-  "releaseNotes": "v22.3.11 구매글 실제 수정폼 읽기 전용 분석·복사 기능을 추가했습니다. 본인 등록번호를 확인한 수정 화면에서 폼·버튼·제출 이벤트 연결과 관련 스크립트 이름만 수집하며 가격 입력·제출은 하지 않습니다. 개인정보와 원본 제목을 보호하며 기존 가격 자동 제출 제한을 유지합니다. 실제 사이트 제출 실패 원인은 사용자의 진단 결과 확인이 필요합니다."
+  "releaseNotes": "v22.3.12 사이트 익명 onsubmit 호환성 보완. 단건 가격 시험 중 제출 이벤트의 preventDefault 함수를 덮어쓰던 계측 코드를 제거하고 수동적인 제출 상태·DOM0 핸들러·폼 action 경로 진단으로 교체했습니다. 읽기 전용 수정폼 검사에는 호출 함수와 사이트 스크립트 경로 정보를 추가했습니다. 제목 보호, 단건 승인, 결과 불확실 시 보류 및 자동 가격 제출 제한을 그대로 유지합니다. 실사이트 가격 수정 성공은 별도 검증이 필요합니다."
 }
