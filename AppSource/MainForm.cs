@@ -293,6 +293,8 @@ internal sealed partial class MainForm : Form
         moreMenu.Items.Add("선택 1건 조회시험", null, async (_, _) => await _module.ProbeSelectedRepostFromHeaderAsync());
         moreMenu.Items.Add("신규글 입력시험 (미제출)", null,
             async (_, _) => await _module.TestSelectedNewRegistrationFromHeaderAsync());
+        moreMenu.Items.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,
+            async (_, _) => await _module.InspectSelectedPriceSubmitFromHeaderAsync());
         var traceMenuItem = new ToolStripMenuItem("수정 요청 기록");
         traceMenuItem.Click += async (_, _) => await _module.ToggleSiteTraceFromHeaderAsync(traceMenuItem);
         moreMenu.Items.Add(traceMenuItem);

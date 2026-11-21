@@ -194,15 +194,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.15'
+          $version = '22.3.16'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.15
-          path: LuzenBrowser_22.3.15_BinaryUpdate.zip
+          name: vanta-windows-v22.3.16
+          path: LuzenBrowser_22.3.16_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -210,7 +210,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.15'
+          $version = '22.3.16'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -222,7 +222,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.15 구매 수정폼의 읽기 전용 정적 JS 분석 결과가 빈칸으로 복사되던 문제를 수정했습니다. WebView2에 비동기 Promise 결과를 직접 돌려주지 않고 브라우저 내부에서 완료 상태를 확인하며, 12초 제한과 명확한 오류 메시지를 추가했습니다. 공식 사이트 스크립트의 GET 외에 가격 입력·수정 제출은 하지 않습니다. 기존 가격 수정 실패 원인은 아직 조사 중이며 반복 제출은 금지됩니다.'
+            releaseNotes = 'v22.3.16 사이트 가격 수정폼 분석·복사 (제출 없음) 기능을 메인 관리 메뉴에 추가했습니다. v22.3.15에서는 기능이 물품 편집의 추가 작업 메뉴에만 있어 관리에서 찾을 수 없던 문제를 해결했습니다. 한 건을 선택한 뒤 관리 메뉴에서 실행하면 공식 구매 수정폼의 정적 JS 검증 코드가 복사되며, 실제 가격 변경은 제출하지 않습니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

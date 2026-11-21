@@ -445,6 +445,7 @@ internal sealed partial class AutomationForm : Form
     public void PauseAutomationFromHeader() => PauseScheduler();
     public void StopAutomationFromHeader() => StopScheduler();
     public Task ProbeSelectedRepostFromHeaderAsync() => ProbeSelectedRepostReadOnlyAsync();
+    public Task InspectSelectedPriceSubmitFromHeaderAsync() => InspectSelectedPriceSubmitBindingsAsync();
     public Task TestSelectedNewRegistrationFromHeaderAsync()
     {
         if (_schedulerRunning || _busy || _myListingsImportRunning)
