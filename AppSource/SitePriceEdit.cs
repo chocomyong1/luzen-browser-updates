@@ -60,6 +60,86 @@ internal static class SitePriceEdit
         SubmitBindingsInspectionScript.Replace("__ARG__", JsonSerializer.Serialize(new { number }),
             StringComparison.Ordinal);
 
+    // A separately invoked, read-only look at already referenced first-party
+    // JavaScript assets. Only static .js GETs (no URL parameters) are made;
+    // no form field values, request bodies, cookies, or listing data are read.
+    public static string BuildSubmitValidatorSourceScript(string number) =>
+        SubmitValidatorSourceScript.Replace("__ARG__", JsonSerializer.Serialize(new { number }),
+            StringComparison.Ordinal);
+
+    public const string SubmitValidatorSourceScript = """
+    (async()=>{
+      const a=__ARG__;
+      const result=(status,message)=>({status,message});
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
+         location.pathname.toLowerCase()!=='/myroom/buy/buy_re_reg.html')
+        return result('error','공식 구매 수정폼이 아닙니다');
+      const form=document.querySelector('form#frmBuy');
+      const button=form?.querySelector('button#ok_btn.buy_re_reg[type="submit"]');
+      const price=form?.querySelector('input[name="user_division_price"]');
+      if(!form||!button||!price||![...form.querySelectorAll('input[type="hidden"]')]
+        .some(e=>String(e.value||'')===a.number))
+        return result('error','수정폼의 등록번호·단가칸·사이트 제출 버튼을 확인하지 못했습니다');
+      const paths=[...document.querySelectorAll('script[src]')].map(e=>{
+        try{return new URL(e.src,location.href);}catch{return null;}
+      }).filter(u=>u&&u.protocol==='https:'&&u.origin===location.origin&&
+        /^\/[a-z0-9._/-]{1,130}\.js$/i.test(u.pathname)&&
+        /(?:buy_re_reg|editor)(?:\.|\/|$)/i.test(u.pathname))
+        .filter((u,i,all)=>all.findIndex(v=>v.pathname===u.pathname)===i).slice(0,3);
+      const officialCdn=[...document.querySelectorAll('script[src]')].map(e=>{
+        try{return new URL(e.src,location.href);}catch{return null;}
+      }).filter(u=>u&&u.protocol==='https:'&&u.origin!==location.origin&&
+        /(?:^|\.)itemmania\.com$/i.test(u.hostname)&&
+        /^\/[a-z0-9._/-]{1,130}\.js$/i.test(u.pathname)&&
+        /(?:buy_re_reg|editor)(?:\.|\/|$)/i.test(u.pathname)).slice(0,4);
+      const lines=['[VANTA 사이트 구매 수정 JS 검증 코드 — 읽기 전용]',
+        '수정폼·등록번호·가격칸: 일치 (실제 값 비공개)',
+        '사이트 스크립트 '+paths.length+'개 검사 (공식 동일 출처, 쿼리 없는 .js GET만)'];
+      const marker=/frmBuy|ok_btn|user_division_price|buy_re_reg_ok|onsubmit|preventDefault|\.submit\s*\(|return\s+false|re_reg/i;
+      const sanitize=s=>String(s||'').replace(/"[^"]{0,400}"|'[^']{0,400}'|`[^`]{0,400}`/g,
+          literal=>/^['"](?:#?frmBuy|#?ok_btn|user_division_price|submit|click)['"]$/.test(literal)
+            ?literal:'[문자열]')
+        .replace(/https?:\/\/[^\s'"<>]+/gi,'[URL]')
+        .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,'[이메일]')
+        .replace(/\b\d{8,}\b/g,'[숫자가림]').replace(/[\x00-\x1f]/g,' ');
+      for(const url of paths){
+        lines.push('파일: '+url.pathname);
+        try{
+          const response=await fetch(url.origin+url.pathname,
+            {method:'GET',credentials:'same-origin',cache:'force-cache',redirect:'error'});
+          if(!response.ok||!(/javascript|text\/plain|octet-stream/i).test(response.headers.get('content-type')||'')){
+            lines.push('코드 조회 불가: HTTP '+response.status);continue;
+          }
+          const length=Number(response.headers.get('content-length')||0);
+          if(length>350000){lines.push('코드가 350KB를 넘어 읽지 않음');continue;}
+          const source=await response.text();
+          if(source.length>350000){lines.push('코드가 350KB를 넘어 분석하지 않음');continue;}
+          lines.push('코드 크기: '+source.length+'자');
+          const sourceLines=source.split(/\r?\n/),matching=[];
+          for(let i=0;i<sourceLines.length&&matching.length<9;i++){
+            const line=sourceLines[i];
+            if(!marker.test(line))continue;
+            // Static files may be minified onto a single huge line. Only
+            // small windows around unique validation markers are copied.
+            let start=0;
+            while(matching.length<9){
+              const suffix=line.slice(start),hit=marker.exec(suffix);
+              if(!hit)break;
+              const pos=start+hit.index;
+              matching.push('L'+(i+1)+': '+sanitize(line.slice(Math.max(0,pos-95),pos+175)));
+              start=pos+Math.max(hit[0].length,1);
+            }
+          }
+          lines.push(...(matching.length?matching:['관련 검증 표현 발견 안 됨']));
+        }catch(e){lines.push('정적 JS 읽기 실패: '+sanitize(e?.name||'오류').slice(0,35));}
+      }
+      if(!paths.length)lines.push('같은 출처 JS 경로를 찾지 못함 · 외부 CDN 출처일 수 있습니다');
+      for(const url of officialCdn)lines.push('공식 CDN 경로 (GET하지 않음): '+url.hostname+url.pathname);
+      lines.push('사이트 제출·클릭·가격 입력은 실행하지 않았습니다. 정적 스크립트 GET만 수행했습니다.');
+      return result('inspected',lines.join('\n').slice(0,6500));
+    })()
+    """;
+
     public const string SubmitBindingsInspectionScript = """
     (()=>{
       const a=__ARG__;
@@ -91,6 +171,16 @@ internal static class SitePriceEdit
         return '함수='+safe(fn.name)+'; 신호='+flags(source)+
           '; 호출='+functionNames(source)+'; 코드길이='+source.length;
       };
+      const fnExcerpt=fn=>{
+        if(typeof fn!=='function')return '없음';
+        const source=Function.prototype.toString.call(fn);
+        const index=Math.max(0,source.search(/return\s+false|preventDefault|submit|action|validate|check/i));
+        return source.slice(Math.max(0,index-70),index+260)
+          .replace(/"[^"]{0,400}"|'[^']{0,400}'|`[^`]{0,400}`/g,'[문자열]')
+          .replace(/https?:\/\/[^\s'"<>]+/gi,'[URL]')
+          .replace(/\b\d{8,}\b/g,'[숫자가림]')
+          .replace(/[\x00-\x1f]/g,' ').slice(0,320);
+      };
       const attrSummary=(el,name)=>{
         const raw=el?.getAttribute?.(name)||'';
         return raw?'호출='+functionNames(raw)+'; 신호='+flags(raw):'없음';
@@ -102,8 +192,10 @@ internal static class SitePriceEdit
         '폼 action 경로: '+(new URL(form.action,location.href)).pathname.slice(0,100),
         '폼 onsubmit 속성: '+attrSummary(form,'onsubmit'),
         '폼 onsubmit 함수: '+fnSummary(form.onsubmit),
+        '폼 DOM0 코드 조각(문자열 제외): '+fnExcerpt(form.onsubmit),
         '버튼 onclick 속성: '+attrSummary(button,'onclick'),
         '버튼 onclick 함수: '+fnSummary(button.onclick),
+        '버튼 코드 조각(문자열 제외): '+fnExcerpt(button.onclick),
         '버튼 disabled: '+(button.disabled?'예':'아니오')+
           '; 폼 HTML 유효성 오류 필드 수: '+form.querySelectorAll(':invalid').length,
         '사이트 제목 수정칸 존재: '+(!!form.querySelector('input[name="user_title"],textarea[name="user_title"]')?'예':'아니오')
@@ -117,7 +209,7 @@ internal static class SitePriceEdit
             const handlers=Array.isArray(events[kind])?events[kind]:[];
             for(const h of handlers.slice(0,8))
               lines.push('jQuery '+label+' '+kind+' / '+(h.selector?'위임':'직접')+
-                ' / '+fnSummary(h.handler));
+                ' / '+fnSummary(h.handler)+' / 코드 일부:'+fnExcerpt(h.handler));
           }
         }
       }else lines.push('jQuery 내부 이벤트 목록: 조회 불가 (사이트가 다른 방식으로 연결했을 수 있음)');
@@ -129,7 +221,7 @@ internal static class SitePriceEdit
         .slice(0,12);
       lines.push('관련 사이트 스크립트 경로(쿼리 제외): '+(relevantScripts.join(',')||'확인 안 됨'));
       lines.push('이 검사는 버튼 클릭·폼 제출·가격 입력·네트워크 요청을 실행하지 않았습니다.');
-      return result('inspected',lines.join('\n').slice(0,3900));
+      return result('inspected',lines.join('\n').slice(0,5900));
     })()
     """;
 

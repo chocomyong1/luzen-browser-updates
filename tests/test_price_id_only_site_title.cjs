@@ -35,5 +35,6 @@ assert.match(readback,/PriceReadbackTitle\(matchingOld\[0\]\.Title\) != expected
 assert.match(readback,/legacyTitleFallback && MyListingsImport\.HasSuspiciousDuplicatedLevel/);
 assert.match(script,/AutomaticPriceSubmissionEnabled\s*=>\s*false/);
 assert.match(script,/if\(p\.titleChanged\(\)\)\{/);
-assert.doesNotMatch(script.replace(/\/\/[^\n]*/g,''),/\bfetch\s*\(|\bnew\s+FormData\s*\(/);
+const submissionScripts=script.slice(script.indexOf('public const string VerifyNativePriceInputScript'));
+assert.doesNotMatch(submissionScripts.replace(/\/\/[^\n]*/g,''),/\bfetch\s*\(|\bnew\s+FormData\s*\(/);
 console.log('PASS exact listing ID identifies price target; fresh site title is preserved and checked after submission');

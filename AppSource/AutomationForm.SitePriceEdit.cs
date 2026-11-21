@@ -692,12 +692,20 @@ internal sealed partial class AutomationForm
                     SitePriceEdit.BuildSubmitBindingsInspectionScript(job.ListingNumber)));
                 if (inspection.Status != "inspected")
                     throw new InvalidOperationException("실제 수정폼 읽기 전용 분석 실패: " + inspection.Message);
-                Clipboard.SetText(inspection.Message);
-                AppendLog("본인 구매글 실제 수정폼 이벤트 연결 진단 복사 완료 (가격·제목 입력/제출 없음)");
+                // The previous v22.3.13 error proves an unmodified DOM0
+                // onsubmit canceled the submission, but not WHY. Inspect
+                // first-party static validator code without re-submitting.
+                // No requests other than safe JS asset GETs are permitted.
+                var validator = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.BuildSubmitValidatorSourceScript(job.ListingNumber)));
+                string sourceNote = validator.Status == "inspected" ? validator.Message :
+                    "사이트 정적 JS 분석 불가: " + validator.Message;
+                Clipboard.SetText(inspection.Message + "\n\n" + sourceNote);
+                AppendLog("구매글 수정폼 검증 스크립트 읽기 전용 분석 복사 완료 (가격·제목 입력/제출 없음)");
                 MessageBox.Show(this,
-                    "실제 아이템매니아 구매 수정폼의 제출 이벤트 연결 정보를 복사했습니다.\n\n" +
-                    "이 내용을 채팅에 붙여넣어 주세요. 등록번호·가격·제목·쿠키·입력값은 포함하지 않았고 " +
-                    "사이트에 아무것도 제출하지 않았습니다.",
+                    "아이템매니아 구매 수정폼의 이벤트 연결과 공식 검증 JS 분석을 복사했습니다.\n\n" +
+                    "복사된 내용을 채팅에 붙여넣어 주세요. 등록번호·가격·제목·쿠키·입력값은 제외했고 " +
+                    "사이트의 정적 JS 파일을 읽는 GET 외에 아무것도 제출하지 않았습니다.",
                     "가격 수정폼 분석 완료 — 제출 없음", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return true;
             }

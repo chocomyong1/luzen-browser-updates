@@ -8,7 +8,10 @@ const source = name => fs.readFileSync(path.join(__dirname, '..', 'AppSource', n
 const form = source('AutomationForm.cs');
 const sitePriceForm = source('AutomationForm.SitePriceEdit.cs');
 const sitePriceScript = source('SitePriceEdit.cs');
-const priceExecutable = sitePriceScript.replace(/\/\/[^\n]*/g, '');
+// The separate read-only diagnostic may GET a referenced same-origin .js
+// asset; no live price submission script may synthesize a form POST.
+const priceExecutable = sitePriceScript.slice(sitePriceScript.indexOf('public const string VerifyNativePriceInputScript'))
+  .replace(/\/\/[^\n]*/g, '');
 const importer = source('MyListingsImport.cs');
 const models = source('AutomationModels.cs');
 const tables = source('AutomationForm.ModernTables.cs');
