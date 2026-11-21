@@ -950,6 +950,14 @@ internal sealed partial class AutomationForm
                     throw new InvalidOperationException("사이트 가격 입력칸 검증 실패: " + result.Message);
                 AppendLog("사이트 가격칸 실제 입력 준비: " + result.Message);
                 await TypeVerifiedSitePriceAsync(result.X, result.Y, desired, token);
+                // The native Tab/blur can trigger price validation. Recheck
+                // the first-party FormChecker conditions at the NEW price
+                // before saving a checkpoint or clicking the submit button.
+                var typedPreflight = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.OfficialPricePreflightScript));
+                if (typedPreflight.Status != "ready")
+                    throw new InvalidOperationException("변경 단가에 대한 사이트 제출 조건 미충족 (클릭 전 중단): " +
+                        typedPreflight.Message);
                 var final = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.FinalizeNativePriceScript));
                 if (final.Status == "input-mismatch")
@@ -959,6 +967,11 @@ internal sealed partial class AutomationForm
                     // handles site masks that intercept per-key editing.
                     AppendLog("가격 입력칸 자릿수 검증 불일치 (사이트 제출 전): " + final.Message);
                     await ReplaceVerifiedSitePriceTextOnceAsync(desired, token);
+                    typedPreflight = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                        SitePriceEdit.OfficialPricePreflightScript));
+                    if (typedPreflight.Status != "ready")
+                        throw new InvalidOperationException("단가 재입력 후 사이트 제출 조건 미충족 (클릭 전 중단): " +
+                            typedPreflight.Message);
                     final = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                         SitePriceEdit.FinalizeNativePriceScript));
                 }

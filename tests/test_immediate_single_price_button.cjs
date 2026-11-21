@@ -39,15 +39,20 @@ new vm.Script(preflight);
 function inspect({text='',html='<p>Existing details</p>',minimum='1',maximum='100',unit='1'}={}){
   const fields={
     user_title:{value:'9레벨 겁화 구매합니다'},user_text:{value:text},
+    user_goods:{value:'item'},game_code:{value:'1835'},
     user_goods_type:{value:'division'},
     user_quantity_min_tmp:{value:minimum},user_quantity_max_tmp:{value:maximum},
-    user_division_unit:{value:unit},user_contactA:{value:'Y'},slctMobile_type:{value:'Y'}
+    user_quantity_min:{value:minimum},user_quantity_max:{value:maximum},
+    user_division_unit:{value:unit},user_division_price:{value:'8,000'},
+    user_character:{value:'캐릭터명'},user_contactA:{value:'Y'},slctMobile_type:{value:'Y'}
   };
   const form={getAttribute:name=>name==='id'?'frmBuy':'',
+    checker:{},onsubmit(){return false;},
     elements:{namedItem:name=>fields[name]??null}};
   const context={location:{protocol:'https:',hostname:'www.itemmania.com',
     pathname:'/myroom/buy/buy_re_reg.html'},document:{forms:{frmBuy:form}},
-    window:{editor:{root:{innerHTML:html}},DOMPurify:{sanitize:s=>s}}};
+    window:{editor:{root:{innerHTML:html}},DOMPurify:{sanitize:s=>s}},initialPrice:1000,
+    _marketPriceBlocked:false};
   const result=vm.runInNewContext(preflight,context,{timeout:1000});
   return {result,fields};
 }

@@ -89,8 +89,10 @@ internal static class SitePriceEdit
     // while the hidden FormChecker field remains empty. That cancels the
     // first submit BEFORE the official AJAX validation starts, explaining
     // the repeated "submit canceled, no POST" reports. Mirror the site's
-    // own sanitizer ONLY when its field is blank, and refuse to submit when
-    // required, non-price fields are still absent. Never alter title/ID.
+    // own sanitizer ONLY when its field is blank. The site's FormChecker
+    // validates quantity relationships and minimum total as well as simple
+    // required fields; verify those here before a click/checkpoint, and AGAIN
+    // after the price input's native blur handlers run. Never alter title/ID.
     public const string OfficialPricePreflightScript = """
     (()=>{
       const result=(status,message)=>({status,message});
@@ -100,7 +102,17 @@ internal static class SitePriceEdit
       const form=document.forms.frmBuy;
       const val=name=>String(form?.elements?.namedItem?.(name)?.value||'').trim();
       if(!form||form.getAttribute('id')!=='frmBuy')return result('error','수정폼 확인 불가');
+      if(typeof form.onsubmit!=='function'||!form.checker)
+        return result('error','사이트 FormChecker 초기화가 끝나지 않았습니다');
       if(!val('user_title'))return result('error','사이트 물품 제목칸이 비어 있습니다');
+      // buy_re_reg.js FormChecker's original title character rules. This
+      // checks site acceptance, never compares the user's saved title with
+      // this listing or changes any title characters.
+      const title=val('user_title');
+      const safeChars=/[^a-zA-Z0-9가-힣ㄱ-ㅎㅏ-ㅣ,./%+~\s]/;
+      const jamo=title.replace(safeChars,' ');
+      if(safeChars.test(title)||/[ㄱ-ㅎㅏ-ㅣ]{2,}/.test(jamo)||/[,./%+~]{2,}/.test(jamo))
+        return result('error','사이트 원본 제목에 FormChecker가 허용하지 않는 문자가 있습니다 (제목은 수정하지 않음)');
       const text=form.elements.namedItem('user_text');
       const root=window.editor?.root;
       const sanitize=window.DOMPurify?.sanitize;
@@ -115,6 +127,8 @@ internal static class SitePriceEdit
       }
       if(!String(text.value||'').trim())
         return result('error','사이트 상세설명 필드가 비어 있습니다. 이 상태면 FormChecker가 제출을 취소합니다');
+      if(val('user_goods_type')!=='division')
+        return result('error','현재 사이트 글이 분할 구매글이 아니어서 단가 입력 경로가 일치하지 않습니다');
       if(val('user_goods_type')==='division'){
         for(const [name,label] of [
           ['user_quantity_min_tmp','최소 구매수량'],
@@ -123,11 +137,31 @@ internal static class SitePriceEdit
           if(!val(name)||Number(val(name).replace(/,/g,''))===0)
             return result('error','사이트 '+label+' 입력값이 없어 FormChecker가 제출을 차단합니다');
         }
+        const number=name=>Number(val(name).replace(/,/g,''));
+        const isMoney=val('user_goods')==='money';
+        const min=number(isMoney?'user_quantity_min':'user_quantity_min_tmp');
+        const max=number(isMoney?'user_quantity_max':'user_quantity_max_tmp');
+        const unit=number('user_division_unit');
+        const price=number('user_division_price');
+        if(![min,max,unit,price].every(n=>Number.isFinite(n)&&n>0))
+          return result('error','사이트의 실제 최소·최대수량/분할단위/단가 중 0 또는 숫자가 아닌 값이 있습니다');
+        if(unit>min)return result('error','사이트 분할단위가 최소수량보다 커서 FormChecker가 제출을 차단합니다');
+        if(min>=max)return result('error','사이트 최소수량이 최대수량 이상이라 FormChecker가 제출을 차단합니다');
+        // The first-party minimum total is initialPrice (1,000 KRW from
+        // 2026-05-26), and its custom rule runs before contact AJAX.
+        const minimum=typeof initialPrice==='number'&&Number.isFinite(initialPrice)
+          ?initialPrice:null;
+        if(minimum!==null&&min/unit*price<minimum)
+          return result('error','변경 단가로 계산한 최소 구매금액이 사이트 기준 '+minimum+'원 미만입니다');
       }
+      if(val('user_goods')!=='character'&&val('game_code')!=='281'&&!val('user_character'))
+        return result('error','사이트 전달받을 캐릭터명이 비어 있어 FormChecker가 제출을 취소합니다');
+      if(typeof _marketPriceBlocked==='boolean'&&_marketPriceBlocked)
+        return result('error','사이트 시세 제한이 활성화되어 FormChecker가 제출을 차단합니다');
       const contact=val('user_contactA'),mobile=val('slctMobile_type');
       if(contact==='N'&&mobile==='N')
         return result('error','사이트 연락처 설정이 모두 비활성화되어 제출할 수 없습니다');
-      return result('ready','사이트 필수 입력값 및 상세설명 동기화 확인');
+      return result('ready','사이트 FormChecker 수량·단가·제목 허용문자·필수값 및 상세설명 확인');
     })()
     """;
 
@@ -416,6 +450,13 @@ internal static class SitePriceEdit
       const titleChanged=p.titleChanged?.()===true;
       const invalid=[...p.form.querySelectorAll(':invalid')].slice(0,5)
         .map(e=>String(e.name||e.id||'이름 없음').slice(0,35));
+      // FormChecker uses JavaScript validation (not :invalid), and often
+      // focuses the first failing control. Record only its field NAME,
+      // never its value, to diagnose a canceled submit before contact AJAX.
+      const active=typeof document==='undefined'?null:document.activeElement;
+      const focused=active?.closest?.('form')===p.form
+        ?String(active.name||active.id||'이름 없음').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,35)
+        :'없음';
       const safePath=s=>String(s||'unknown').replace(/\d{8,}/g,'ID')
         .replace(/[^a-zA-Z0-9._/-]/g,'').slice(0,110);
       const currentAction=(()=>{try{return new URL(p.form.action,location.href).pathname;}
@@ -432,6 +473,7 @@ internal static class SitePriceEdit
         '; 제출 전후 폼 action:'+safePath(p.submitActionAtEvent)+'→'+safePath(currentAction)+
         '; 제목 보호 차단:'+(p.guardBlocked?'예':'아니오')+
         '; 현재 제목 변형:'+(titleChanged?'예':'아니오')+
+        '; 사이트 검사 후 포커스 필드:'+focused+
         '; HTML 유효성 오류 필드:'+(invalid.join(',')||'없음');
     })()
     """;
