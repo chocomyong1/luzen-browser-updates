@@ -67,8 +67,14 @@ internal static class SitePriceEdit
         SubmitValidatorSourceScript.Replace("__ARG__", JsonSerializer.Serialize(new { number }),
             StringComparison.Ordinal);
 
+    // WebView2 ExecuteScriptAsync does not reliably serialize the result of
+    // an async IIFE. Start the read synchronously, then poll its completed
+    // JSON-safe result. No website form or input is modified by either call.
+    public const string SubmitValidatorSourceStatusScript =
+        "window.__vantaPriceValidatorInspection || {status:'error',message:'사이트 스크립트 분석 상태가 사라졌습니다'}";
+
     public const string SubmitValidatorSourceScript = """
-    (async()=>{
+    (()=>{
       const a=__ARG__;
       const result=(status,message)=>({status,message});
       if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
@@ -102,6 +108,10 @@ internal static class SitePriceEdit
         .replace(/https?:\/\/[^\s'"<>]+/gi,'[URL]')
         .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,'[이메일]')
         .replace(/\b\d{8,}\b/g,'[숫자가림]').replace(/[\x00-\x1f]/g,' ');
+      window.__vantaPriceValidatorInspection=result('loading','사이트 정적 JS를 읽고 있습니다');
+      // Return a plain object to WebView2 immediately. The asynchronous GETs
+      // update a separate, polled result after the browser completes them.
+      (async()=>{
       for(const url of paths){
         lines.push('파일: '+url.pathname);
         try{
@@ -136,7 +146,12 @@ internal static class SitePriceEdit
       if(!paths.length)lines.push('같은 출처 JS 경로를 찾지 못함 · 외부 CDN 출처일 수 있습니다');
       for(const url of officialCdn)lines.push('공식 CDN 경로 (GET하지 않음): '+url.hostname+url.pathname);
       lines.push('사이트 제출·클릭·가격 입력은 실행하지 않았습니다. 정적 스크립트 GET만 수행했습니다.');
-      return result('inspected',lines.join('\n').slice(0,6500));
+      window.__vantaPriceValidatorInspection=result('inspected',lines.join('\n').slice(0,6500));
+      })().catch(e=>{
+        window.__vantaPriceValidatorInspection=result('error',
+          '정적 JS 비동기 분석 오류: '+sanitize(e?.name||'오류').slice(0,35));
+      });
+      return result('started','공식 정적 JS 읽기 시작');
     })()
     """;
 

@@ -21,8 +21,9 @@ async function inspect({host='www.itemmania.com',number=listing,hasButton=true}=
   };
   const document={querySelector:s=>s==='form#frmBuy'?form:null,
     querySelectorAll:s=>s==='script[src]'?[
-      {src:`https://${host}/js/myroom/buy_re_reg.js?PRIVATE_TOKEN=abcdef`},
-      {src:`https://${host}/js/editor.js?PRIVATE_VALUE=xyz`},
+      {src:`https://${host}/myroom/buy/js/buy_re_reg.js?PRIVATE_TOKEN=abcdef`},
+      {src:`https://${host}/_js/editor.js?PRIVATE_VALUE=xyz`},
+      {src:`https://${host}/buy/js/paid_service.js`},
       {src:'https://cdn.itemmania.com/scripts/buy_re_reg.js?SENSITIVE=yes'},
       {src:'https://evil.invalid/js/buy_re_reg.js'}]:[]};
   const location={protocol:'https:',hostname:host,pathname:'/myroom/buy/buy_re_reg.html',
@@ -31,18 +32,28 @@ async function inspect({host='www.itemmania.com',number=listing,hasButton=true}=
     requested.push([url,options]);
     assert.equal(options.method,'GET');
     assert.equal(options.redirect,'error');
-    assert(!url.includes('?') && url.startsWith(`https://${host}/js/`));
+    assert(!url.includes('?') && url.startsWith(`https://${host}/`));
     return {ok:true,status:200,headers:{get:s=>s==='content-type'?'application/javascript':null},
       text:async()=>"const private_value='TOP_SECRET_RUNTIME_VALUE';\n"+
         "document.querySelector('#frmBuy').onsubmit=function(){if(!validPrice())return false;}"};
   };
-  const run=vm.runInNewContext(script.replace('__ARG__',JSON.stringify({number:listing})),
-    {location,document,URL,fetch},{timeout:1000});
-  const result=await run;
-  return {result,requested};
+  const window={};
+  const started=vm.runInNewContext(script.replace('__ARG__',JSON.stringify({number:listing})),
+    {location,document,window,URL,fetch},{timeout:1000});
+  // WebView2 serializes the direct script result. It must not be a pending
+  // Promise, which previously showed up as a blank/`null` native response.
+  assert.equal(typeof started?.then,'undefined','WebView2 receives a serializable object, not Promise');
+  assert.notEqual(JSON.stringify(started),'{}');
+  if(started.status==='started'){
+    assert.equal(window.__vantaPriceValidatorInspection.status,'loading');
+    await new Promise(setImmediate);
+  }
+  return {result:started.status==='started'?window.__vantaPriceValidatorInspection:started,
+    started,requested};
 }
 (async()=>{
-  const {result,requested}=await inspect();
+  const {result,started,requested}=await inspect();
+  assert.equal(started.status,'started');
   assert.equal(result.status,'inspected');
   assert.equal(requested.length,2,'GET only two official same-origin JS assets');
   assert.match(result.message,/buy_re_reg\.js/);
@@ -55,6 +66,9 @@ async function inspect({host='www.itemmania.com',number=listing,hasButton=true}=
   assert.equal((await inspect({hasButton:false})).result.status,'error');
   assert.equal((await inspect({host:'fake-itemmania.com'})).result.status,'error');
   assert.match(flow,/BuildSubmitValidatorSourceScript\(job\.ListingNumber\)/);
+  assert.match(flow,/SitePriceEdit\.SubmitValidatorSourceStatusScript/);
+  assert.match(flow,/DateTime\.UtcNow\.AddSeconds\(12\)/);
+  assert.match(flow,/브라우저 스크립트가 결과를 반환하지 않았습니다/);
   assert.match(flow,/Clipboard\.SetText\(inspection\.Message \+ "\\n\\n" \+ sourceNote\)/);
   assert(flow.indexOf('BuildSubmitValidatorSourceScript(job.ListingNumber)')<
     flow.indexOf('using var submissionObserver = new SitePriceSubmitObserver'));

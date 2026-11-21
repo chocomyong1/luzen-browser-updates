@@ -698,8 +698,32 @@ internal sealed partial class AutomationForm
                 // No requests other than safe JS asset GETs are permitted.
                 var validator = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildSubmitValidatorSourceScript(job.ListingNumber)));
+                if (validator.Status == "started")
+                {
+                    var deadline = DateTime.UtcNow.AddSeconds(12);
+                    validator = new SitePriceEditResult { Status = "error", Message = "공식 JS 응답 대기 시간 초과 (12초)" };
+                    while (DateTime.UtcNow < deadline)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        await Task.Delay(300, token);
+                        if (!IsAllowedCurrentPage() || !string.Equals(_web.Source?.AbsolutePath,
+                                "/myroom/buy/buy_re_reg.html", StringComparison.OrdinalIgnoreCase))
+                        {
+                            validator = new SitePriceEditResult { Status = "error", Message = "분석 중 사이트 수정폼을 벗어났습니다" };
+                            break;
+                        }
+                        var polled = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                            SitePriceEdit.SubmitValidatorSourceStatusScript));
+                        if (polled.Status is "inspected" or "error")
+                        {
+                            validator = polled;
+                            break;
+                        }
+                    }
+                }
                 string sourceNote = validator.Status == "inspected" ? validator.Message :
-                    "사이트 정적 JS 분석 불가: " + validator.Message;
+                    "사이트 정적 JS 분석 불가: " + (string.IsNullOrWhiteSpace(validator.Message)
+                        ? "브라우저 스크립트가 결과를 반환하지 않았습니다 (WebView2 null 응답)" : validator.Message);
                 Clipboard.SetText(inspection.Message + "\n\n" + sourceNote);
                 AppendLog("구매글 수정폼 검증 스크립트 읽기 전용 분석 복사 완료 (가격·제목 입력/제출 없음)");
                 MessageBox.Show(this,
