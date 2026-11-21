@@ -187,11 +187,20 @@ internal static class MyListingsImport
             @"^\[\s*[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?\s*\]\s*", ""),
             @"^[\d,]+\s*(?:개)?\s*[~〜～–-]\s*[\d,]+\s*(?:개)?(?=\s|[^\d,])\s*", "").Trim();
 
-    // Repeated level digits were observed in previously imported titles.
-    // This is an alarm, never an instruction to guess and rewrite a title.
-    public static bool HasSuspiciousDuplicatedLevel(string? text) =>
-        Regex.IsMatch(CleanImportedTitle(text),
-            @"(?<!\d)(?<level>8|9|10)(?:\s+\k<level>)+\s*레벨", RegexOptions.CultureInvariant);
+    // Exact known title-only holds were imposed before any site submission.
+    // They must not persist after title text was removed from listing identity.
+    // A real interrupted submission has separate checkpoint fields and must
+    // remain held even when its last visible status resembles an old hold.
+    internal static bool IsPreSubmitTitleOnlyHold(ListingJob job) =>
+        job.RequiresReview &&
+        Regex.IsMatch(job.ListingNumber ?? "", @"^\d{8,20}$", RegexOptions.CultureInvariant) &&
+        IsOwnedListUrl(job.SourceListUrl) &&
+        !job.PendingRepostAttemptUtc.HasValue &&
+        string.IsNullOrWhiteSpace(job.PendingRepostBeforeStamp) &&
+        string.IsNullOrWhiteSpace(job.PriceEditSiteTitleSnapshot) &&
+        (job.LastStatus == "제목 숫자 중복 의심: 원본 확인 전 자동 작업 금지" ||
+         job.LastStatus == "가져옴: 제목 숫자 중복 의심 · 원본 확인 전 자동 작업 금지" ||
+         job.LastStatus == "사이트 제목 불일치·중복 의심: 자동 재등록 금지");
 
     internal static bool IsImportOnlyStatus(string? status) =>
         (status ?? "").StartsWith("가져옴:", StringComparison.Ordinal) ||
@@ -383,7 +392,6 @@ internal static class MyListingsImport
             var side = Clean(row.TradeSide, 30);
             if (side is not ("판매" or "구매")) side = "알 수 없음";
             if (string.IsNullOrEmpty(url)) result.WithoutUrl++;
-            bool suspiciousTitle = HasSuspiciousDuplicatedLevel(title);
             var job = new ListingJob
             {
                 Operation = "재등록", OriginalTradeSide = side,
@@ -402,12 +410,10 @@ internal static class MyListingsImport
                 VerifiedSitePriceUtc = CanTrustOwnedImport(row, number) ? DateTime.UtcNow : null,
                 SourceListUrl = IsOwnedListUrl(row.SourceListUrl) ? CanonicalUrl(row.SourceListUrl) : "",
                 Enabled = false, AutoRepost = true, InitialCompleted = true,
-                RequiresReview = suspiciousTitle || !CanTrustOwnedImport(row, number), NextDueUtc = DateTime.MaxValue,
-                LastStatus = suspiciousTitle
-                    ? "가져옴: 제목 숫자 중복 의심 · 원본 확인 전 자동 작업 금지"
-                    : CanTrustOwnedImport(row, number)
-                        ? "가져옴: 내 등록글 확인됨 · 자동 실행 OFF"
-                        : "가져옴: 등록번호·가격 또는 상세 URL 확인 필요"
+                RequiresReview = !CanTrustOwnedImport(row, number), NextDueUtc = DateTime.MaxValue,
+                LastStatus = CanTrustOwnedImport(row, number)
+                    ? "가져옴: 내 등록글 번호 확인됨 · 자동 실행 OFF"
+                    : "가져옴: 등록번호·가격 또는 관리목록 확인 필요"
             };
             result.NewJobs.Add(job);
         }

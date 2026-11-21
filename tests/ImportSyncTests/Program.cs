@@ -26,6 +26,7 @@ internal sealed class ListingJob
     public string Unit { get; set; } = "";
     public string Price { get; set; } = "";
     public string PendingSitePriceTarget { get; set; } = "";
+    public string PriceEditSiteTitleSnapshot { get; set; } = "";
     public string VerifiedSitePrice { get; set; } = "";
     public DateTime? VerifiedSitePriceUtc { get; set; }
     public string EntryUrl { get; set; } = "";
@@ -85,12 +86,19 @@ internal static class Program
             "10레벨 겁화작열 삽니다", "unbracketed split-trade prefix removed");
         Check(MyListingsImport.CleanImportedTitle("10레벨 겁화 보석 구매합니다") ==
             "10레벨 겁화 보석 구매합니다", "normal title stays unchanged");
-        Check(MyListingsImport.HasSuspiciousDuplicatedLevel("1 ~ 999 9 9 레벨 겁화 구매합니다"),
-            "duplicated level following split-range metadata must require review");
-        Check(MyListingsImport.HasSuspiciousDuplicatedLevel("10 10 10 레벨 작열 구매합니다"),
-            "triple duplicate level must require review");
-        Check(!MyListingsImport.HasSuspiciousDuplicatedLevel("10레벨 겁화 보석 구매합니다"),
-            "a normal level should not be quarantined");
+        var legacyTitleHold = Job();
+        legacyTitleHold.Title = "10 10 10 레벨 작열 구매합니다";
+        legacyTitleHold.RequiresReview = true;
+        legacyTitleHold.LastStatus = "제목 숫자 중복 의심: 원본 확인 전 자동 작업 금지";
+        Check(MyListingsImport.IsPreSubmitTitleOnlyHold(legacyTitleHold),
+            "historical title-only hold can be cleared after upgrade");
+        legacyTitleHold.PendingRepostAttemptUtc = DateTime.UtcNow;
+        Check(!MyListingsImport.IsPreSubmitTitleOnlyHold(legacyTitleHold),
+            "an uncertain repost checkpoint must NEVER be cleared");
+        legacyTitleHold.PendingRepostAttemptUtc = null;
+        legacyTitleHold.PriceEditSiteTitleSnapshot = "snapshot";
+        Check(!MyListingsImport.IsPreSubmitTitleOnlyHold(legacyTitleHold),
+            "an uncertain price edit checkpoint must NEVER be cleared");
         var rangedRow = Row();
         rangedRow.Title = "[1개~9,995개] " + Title;
         var firstImport = MyListingsImport.Prepare(new[] { rangedRow }, Array.Empty<ListingJob>(), "A", "slshrn124");
@@ -101,8 +109,8 @@ internal static class Program
         var repeatedRow = Row(); repeatedRow.Title = "[1개~999개] 9 9 레벨 겁화 구매합니다";
         var repeatedImport = MyListingsImport.Prepare(new[] { repeatedRow },
             Array.Empty<ListingJob>(), "A", "slshrn124");
-        Check(repeatedImport.NewJobs.Count == 1 && repeatedImport.NewJobs[0].RequiresReview &&
-            !repeatedImport.NewJobs[0].Enabled, "repeated level title is held on its first import");
+        Check(repeatedImport.NewJobs.Count == 1 && !repeatedImport.NewJobs[0].RequiresReview &&
+            !repeatedImport.NewJobs[0].Enabled, "repeated title is allowed on import, auto stays OFF");
 
         var current = Job();
         var plan = MyListingsImport.Prepare(new[] { Row() }, new[] { current }, "A", "slshrn124");

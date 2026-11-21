@@ -676,13 +676,6 @@ internal sealed partial class AutomationForm
         public OwnedListLoginPendingException(string message) : base(message) { }
     }
 
-    // A verified listing can still have an altered title; pause this job
-    // permanently before invoking the site's title-affecting reInsert action.
-    private sealed class SiteTitleSafetyException : Exception
-    {
-        public SiteTitleSafetyException(string message) : base(message) { }
-    }
-
     // A management page that cannot be reached is a pre-submit network
     // condition, not evidence that the listing ID/title is wrong. B gets a
     // circuit-breaker and an independent proxy/IP recheck before more jobs.
