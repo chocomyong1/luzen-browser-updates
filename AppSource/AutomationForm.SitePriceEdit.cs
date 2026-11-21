@@ -218,40 +218,53 @@ internal sealed partial class AutomationForm
         return true;
     }
 
-    // Explicit, single-listing pilot. The site handles the native submission;
-    // the scheduler, bulk selection and existing pending reservations remain
-    // locked until the actual site behavior is independently verified.
-    private async Task ApplySelectedSitePriceAsync()
+    // Immediate, explicit one-listing operation. It never starts the scheduler
+    // and never submits another selected/checked row. A queued local target may
+    // be applied now, but the existing reservation is retained on cancellation.
+    public Task ApplySelectedSitePriceFromHeaderAsync() => ApplySelectedSitePriceAsync();
+
+    private async Task ApplySelectedSitePriceAsync(ListingJob? rowTarget = null)
     {
-        if (_selected is null) return;
-        if (_busy || _myListingsImportRunning || _sitePriceBatchRunning)
+        var job = rowTarget ?? (_editorTabs.SelectedTab == _autoTab
+            ? _autoGrid.CurrentRow?.DataBoundItem as ListingJob : _selected);
+        if (job is null)
         {
-            MessageBox.Show(this, "진행 중인 작업이 끝난 뒤 한 건씩 시험해 주세요.", "사이트 가격 변경");
+            MessageBox.Show(this, "가격을 수정할 물품 한 줄을 먼저 선택해 주세요.", "1건 즉시 가격 수정");
             return;
         }
-        if (_schedulerRunning) PauseScheduler();
-        SaveSelectedJob(false);
-        var job = _selected;
-        if (job is null || !IsRegisteredOwnedBuyPriceTarget(job) || job.RequiresReview ||
-            !string.IsNullOrWhiteSpace(job.PendingSitePriceTarget) ||
+        if (_busy || _sitePriceBatchRunning || _siteRequestTraceActive)
+        {
+            MessageBox.Show(this, "진행 중인 사이트 작업이 완료된 뒤 선택한 1건을 수정할 수 있습니다.", "1건 즉시 가격 수정");
+            return;
+        }
+        if (_myListingsImportRunning && !await CancelImportForManualRunAsync("1건 즉시 가격 수정")) return;
+        if (!_jobs.Contains(job) || !IsRegisteredOwnedBuyPriceTarget(job) ||
             _jobs.Any(other => !ReferenceEquals(other, job) &&
                 string.Equals(other.SiteId, job.SiteId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(other.ListingNumber, job.ListingNumber, StringComparison.Ordinal)))
         {
             MessageBox.Show(this,
-                "등록번호가 확인된 본인 구매글 중 확인 대기·기존 가격 예약이 없는 글만 한 건씩 시험할 수 있습니다.",
-                "사이트 가격 변경 제한", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                "등록번호와 계정이 확인된 본인 구매글 한 건만 즉시 가격 수정할 수 있습니다.",
+                "1건 즉시 가격 수정 제한", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (job.RequiresReview)
+        {
+            MessageBox.Show(this,
+                "이 글은 이전 제출 결과가 확인 대기 중입니다. 같은 등록번호를 다시 제출하지 않습니다.\n" +
+                "먼저 '가격 변경 결과 재조회 (제출 없음)'로 사이트 상태를 확인해 주세요.",
+                "중복 수정 방지", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
         using var dialog = new Form
         {
-            Text = "사이트 구매글 가격 변경 · 단건 시험", Width = 450, Height = 220,
+            Text = "선택한 1건 사이트 가격 즉시 수정", Width = 480, Height = 238,
             FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
             MaximizeBox = false, MinimizeBox = false
         };
         var description = new Label
         {
-            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n사이트의 기본 수정 버튼으로 1건만 처리합니다.",
+            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n자동시작 없이 이 글 한 건만 실제 사이트에 제출합니다.",
             AutoSize = true, Left = 18, Top = 17
         };
         var amount = new NumericUpDown
@@ -259,12 +272,14 @@ internal sealed partial class AutomationForm
             Left = 18, Top = 77, Width = 390, Minimum = 1000, Maximum = 1000000000,
             Increment = 10, ThousandsSeparator = true, DecimalPlaces = 0
         };
-        if (TrySitePrice(job.Price, out var currentAmount))
+        string preset = string.IsNullOrWhiteSpace(job.PendingSitePriceTarget)
+            ? job.Price : job.PendingSitePriceTarget;
+        if (TrySitePrice(preset, out var currentAmount))
             amount.Value = Math.Clamp((decimal)currentAmount, amount.Minimum, amount.Maximum);
-        var apply = new Button { Text = "1건 시험", DialogResult = DialogResult.OK,
-            Left = 209, Top = 124, Width = 94, Height = 30 };
+        var apply = new Button { Text = "이 1건 즉시 수정", DialogResult = DialogResult.OK,
+            Left = 192, Top = 132, Width = 135, Height = 32 };
         var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel,
-            Left = 314, Top = 124, Width = 94, Height = 30 };
+            Left = 338, Top = 132, Width = 94, Height = 32 };
         dialog.Controls.AddRange(new Control[] { description, amount, apply, cancel });
         dialog.AcceptButton = apply;
         dialog.CancelButton = cancel;
@@ -274,6 +289,7 @@ internal sealed partial class AutomationForm
             MessageBox.Show(this, "가격은 10원 단위로 입력해 주세요.", "가격 확인");
             return;
         }
+        if (_schedulerRunning) PauseScheduler();
         await ApplySitePriceAsync(job, bulkApproval: false, nativeSingleApproval: true,
             manuallyApprovedPrice: (long)amount.Value);
     }
@@ -478,7 +494,9 @@ internal sealed partial class AutomationForm
                 "사이트 작업 중복 방지", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
-        if (!bulkApproval && !diagnosticOnly) SaveSelectedJob(false);
+        // A direct row action must NOT commit unrelated editor fields or
+        // overwrite the selected listing with stale local form values.
+        if (!bulkApproval && !diagnosticOnly && !nativeSingleApproval) SaveSelectedJob(false);
         var job = explicitJob ?? _selected;
         if (job is null || !IsRegisteredOwnedBuyPriceTarget(job))
         {
@@ -593,8 +611,8 @@ internal sealed partial class AutomationForm
                 $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n사이트 현재 제목: {siteTitleSnapshot}\n\n" +
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
                 (nativeSingleApproval ?
-                    "아직 실사이트 결과가 검증되지 않은 단건 시험 기능입니다. 제목 변형 위험이 남아 있습니다.\n" +
-                    "먼저 1건만 시험하고 사이트에서 제목·가격을 직접 확인해 주세요.\n\n" : "") +
+                    "자동 시작과 관계없이 선택한 이 1건만 즉시 제출합니다.\n" +
+                    "사이트가 최종 제출을 거부하거나 결과가 불확실하면 자동 재시도하지 않습니다.\n\n" : "") +
                 "사이트의 구매 재등록 화면(frmBuy)에서 단가를 바꾼 뒤 사이트 기본 '재등록' 버튼을 사용합니다.\n" +
                 "등록번호가 바뀔 수 있어 결과가 불확실하면 자동 실행을 보류합니다.\n" +
                 "재등록 횟수·서버 간격 제한에 포함되며 중복 제출하지 않습니다.";
@@ -768,7 +786,7 @@ internal sealed partial class AutomationForm
                     "\n\n승인하면 단 한 건의 수정폼 제목을 관리목록에서 확인한 제목으로 되돌리고 가격을 변경합니다." +
                     "\n사이트가 제출 중 제목을 다시 바꿀 위험은 아직 실사이트에서 검증되지 않았습니다." +
                     "\n\n이 구매글 한 건만 시험할까요?",
-                    "원본 제목 복구 후 단건 가격 변경 시험", MessageBoxButtons.YesNo,
+                    "원본 제목 복구 후 선택 1건 즉시 수정", MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
                 titleRestoreApproved = true;
             }
@@ -790,6 +808,15 @@ internal sealed partial class AutomationForm
             }
             if (siteChain.Status != "ready")
                 throw new InvalidOperationException("사이트 원본 비동기 제출 경로가 준비되지 않았습니다: " + siteChain.Message);
+            // First-party FormChecker can silently reject a pre-existing
+            // listing if the editor's hidden detail field was never synced.
+            // Verify/repair only that editor mirror before arming the one-off
+            // submission. Any other missing requirement stops BEFORE a click.
+            var preflight = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                SitePriceEdit.OfficialPricePreflightScript));
+            if (preflight.Status != "ready")
+                throw new InvalidOperationException("사이트 수정폼 입력 검증: " + preflight.Message);
+            AppendLog("사이트 구매글 단건 제출 전 검증: " + preflight.Message);
             AppendLog("구매글 사이트 비동기 제출 경로 준비 확인 (연락처·카테고리·에디터·최종 POST)");
 
             // Subscribe BEFORE the click. Previously the first readback

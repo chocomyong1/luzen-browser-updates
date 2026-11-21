@@ -84,6 +84,53 @@ internal static class SitePriceEdit
     })()
     """;
 
+    // The site's original purchase editor synchronizes Quill to user_text
+    // only on a text-change. An existing listing can display the description
+    // while the hidden FormChecker field remains empty. That cancels the
+    // first submit BEFORE the official AJAX validation starts, explaining
+    // the repeated "submit canceled, no POST" reports. Mirror the site's
+    // own sanitizer ONLY when its field is blank, and refuse to submit when
+    // required, non-price fields are still absent. Never alter title/ID.
+    public const string OfficialPricePreflightScript = """
+    (()=>{
+      const result=(status,message)=>({status,message});
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
+        location.pathname.toLowerCase()!=='/myroom/buy/buy_re_reg.html')
+        return result('error','사이트 구매 수정폼 이외 화면');
+      const form=document.forms.frmBuy;
+      const val=name=>String(form?.elements?.namedItem?.(name)?.value||'').trim();
+      if(!form||form.getAttribute('id')!=='frmBuy')return result('error','수정폼 확인 불가');
+      if(!val('user_title'))return result('error','사이트 물품 제목칸이 비어 있습니다');
+      const text=form.elements.namedItem('user_text');
+      const root=window.editor?.root;
+      const sanitize=window.DOMPurify?.sanitize;
+      if(!text||!root||typeof sanitize!=='function')
+        return result('error','사이트 상세설명 에디터를 확인할 수 없습니다');
+      const html=String(root.innerHTML||'');
+      const normalized=html==='<p><br></p>'?'':String(sanitize(html));
+      if(!String(text.value||'').trim()&&normalized.trim()){
+        // Official buy_re_reg.js does this same synchronization on each
+        // Quill text-change; the original title and other form fields stay.
+        text.value=normalized;
+      }
+      if(!String(text.value||'').trim())
+        return result('error','사이트 상세설명 필드가 비어 있습니다. 이 상태면 FormChecker가 제출을 취소합니다');
+      if(val('user_goods_type')==='division'){
+        for(const [name,label] of [
+          ['user_quantity_min_tmp','최소 구매수량'],
+          ['user_quantity_max_tmp','최대 구매수량'],
+          ['user_division_unit','분할단위']]){
+          if(!val(name)||Number(val(name).replace(/,/g,''))===0)
+            return result('error','사이트 '+label+' 입력값이 없어 FormChecker가 제출을 차단합니다');
+        }
+      }
+      const contact=val('user_contactA'),mobile=val('slctMobile_type');
+      if(contact==='N'&&mobile==='N')
+        return result('error','사이트 연락처 설정이 모두 비활성화되어 제출할 수 없습니다');
+      return result('ready','사이트 필수 입력값 및 상세설명 동기화 확인');
+    })()
+    """;
+
     // A separately invoked, read-only look at already referenced first-party
     // JavaScript assets. Only static .js GETs (no URL parameters) are made;
     // no form field values, request bodies, cookies, or listing data are read.

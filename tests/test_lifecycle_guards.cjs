@@ -11,7 +11,7 @@ const from = (source, start, end) => {
   assert(a>=0 && b>a, 'missing code region: '+start);
   return source.slice(a,b);
 };
-const planner = from(price,'private static bool IsUnsubmittedNewListing(', '// Explicit, single-listing pilot.');
+const planner = from(price,'private static bool IsUnsubmittedNewListing(', '// Immediate, explicit one-listing operation.');
 assert.match(planner, /job\.ImportedFromSite \|\|[\s\S]*job\.Operation == "구매등록" && job\.InitialCompleted && job\.LastSucceededUtc\.HasValue/);
 assert.match(planner, /job\.OriginalTradeSide == "구매"/);
 assert.match(planner, /ListingIdentity\.HasNumber\(job\.ListingNumber\)/);

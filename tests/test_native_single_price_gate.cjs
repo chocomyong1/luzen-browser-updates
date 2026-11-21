@@ -46,7 +46,7 @@ assert.doesNotMatch(submissionScripts.replace(/\/\/[^\n]*/g,''), /\bfetch\s*\(|\
 assert.match(app, /nativeSingleApproval && \(fromScheduler \|\| bulkApproval \|\| manuallyApprovedPrice is null\)/);
 assert.match(app, /!SitePriceEdit\.AutomaticPriceSubmissionEnabled && !nativeSingleApproval/);
 assert.match(app, /_jobs\.Any\(other => !ReferenceEquals\(other, job\)/);
-assert.match(app, /!string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)/);
+assert.match(app, /string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)[\s\S]*?job\.Price : job\.PendingSitePriceTarget/);
 assert.match(app, /SitePriceEdit\.BuildEditFormScript\(job\.ListingNumber, current\.ToString\(\), desired\.ToString\(\), true,\s*siteTitleSnapshot, nativeSingleApproval, records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
 assert.match(app, /ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
 assert.match(app, /if \(nativeSingleApproval\) job\.PendingSitePriceTarget = desired\.ToString\(\)/);
@@ -69,7 +69,7 @@ assert.match(app, /form\.Status == "restore-needed" && nativeSingleApproval/);
 assert.match(app, /MessageBoxDefaultButton\.Button2/);
 assert.match(app, /records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
 assert.match(app, /job\.Price = desired\.ToString\("N0"\)/);
-assert.match(editor, /사이트 구매글 가격 변경 \(한 건 시험\)/);
+assert.match(editor, /선택 1건 즉시 가격 수정 \(실제 제출\)/);
 assert.match(editor, /async \(_, _\) => await ApplySelectedSitePriceAsync\(\)/);
 assert.match(editor, /가격 변경 결과 재조회 \(제출 없음\)/);
 assert.doesNotMatch(editor, /ApplySitePriceAsync\(job, bulkApproval: true, fromScheduler: true, nativeSingleApproval:/);
