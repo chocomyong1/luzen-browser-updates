@@ -85,6 +85,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'First-party asynchronous price-submit flow safety test failed' }
           node tests/test_immediate_single_price_button.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Immediate one-listing site price action failed' }
+          node tests/test_held_price_reconciliation.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Held price reconciliation guard failed' }
           node tests/test_native_single_price_gate.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Native single-item price pilot safety test failed' }
           node tests/test_title_integrity_interlock.cjs
@@ -198,15 +200,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.18'
+          $version = '22.3.19'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.18
-          path: LuzenBrowser_22.3.18_BinaryUpdate.zip
+          name: vanta-windows-v22.3.19
+          path: LuzenBrowser_22.3.19_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -214,7 +216,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.18'
+          $version = '22.3.19'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -226,7 +228,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.18 등록 현황의 각 물품 행에 1건 즉시 가격 수정 버튼을 추가했습니다. 관리 메뉴와 물품 편집에도 동일한 실제 제출 기능을 연결했으며 자동 시작 없이 지정 등록번호 한 건만 처리합니다. 기존 가격 예약이 있다면 그 금액을 기본값으로 제시합니다. 아이템매니아 원본 FormChecker가 상세설명 hidden 필드 누락으로 첫 제출을 차단하지 않도록 공식 에디터 내용을 안전하게 동기화하고, 분할 수량·연락처 필수값을 제출 전에 검사합니다. 등록번호·원본 제목 검증, 시간당 제한, 중복 제출 금지, 확인 대기 보류 및 사이트 최종 결과 재조회는 유지합니다. 실제 사이트 제출 성공은 사용자 한 건 확인 전까지 확정하지 않습니다.'
+            releaseNotes = 'v22.3.19 1건 즉시 가격 수정 버튼에서 이전 제출 결과 확인 대기 상태를 읽기 전용으로 자동 재조회합니다. 기존 등록번호·제목·목표가격이 확인되면 다시 제출하지 않고 반영 성공으로 정리합니다. 기존 등록번호·제목·실제 이전 가격이 그대로이고 검색한 관리목록에 새 글 후보가 없을 때에만 사용자에게 사이트 중복 글 부재를 재확인받아 단건 가격 수정으로 진입합니다. 조회 실패·제목 불일치·새 글 후보·불확실한 경우 잠금을 유지하며 중복 제출하지 않습니다. 자동시작은 켜지지 않으며 22.3.18의 제목/등록번호 보호와 공식 폼 검증을 유지합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'
