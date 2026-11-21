@@ -18,12 +18,12 @@ const tables = source('AutomationForm.ModernTables.cs');
 const repost = source('OwnedListRepost.cs');
 const reservations = source('AutomationForm.PriceReservations.cs');
 
-const startup = form.match(/if \(oldJob\.ImportedFromSite\)\s*\{([\s\S]*?)\n\s{12}\}/)?.[1];
-assert(startup, 'startup imported-job block must exist');
-assert.doesNotMatch(startup, /oldJob\.Title\s*=/,
-  'loading the saved configuration must not silently rewrite a historical title');
-assert.match(startup, /HasSuspiciousDuplicatedLevel\(oldJob\.Title\)/);
-assert.match(startup, /oldJob\.RequiresReview\s*=\s*true/);
+assert.match(form, /MyListingsImport\.IsPreSubmitTitleOnlyHold\(oldJob\)/);
+assert.doesNotMatch(form, /oldJob\.Title\s*=/,
+  'loading the saved configuration must never rewrite the title');
+assert.match(form, /oldJob\.RequiresReview\s*=\s*false/);
+assert.match(form, /oldJob\.Enabled\s*=\s*false/,
+  'clearing a false title hold must not silently enable auto-posting');
 assert.match(form, /!string\.IsNullOrWhiteSpace\(oldJob\.PendingSitePriceTarget\) &&/);
 assert.match(form, /oldJob\.LastStatus == "제목 보호 모드: 가격 예약 자동 제출 중지"/);
 assert.match(form, /!oldJob\.PendingRepostAttemptUtc\.HasValue/);
@@ -37,17 +37,20 @@ assert.match(sitePriceScript, /return result\('blocked','제목 보호 모드/);
 assert.match(sitePriceForm, /if \(!SitePriceEdit\.AutomaticPriceSubmissionEnabled\)/);
 assert.match(reservations, /제목 보호 모드 · 사이트 가격 자동 제출 중지/);
 
-assert.match(repost, /if\(!matching\[0\]\.identity\.titleMatches/);
-assert.match(repost, /return result\('unsafe-title'/);
-assert.match(form, /if \(ownRow\.Status == "unsafe-title"\)/);
-assert.match(form, /catch \(SiteTitleSafetyException ex\) when \(!submitted && !dryRun\)/);
-assert.match(form, /job\.Enabled\s*=\s*false;\s*job\.RequiresReview\s*=\s*true;/);
+assert.doesNotMatch(repost, /if\(!matching\[0\]\.identity\.titleMatches/);
+assert.doesNotMatch(repost, /return result\('unsafe-title'/);
+assert.doesNotMatch(form, /if \(ownRow\.Status == "unsafe-title"\)/);
+assert.match(repost, /if\(!ids\.has\(arg\.number\)\|\|!identity\.ok\|\|!strongNumber\)continue/);
+assert.match(repost, /if\(matching\[0\]\.actions\.length!==1\)/);
 
 assert.match(importer, /SiteObservedTitle = Clean\(row\.Title\)/);
 assert.match(importer, /Target\.SiteObservedTitle = SiteObservedTitle/);
-assert.match(importer, /RequiresReview = suspiciousTitle \|\| !CanTrustOwnedImport/);
+assert.match(importer, /RequiresReview = !CanTrustOwnedImport/);
+assert.match(importer, /internal static bool IsPreSubmitTitleOnlyHold\(ListingJob job\)/);
+assert.match(importer, /!job\.PendingRepostAttemptUtc\.HasValue/);
+assert.match(importer, /string\.IsNullOrWhiteSpace\(job\.PriceEditSiteTitleSnapshot\)/);
 assert.match(models, /public bool SiteTitleDiffers/);
 assert.match(tables, /job\.SiteTitleDiffers/);
 assert.match(tables, /사이트: " \+ job\.SiteObservedTitle/);
 
-console.log('PASS title safety at config startup, import, visual diff, repost, and price-queue boundaries');
+console.log('PASS ID-bound repost, title-only legacy hold cleanup, original title preservation, and price-queue boundaries');

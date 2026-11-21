@@ -204,15 +204,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.22'
+          $version = '22.3.23'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.22
-          path: LuzenBrowser_22.3.22_BinaryUpdate.zip
+          name: vanta-windows-v22.3.23
+          path: LuzenBrowser_22.3.23_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -220,7 +220,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.22'
+          $version = '22.3.23'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -232,7 +232,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.22 기존 가격 자동 수정이 중지된 상태에서 적용 불가능한 오래된 예약을 미적용 가격 요청으로 정확히 표시합니다. 단순 예약을 프로그램 시작 때 확인 필요로 잘못 바꾸지 않고, 가격 요청 현황의 선택 요청 취소 버튼으로 미제출 예약만 안전하게 해제할 수 있습니다. 기존 제출 결과가 불확실한 글의 확인 필요는 해제하지 않습니다. 자동 시작 대상 0건이면 해당 A/B/C 시스템의 자동 ON·확인 필요·재등록 OFF 건수를 표시합니다. 실제 사이트 가격 변경은 실행하지 않습니다.'
+            releaseNotes = 'v22.3.23 기존 등록글은 저장 제목이나 반복 레벨 숫자 대신 본인 관리목록의 등록번호, 거래 방향, 해당 행에 연결된 재등록 버튼으로 확인합니다. 제목 차이만으로 생긴 기존 확인 필요는 제출 대기 기록이 없을 때 안전하게 해제하며 자동 등록은 임의로 켜지 않습니다. 불확실한 실제 제출과 로그인·등록번호 문제는 여전히 보류합니다. 가격 결과는 등록번호와 실제 사이트 단가로 확인합니다. 자동 가격 일괄 제출은 기존대로 비활성화 상태입니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

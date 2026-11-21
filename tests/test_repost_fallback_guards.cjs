@@ -17,7 +17,7 @@ const importReview = read('AutomationForm.ImportReview.cs');
 // Require fallback for BOTH manual dry-run and real submission, and no click
 // until the same row is located again at the point of submission.
 assert.match(automation, /\[시험\][\s\S]*?LocateOwnedListFallbackAsync\(job, token\)/);
-assert.match(automation, /A detail-page button may resubmit the full form[\s\S]*?LocateOwnedListFallbackAsync\(job, token\)/);
+assert.match(automation, /A detail-page button may resubmit an unrelated[\s\S]*?LocateOwnedListFallbackAsync\(job, token\)/);
 assert.doesNotMatch(automation, /var beforeRepost = await InspectCurrentIdentityAsync\(job, token\)/,
   'detail-page identity alone must never authorize title-affecting submission');
 assert.match(automation, /if \(fallback\.Status != "ready"\)[\s\S]*?repostFromOwnedList = true/);

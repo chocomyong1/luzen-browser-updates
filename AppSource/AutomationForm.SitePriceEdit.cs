@@ -1272,12 +1272,14 @@ internal sealed partial class AutomationForm
         var oldPrices = matchingOld.Select(r => r.Price).Distinct().ToList();
         if (matchingOld.Count == 1 && TrySitePrice(matchingOld[0].Price, out var current) && current == target)
         {
-            if (PriceReadbackTitle(matchingOld[0].Title) != expectedTitle ||
-                (legacyTitleFallback && MyListingsImport.HasSuspiciousDuplicatedLevel(matchingOld[0].Title)))
-                return new SitePriceReadback { ExactIdVerified = false,
-                    Message = summary + "가격은 변경됐지만 제출 전 사이트 제목과 달라졌거나 이전 시도의 제목 기준을 확인할 수 없습니다. 자동 작업을 중지하고 제목을 확인하세요." };
+            // One authenticated OWN-list row with this exact registration ID
+            // and the requested site price proves the result. A historical
+            // title difference never negates that proof or reassigns the ID.
+            bool titleDifferent = expectedTitle.Length > 0 &&
+                PriceReadbackTitle(matchingOld[0].Title) != expectedTitle;
             return new SitePriceReadback { ExactIdVerified = true,
-                Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 및 제출 전 제목 유지 확인." };
+                Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 확인." +
+                    (titleDifferent ? " 사이트 표시 제목은 저장된 제목과 다르지만 가격 결과 판별에는 사용하지 않았습니다." : "") };
         }
         bool originalUnchangedNoReplacement = matchingOld.Count == 1 &&
             TrySitePrice(matchingOld[0].Price, out var currentOld) &&

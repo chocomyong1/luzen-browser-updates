@@ -155,23 +155,24 @@ internal sealed partial class AutomationForm : Form
         _defaultSubId = defaultSubId == "Local" ? "" : defaultSubId;
         _jobs = new BindingList<ListingJob>(_config.Jobs);
         var currentSiteId = ItemManiaAccountStore.Load(_system).UserId;
+        bool releasedTitleOnlyHolds = false;
         foreach (var oldJob in _jobs)
         {
             // V12 did not have these fields; preserve any explicit existing values.
             if (string.IsNullOrWhiteSpace(oldJob.SubId)) oldJob.SubId = _defaultSubId;
             if (string.IsNullOrWhiteSpace(oldJob.SiteId)) oldJob.SiteId = currentSiteId;
-            // Never rewrite an existing saved title on application startup.
-            // Earlier builds stripped the site's quantity-range prefix here;
-            // that destroyed evidence and made saved titles silently change.
-            if (oldJob.ImportedFromSite)
+            // A title is display text, not listing identity. Older builds
+            // incorrectly held imported posts with repeated level numbers or
+            // title formatting differences, BEFORE attempting a submission.
+            // Release only those identifiable pre-submit holds. Never release
+            // an uncertain POST checkpoint or turn automation ON implicitly.
+            if (MyListingsImport.IsPreSubmitTitleOnlyHold(oldJob))
             {
-                if (MyListingsImport.HasSuspiciousDuplicatedLevel(oldJob.Title))
-                {
-                    oldJob.Enabled = false;
-                    oldJob.RequiresReview = true;
-                    oldJob.NextDueUtc = DateTime.MaxValue;
-                    oldJob.LastStatus = "제목 숫자 중복 의심: 원본 확인 전 자동 작업 금지";
-                }
+                oldJob.Enabled = false;
+                oldJob.RequiresReview = false;
+                oldJob.NextDueUtc = DateTime.MaxValue;
+                oldJob.LastStatus = "제목 차단 해제 · 등록번호로 사이트 행 확인 후 실행 가능 (자동 OFF)";
+                releasedTitleOnlyHolds = true;
             }
             // Price automation is disabled. A pre-existing local reservation
             // is NOT evidence of a submitted site request. Do not turn every
@@ -192,6 +193,7 @@ internal sealed partial class AutomationForm : Form
                 oldJob.LastStatus = "제목 보호 모드: 가격 예약 자동 제출 중지";
             }
         }
+        if (releasedTitleOnlyHolds) _config.Save();
         Text = "Luzen Browser V22 - 자동 업데이트 지원";
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(960, 600);
@@ -2890,7 +2892,7 @@ internal sealed partial class AutomationForm : Form
         var flow = _config.WorkflowFor(EffectiveOperation(job));
         AppendLog($"작업 시작: [{flow.Operation}] {job.Server} / {job.Title}" + (dryRun ? " (미제출 테스트)" : ""));
         if (flow.Operation == "재등록" && MyListingsImport.IsOwnedListUrl(EntryFor(job, flow)))
-            AppendLog("재등록 방식: 등록번호·거래 방향·사이트 제목을 검증하며 제목 차이 또는 중복 숫자 발견 시 자동 제출을 차단합니다.");
+            AppendLog("재등록 방식: 본인 관리목록에서 등록번호·거래 방향·해당 행의 재등록 버튼을 검증합니다. 제목은 판별에 사용하지 않습니다.");
         try
         {
             await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
@@ -2922,8 +2924,6 @@ internal sealed partial class AutomationForm : Form
                             if (MyListingsImport.IsOwnedListUrl(_web.Source?.AbsoluteUri))
                             {
                                 var result = await LocateOwnedListRepostAsync(job, token);
-                                if (result.Status == "unsafe-title")
-                                    throw new SiteTitleSafetyException(result.Message);
                                 if (result.Status != "ready")
                                     throw new InvalidOperationException("[시험] 재등록 대상 행 확인 실패: " + result.Message);
                                 AppendLog("[시험] 실제 제출 없이 해당 물품 행·재등록 버튼 확인: " + job.ListingNumber);
@@ -2931,12 +2931,10 @@ internal sealed partial class AutomationForm : Form
                             else
                             {
                                 var fallback = await LocateOwnedListFallbackAsync(job, token);
-                                if (fallback.Status == "unsafe-title")
-                                    throw new SiteTitleSafetyException(fallback.Message);
                                 if (fallback.Status != "ready")
-                                    throw new InvalidOperationException("[시험] 본인 등록목록에서 사이트 제목·등록번호·재등록 버튼 확인 실패: " +
+                                    throw new InvalidOperationException("[시험] 본인 등록목록에서 등록번호·재등록 버튼 확인 실패: " +
                                         fallback.Message + ". 제출하지 않았습니다.");
-                                AppendLog("[시험] 본인 등록목록에서 제목·등록번호·재등록 버튼 확인: " + job.ListingNumber);
+                                AppendLog("[시험] 본인 등록목록에서 등록번호·재등록 버튼 확인: " + job.ListingNumber);
                             }
                         }
                         else
@@ -2963,8 +2961,6 @@ internal sealed partial class AutomationForm : Form
                         if (repostFromOwnedList)
                         {
                             var ownRow = await LocateOwnedListRepostAsync(job, token);
-                            if (ownRow.Status == "unsafe-title")
-                                throw new SiteTitleSafetyException(ownRow.Message);
                             if (ownRow.Status != "ready")
                                 throw new InvalidOperationException("내 등록목록 재등록 차단: " + ownRow.Message +
                                     ". 등록번호에 직접 연결된 물품 행의 버튼을 찾지 못했습니다. 제출하지 않았습니다.");
@@ -2974,21 +2970,17 @@ internal sealed partial class AutomationForm : Form
                         }
                         else
                         {
-                            // A detail-page button may resubmit the full form
-                            // without any way to prove its title is preserved.
-                            // Always switch to the exact-ID, title-checked OWN
-                            // list native reInsert path for automatic reposts.
+                            // A detail-page button may resubmit an unrelated
+                            // form. Use the exact-ID OWN-list native reInsert.
                             var fallback = await LocateOwnedListFallbackAsync(job, token);
-                            if (fallback.Status == "unsafe-title")
-                                throw new SiteTitleSafetyException(fallback.Message);
                             if (fallback.Status != "ready")
                                 throw new InvalidOperationException(
-                                    "재등록 차단: 본인 관리목록에서 사이트 제목·등록번호·재등록 버튼을 검증하지 못했습니다: " +
+                                    "재등록 차단: 본인 관리목록에서 등록번호·재등록 버튼을 검증하지 못했습니다: " +
                                     fallback.Message + ". 제출하지 않았습니다.");
                             repostFromOwnedList = true;
                             preRepostStamp = fallback.Stamp;
                             preRepostListUrl = _web.Source?.AbsoluteUri ?? "";
-                            AppendLog("본인 관리목록의 제목·등록번호·재등록 버튼 재확인: " + job.ListingNumber + " / " + job.Title);
+                            AppendLog("본인 관리목록의 등록번호·재등록 버튼 재확인: " + job.ListingNumber);
                         }
                     }
                     if (!submitted)
@@ -3199,14 +3191,6 @@ internal sealed partial class AutomationForm : Form
             AppendLog("작업 중지: " + job.Title + (submitted ? " / 제출이 진행되었을 수 있으니 중복 등록 전에 반드시 확인" : ""));
             AppendLog($"작업 중지 요약: {job.Server} · {job.ListingNumber} · " +
                 (submitted ? "결과 확인 필요" : "미제출"));
-        }
-        catch (SiteTitleSafetyException ex) when (!submitted && !dryRun)
-        {
-            job.Enabled = false;
-            job.RequiresReview = true;
-            job.NextDueUtc = DateTime.MaxValue;
-            job.LastStatus = "사이트 제목 불일치·중복 의심: 자동 재등록 금지";
-            AppendLog($"제목 보호 차단: {job.Server} · {job.ListingNumber} · {ex.Message} (사이트 제출 없음)");
         }
         catch (Exception ex) when (submitted && _repostServerCooldownRejected)
         {
