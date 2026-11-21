@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.17",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.17/LuzenBrowser_22.3.17_BinaryUpdate.zip",
-  "sha256": "af02a18fe225589669e79c0ecff4a325671f36210b9293580908d2d97d9a6c96",
+  "version": "22.3.18",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.18/LuzenBrowser_22.3.18_BinaryUpdate.zip",
+  "sha256": "993d5454ebda8aa382f804a24d2834fd08e73596eaa4546ed22ea6257448866c",
   "format": "binary",
-  "releaseNotes": "v22.3.17 아이템매니아 원본 buy_re_reg.js의 FormChecker 비동기 제출 경로에 맞춰 구매글 가격 변경을 재구성했습니다. 정상적인 첫 submit 취소를 최종 실패로 단정하지 않고, 연락처·카테고리·에디터 AJAX 단계를 요청 내용 없이 관찰합니다. 공식 사이트 alert는 닫아 숨겨진 브라우저의 검증 정체를 방지하고, 카테고리 변경은 추가 사용자 승인만 허용합니다. 실제 수정 전 제출 핸들러·에디터·AJAX·소독기 초기화를 확인하며, 기존 등록번호·제목 보호·최종 사이트 가격 재검증과 자동 일괄 제출 차단은 유지합니다. 실사이트 최종 성공은 본인 한 건 검증 전까지 보장하지 않습니다."
+  "releaseNotes": "v22.3.18 등록 현황의 각 물품 행에 1건 즉시 가격 수정 버튼을 추가했습니다. 관리 메뉴와 물품 편집에도 동일한 실제 제출 기능을 연결했으며 자동 시작 없이 지정 등록번호 한 건만 처리합니다. 기존 가격 예약이 있다면 그 금액을 기본값으로 제시합니다. 아이템매니아 원본 FormChecker가 상세설명 hidden 필드 누락으로 첫 제출을 차단하지 않도록 공식 에디터 내용을 안전하게 동기화하고, 분할 수량·연락처 필수값을 제출 전에 검사합니다. 등록번호·원본 제목 검증, 시간당 제한, 중복 제출 금지, 확인 대기 보류 및 사이트 최종 결과 재조회는 유지합니다. 실제 사이트 제출 성공은 사용자 한 건 확인 전까지 확정하지 않습니다."
 }
