@@ -278,6 +278,15 @@ internal sealed partial class AutomationForm
             manuallyApprovedPrice: (long)amount.Value);
     }
 
+    // Never edits a field or submits a listing. This uses the same exact-ID
+    // management-list/detail/edit-page navigation as the approved price pilot,
+    // so that the diagnostics come from the REAL account form, not a mock.
+    private async Task InspectSelectedPriceSubmitBindingsAsync()
+    {
+        if (_selected is null) return;
+        await ApplySitePriceAsync(_selected, bulkApproval: false, diagnosticOnly: true);
+    }
+
     // Recovery path for a previously attempted edit. It NEVER revisits the
     // edit form or clicks its submit button; only the signed-in OWN list is
     // consulted. A new registration number is never inferred or rebound.
@@ -424,10 +433,13 @@ internal sealed partial class AutomationForm
     }
 
     private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval,
-        bool fromScheduler = false, bool nativeSingleApproval = false, long? manuallyApprovedPrice = null)
+        bool fromScheduler = false, bool nativeSingleApproval = false, long? manuallyApprovedPrice = null,
+        bool diagnosticOnly = false)
     {
         _lastSitePriceEditFailure = "";
-        if (!SitePriceEdit.AutomaticPriceSubmissionEnabled && !nativeSingleApproval)
+        if (diagnosticOnly && (bulkApproval || fromScheduler || nativeSingleApproval || manuallyApprovedPrice.HasValue))
+            throw new InvalidOperationException("읽기 전용 분석은 가격 제출 작업과 동시에 사용할 수 없습니다");
+        if (!SitePriceEdit.AutomaticPriceSubmissionEnabled && !nativeSingleApproval && !diagnosticOnly)
         {
             _lastSitePriceEditFailure = "제목 보호 모드: 사이트 가격 자동 제출 중지 (기존 예약도 제출하지 않음)";
             if (!bulkApproval) MessageBox.Show(this, _lastSitePriceEditFailure + "\n사이트에서 직접 수정해 주세요.",
@@ -466,7 +478,7 @@ internal sealed partial class AutomationForm
                 "사이트 작업 중복 방지", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
-        if (!bulkApproval) SaveSelectedJob(false);
+        if (!bulkApproval && !diagnosticOnly) SaveSelectedJob(false);
         var job = explicitJob ?? _selected;
         if (job is null || !IsRegisteredOwnedBuyPriceTarget(job))
         {
@@ -498,7 +510,7 @@ internal sealed partial class AutomationForm
         bool unresolvedPriceAttempt = job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
             (job.LastStatus.Contains("제출 중", StringComparison.Ordinal) ||
              job.LastStatus.Contains("결과 확인 필요", StringComparison.Ordinal));
-        if (job.RequiresReview || unresolvedPriceAttempt)
+        if (!diagnosticOnly && (job.RequiresReview || unresolvedPriceAttempt))
         {
             if (job.LastStatus.Contains("가격", StringComparison.Ordinal))
                 await InspectPendingSitePriceOnlyAsync(job, desired);
@@ -512,6 +524,11 @@ internal sealed partial class AutomationForm
         // POST goes to /myroom/buy/buy_re_reg_ok.php. We can observe that
         // *exact* first-party submission before navigating to the readback
         // list; the previous trial could cancel the POST by navigating early.
+        if (_schedulerRunning && diagnosticOnly && MessageBox.Show(this,
+                "수정폼을 안전하게 읽는 동안 자동등록을 일시정지합니다. 검사 후 자동 시작을 다시 눌러 주세요.\n\n" +
+                "가격·제목은 입력하지 않으며 사이트에 제출하지 않습니다. 계속할까요?",
+                "읽기 전용 수정폼 검사", MessageBoxButtons.YesNo, MessageBoxIcon.Information,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
         if (_schedulerRunning && !fromScheduler) PauseScheduler();
         _busy = true;
         _activeSitePriceJob = job;
@@ -539,14 +556,17 @@ internal sealed partial class AutomationForm
                 MyListingsImport.IsOwnedListUrl(x.SourceListUrl)).ToList();
             if (records.Count != 1 || !TrySitePrice(records[0].Price, out var current))
                 throw new InvalidOperationException("해당 등록번호의 현재 사이트 단가를 정확히 읽지 못했습니다. 수정하지 않았습니다.");
-            if (MyListingsImport.HasSuspiciousDuplicatedLevel(job.Title) ||
+            if (!diagnosticOnly && (MyListingsImport.HasSuspiciousDuplicatedLevel(job.Title) ||
                 MyListingsImport.HasSuspiciousDuplicatedLevel(records[0].Title) ||
-                PriceReadbackTitle(records[0].Title) != PriceReadbackTitle(job.Title))
+                PriceReadbackTitle(records[0].Title) != PriceReadbackTitle(job.Title)))
                 throw new InvalidOperationException("원본 제목과 사이트 제목이 다르거나 레벨 숫자가 중복되어 있습니다. 제목을 복구하기 전에는 가격 재등록을 하지 않습니다.");
-            job.VerifiedSitePrice = current.ToString();
-            job.VerifiedSitePriceUtc = DateTime.UtcNow;
-            _config.Save();
-            if (current == desired)
+            if (!diagnosticOnly)
+            {
+                job.VerifiedSitePrice = current.ToString();
+                job.VerifiedSitePriceUtc = DateTime.UtcNow;
+                _config.Save();
+            }
+            if (!diagnosticOnly && current == desired)
             {
                 if (nativeSingleApproval)
                 {
@@ -560,7 +580,7 @@ internal sealed partial class AutomationForm
             }
             if (job.OriginalTradeSide != "구매")
                 throw new InvalidOperationException("현재는 실제 수정 버튼이 확인된 구매글만 1건씩 가격 반영할 수 있습니다. 판매글은 제출하지 않았습니다.");
-            if (!CanRunNow(job, out var quotaReason))
+            if (!diagnosticOnly && !CanRunNow(job, out var quotaReason))
                 throw new InvalidOperationException("가격 변경 시 등록 작업 간격을 확인해야 합니다. " + quotaReason);
             var ask = $"아이템매니아 구매 등록글 1건의 가격을 변경할까요?\n\n" +
                 $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n제목: {job.Title}\n\n" +
@@ -571,7 +591,7 @@ internal sealed partial class AutomationForm
                 "사이트의 구매 재등록 화면(frmBuy)에서 단가를 바꾼 뒤 사이트 기본 '재등록' 버튼을 사용합니다.\n" +
                 "등록번호가 바뀔 수 있어 결과가 불확실하면 자동 실행을 보류합니다.\n" +
                 "재등록 횟수·서버 간격 제한에 포함되며 중복 제출하지 않습니다.";
-            if (!bulkApproval && MessageBox.Show(this, ask, "실제 사이트 구매글 가격 변경", MessageBoxButtons.YesNo,
+            if (!bulkApproval && !diagnosticOnly && MessageBox.Show(this, ask, "실제 사이트 구매글 가격 변경", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
 
             var record = records[0];
@@ -655,8 +675,24 @@ internal sealed partial class AutomationForm
                 if (!IsAllowedCurrentPage()) throw new InvalidOperationException("수정 화면이 아이템매니아 공식 사이트를 벗어났습니다.");
                 form = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), false,
-                        job.Title, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity)));
+                        job.Title, nativeSingleApproval || diagnosticOnly,
+                        records[0].MinQuantity, records[0].MaxQuantity)));
                 if (form.Status is "ready" or "diagnostic" or "restore-needed") break;
+            }
+            if (diagnosticOnly)
+            {
+                var inspection = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.BuildSubmitBindingsInspectionScript(job.ListingNumber)));
+                if (inspection.Status != "inspected")
+                    throw new InvalidOperationException("실제 수정폼 읽기 전용 분석 실패: " + inspection.Message);
+                Clipboard.SetText(inspection.Message);
+                AppendLog("본인 구매글 실제 수정폼 이벤트 연결 진단 복사 완료 (가격·제목 입력/제출 없음)");
+                MessageBox.Show(this,
+                    "실제 아이템매니아 구매 수정폼의 제출 이벤트 연결 정보를 복사했습니다.\n\n" +
+                    "이 내용을 채팅에 붙여넣어 주세요. 등록번호·가격·제목·쿠키·입력값은 포함하지 않았고 " +
+                    "사이트에 아무것도 제출하지 않았습니다.",
+                    "가격 수정폼 분석 완료 — 제출 없음", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return true;
             }
             if (form.Status == "diagnostic")
             {

@@ -1211,6 +1211,8 @@ internal sealed partial class AutomationForm : Form
         var extraActions = new ContextMenuStrip();
         extraActions.Items.Add("사이트 구매글 가격 변경 (한 건 시험)", null,
             async (_, _) => await ApplySelectedSitePriceAsync());
+        extraActions.Items.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,
+            async (_, _) => await InspectSelectedPriceSubmitBindingsAsync());
         extraActions.Items.Add("가격 변경 결과 재조회 (제출 없음)", null,
             async (_, _) => await RecheckSelectedPriceWithoutSubmitAsync());
         extraActions.Items.Add(new ToolStripSeparator());

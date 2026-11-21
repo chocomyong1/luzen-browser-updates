@@ -54,6 +54,81 @@ internal static class SitePriceEdit
             verifiedMinQuantity, verifiedMaxQuantity, allowVerifiedTitleRestore, trustedOneClick,
             nativeKeyboardPrice }), StringComparison.Ordinal);
 
+    // Read-only inspection of the authentic signed-in edit form. Never
+    // return field values, inline source, cookies, query strings or tokens.
+    public static string BuildSubmitBindingsInspectionScript(string number) =>
+        SubmitBindingsInspectionScript.Replace("__ARG__", JsonSerializer.Serialize(new { number }),
+            StringComparison.Ordinal);
+
+    public const string SubmitBindingsInspectionScript = """
+    (()=>{
+      const a=__ARG__;
+      const result=(status,message)=>({status,message});
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
+         location.pathname.toLowerCase()!=='/myroom/buy/buy_re_reg.html')
+        return result('error','공식 구매 재등록 수정폼이 아닙니다');
+      const form=document.querySelector('form#frmBuy');
+      const button=form?.querySelector('button#ok_btn.buy_re_reg[type="submit"]');
+      const price=form?.querySelector('input[name="user_division_price"]');
+      if(!form||!button||!price||![...form.querySelectorAll('input[type="hidden"]')]
+        .some(e=>String(e.value||'')===a.number))
+        return result('error','수정폼·등록번호·가격칸·제출 버튼을 함께 확인하지 못했습니다');
+      const safe=s=>String(s||'').replace(/\d{8,}/g,'[번호가림]')
+        .replace(/[^\w.$<>가-힣-]/g,'').slice(0,42)||'익명';
+      const functionNames=s=>[...String(s||'').matchAll(/\b([A-Za-z_$][\w$]{2,45})\s*\(/g)]
+        .map(m=>m[1]).filter(n=>!['function','switch','while','catch','return'].includes(n))
+        .slice(0,6).map(safe).join(',')||'미확인';
+      const flags=s=>{
+        s=String(s||'');
+        return ['return-false','preventDefault','submit','ajax','fetch','confirm','alert','validation']
+          .filter(f=>f==='return-false'?/\breturn\s*(?:false|!1|0)\b/.test(s):
+            f==='validation'?/valid|check|verify|검증|확인/.test(s):
+            new RegExp('\\b'+f+'\\b','i').test(s)).join(',')||'없음';
+      };
+      const fnSummary=fn=>typeof fn==='function'?
+        '함수='+safe(fn.name)+'; 신호='+flags(Function.prototype.toString.call(fn)):'없음';
+      const attrSummary=(el,name)=>{
+        const raw=el?.getAttribute?.(name)||'';
+        return raw?'호출='+functionNames(raw)+'; 신호='+flags(raw):'없음';
+      };
+      const lines=[
+        '[VANTA 구매 수정폼 제출 연결 검사 — 읽기 전용]',
+        '페이지/폼/등록번호 확인: 일치 (등록번호와 입력값은 복사하지 않음)',
+        '폼: '+String(form.method||'-').toUpperCase()+' / '+String(form.enctype||'-').slice(0,45),
+        '폼 action 경로: '+(new URL(form.action,location.href)).pathname.slice(0,100),
+        '폼 onsubmit 속성: '+attrSummary(form,'onsubmit'),
+        '폼 onsubmit 함수: '+fnSummary(form.onsubmit),
+        '버튼 onclick 속성: '+attrSummary(button,'onclick'),
+        '버튼 onclick 함수: '+fnSummary(button.onclick),
+        '버튼 disabled: '+(button.disabled?'예':'아니오')+
+          '; 폼 HTML 유효성 오류 필드 수: '+form.querySelectorAll(':invalid').length,
+        '사이트 제목 수정칸 존재: '+(!!form.querySelector('input[name="user_title"],textarea[name="user_title"]')?'예':'아니오')
+      ];
+      const jq=typeof window.jQuery==='function'?window.jQuery:null;
+      if(jq&&typeof jq._data==='function'){
+        for(const [label,target] of [['버튼',button],['폼',form],['문서',document],['창',window]]){
+          let events={};
+          try{events=jq._data(target,'events')||{};}catch{}
+          for(const kind of ['click','submit','change','input','keyup']){
+            const handlers=Array.isArray(events[kind])?events[kind]:[];
+            for(const h of handlers.slice(0,8))
+              lines.push('jQuery '+label+' '+kind+' / '+(h.selector?'위임':'직접')+
+                ' / '+fnSummary(h.handler));
+          }
+        }
+      }else lines.push('jQuery 내부 이벤트 목록: 조회 불가 (사이트가 다른 방식으로 연결했을 수 있음)');
+      const relevantScripts=[...document.querySelectorAll('script[src]')]
+        .map(e=>{try{const u=new URL(e.src,location.href);return u.hostname===location.hostname?
+          u.pathname.split('/').pop()||'':'';}catch{return '';}})
+        .filter(s=>/^[a-z][a-z0-9._-]{0,60}\.js$/i.test(s)&&
+          !/\d{8,}/.test(s)&&/buy|re.?reg|edit|modify|item|goods|myroom/i.test(s))
+        .map(safe).filter(Boolean).slice(0,12);
+      lines.push('관련 사이트 스크립트 파일명: '+(relevantScripts.join(',')||'확인 안 됨'));
+      lines.push('이 검사는 버튼 클릭·폼 제출·가격 입력·네트워크 요청을 실행하지 않았습니다.');
+      return result('inspected',lines.join('\n').slice(0,3900));
+    })()
+    """;
+
     public const string VerifyNativePriceInputScript = """
     (()=>window.__luzenPriceNativeProbe?.canStartTyping?.()===true)()
     """;
