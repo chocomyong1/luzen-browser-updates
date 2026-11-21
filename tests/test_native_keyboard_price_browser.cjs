@@ -18,7 +18,8 @@ const siteTitle = '1 ~ 9,995 레벨 겁화 삽니다 24 시';
 const target = '35100';
 const url = 'https://www.itemmania.com/myroom/buy/buy_re_reg.html';
 
-async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit=false) {
+async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit=false,
+  dom0Cancels=false) {
   const context = await browser.newContext({viewport:{width:1100,height:750}});
   const page = await context.newPage();
   const requests = [];
@@ -34,8 +35,16 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
     <script>
       window.keyboardCount=0;window.inputCount=0;window.changeCount=0;
       window.siteAttempted=false;window.siteAccepted=false;
+      window.dom0HandlerRan=false;window.submitHasOwnPreventDefault=null;
       const price=document.querySelector('[name=user_division_price]');
       const form=document.querySelector('#frmBuy');
+      if(${dom0Cancels?'true':'false'})form.onsubmit=function(){
+        window.dom0HandlerRan=true;return false;
+      };
+      window.originalDom0SubmitHandler=form.onsubmit;
+      form.addEventListener('submit',event=>{
+        window.submitHasOwnPreventDefault=Object.prototype.hasOwnProperty.call(event,'preventDefault');
+      },{capture:true});
       if(${hoverMovesSubmit?'true':'false'})document.querySelector('#ok_btn').addEventListener(
         'mouseenter',event=>{event.currentTarget.style.marginTop='30px';},{once:true});
       price.addEventListener('keyup',()=>window.keyboardCount++);
@@ -103,6 +112,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
     finalized=await page.evaluate(script('FinalizeNativePriceScript'));
   }
   assert.equal(finalized.status,'armed',finalized.message);
+  assert.equal(await page.evaluate(()=>document.querySelector('#frmBuy').onsubmit===
+    window.originalDom0SubmitHandler),true,'Site DOM0 submit handler must be preserved');
   await move('mouseMoved','none',0,0,finalized.x,finalized.y);
   let refreshed=await page.evaluate(script('RefreshNativeClickTargetScript'));
   assert.equal(refreshed.status,'click-ready',JSON.stringify(refreshed));
@@ -118,14 +129,23 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   await move('mousePressed','left',1,1,refreshed.x,refreshed.y);
   await move('mouseReleased','left',0,1,refreshed.x,refreshed.y);
   const site=await page.evaluate(()=>({attempted:window.siteAttempted,accepted:window.siteAccepted,
+    dom0HandlerRan:window.dom0HandlerRan,
+    submitHasOwnPreventDefault:window.submitHasOwnPreventDefault,
     title:document.querySelector('[name=user_title]').value}));
   const probe=await page.evaluate(script('SubmitProbeScript'));
   assert(site.attempted);
   assert(site.accepted,'Fake-site keyboard/change validator must accept native price entry');
   assert.equal(requests.length,0,'Fake site must never POST');
+  assert.equal(site.submitHasOwnPreventDefault,false,
+    'Native submit event must retain its own unmodified preventDefault method');
   assert.match(probe,/키업\/입력\/변경\/포커스이탈:\d+\/\d+\/\d+\/\d+/,
     'Every real browser input category must be visible in the submit diagnostic');
   assert.match(probe,/제출 캡처:감지/);
+  if(dom0Cancels){
+    assert(site.dom0HandlerRan,'The native form must call the DOM0 onsubmit handler');
+    assert.match(probe,/DOM0 onsubmit:연결/);
+    assert.match(probe,/사이트 제출 취소:예/);
+  }
   assert.match(probe,/취소 호출:/,'A prevented submit must identify the cancellation trace');
   assert.doesNotMatch(probe,/https?:\/\//,'Diagnostics must never expose a full site URL');
   if(mutateTitle){
@@ -142,7 +162,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   if(process.env.LUZEN_TEST_CHROMIUM_BIN)options.executablePath=process.env.LUZEN_TEST_CHROMIUM_BIN;
   const browser=await chromium.launch(options);
   try{await oneTrial(browser,false);await oneTrial(browser,true);
-    await oneTrial(browser,false,true);await oneTrial(browser,false,false,true);}
+    await oneTrial(browser,false,true);await oneTrial(browser,false,false,true);
+    await oneTrial(browser,false,false,false,true);}
   finally{await browser.close();}
   console.log('PASS real Chromium key input triggers site validators; only one native click; late title mutation blocked');
 })().catch(error=>{console.error(error);process.exitCode=1;});

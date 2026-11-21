@@ -85,8 +85,12 @@ internal static class SitePriceEdit
             f==='validation'?/valid|check|verify|검증|확인/.test(s):
             new RegExp('\\b'+f+'\\b','i').test(s)).join(',')||'없음';
       };
-      const fnSummary=fn=>typeof fn==='function'?
-        '함수='+safe(fn.name)+'; 신호='+flags(Function.prototype.toString.call(fn)):'없음';
+      const fnSummary=fn=>{
+        if(typeof fn!=='function')return '없음';
+        const source=Function.prototype.toString.call(fn);
+        return '함수='+safe(fn.name)+'; 신호='+flags(source)+
+          '; 호출='+functionNames(source)+'; 코드길이='+source.length;
+      };
       const attrSummary=(el,name)=>{
         const raw=el?.getAttribute?.(name)||'';
         return raw?'호출='+functionNames(raw)+'; 신호='+flags(raw):'없음';
@@ -119,11 +123,11 @@ internal static class SitePriceEdit
       }else lines.push('jQuery 내부 이벤트 목록: 조회 불가 (사이트가 다른 방식으로 연결했을 수 있음)');
       const relevantScripts=[...document.querySelectorAll('script[src]')]
         .map(e=>{try{const u=new URL(e.src,location.href);return u.hostname===location.hostname?
-          u.pathname.split('/').pop()||'':'';}catch{return '';}})
-        .filter(s=>/^[a-z][a-z0-9._-]{0,60}\.js$/i.test(s)&&
+          u.pathname:'';}catch{return '';}})
+        .filter(s=>/^\/[a-z0-9._/-]{1,130}\.js$/i.test(s)&&
           !/\d{8,}/.test(s)&&/buy|re.?reg|edit|modify|item|goods|myroom/i.test(s))
-        .map(safe).filter(Boolean).slice(0,12);
-      lines.push('관련 사이트 스크립트 파일명: '+(relevantScripts.join(',')||'확인 안 됨'));
+        .slice(0,12);
+      lines.push('관련 사이트 스크립트 경로(쿼리 제외): '+(relevantScripts.join(',')||'확인 안 됨'));
       lines.push('이 검사는 버튼 클릭·폼 제출·가격 입력·네트워크 요청을 실행하지 않았습니다.');
       return result('inspected',lines.join('\n').slice(0,3900));
     })()
@@ -197,28 +201,18 @@ internal static class SitePriceEdit
       button.addEventListener('click',e=>{
         p.clickSeen=true;p.clickTrusted=e.isTrusted===true;
       },{capture:true,once:true});
-      // Observe only this verified BUY form's next submit event. The native
-      // event still runs normally; the wrapper delegates to preventDefault
-      // exactly once if the site's own handler calls it. Record function names
-      // only (never stack URLs, field values, or arguments).
-      const observeSiteCancellation=e=>{
+      // The site attaches an anonymous DOM0 onsubmit handler. Its native
+      // event functions MUST NOT be replaced, proxied or wrapped: that can
+      // interfere with the form's own JavaScript submit validation. Observe
+      // the event and its action pathname only, without altering anything.
+      const observeSiteSubmit=e=>{
         if(e.target!==p.form)return;
         p.submitCaptureSeen=true;
-        const nativePrevent=e.preventDefault;
-        if(typeof nativePrevent!=='function')return;
-        try{
-          Object.defineProperty(e,'preventDefault',{configurable:true,value:function(...args){
-            if(!p.submitCancelTrace){
-              const lines=String(new Error().stack||'').split('\n').slice(2,6);
-              const names=lines.map(line=>line.match(/^\s*at\s+([\w$.<>-]{1,48})/)?.[1]||'')
-                .filter(Boolean).slice(0,3);
-              p.submitCancelTrace=names.join(' > ')||'호출 함수 확인 불가';
-            }
-            return nativePrevent.apply(this,args);
-          }});
-        }catch{p.cancelTraceUnavailable=true;}
+        p.dom0SubmitBound=typeof p.form.onsubmit==='function';
+        try{p.submitActionAtEvent=new URL(p.form.action,location.href).pathname;}
+        catch{p.submitActionAtEvent='불명';}
       };
-      window.addEventListener?.('submit',observeSiteCancellation,{capture:true,once:true});
+      window.addEventListener?.('submit',observeSiteSubmit,{capture:true,once:true});
       const protectTitleAtSubmit=e=>{
         if(e.target!==p.form)return;
         p.submitSeen=true;p.submitEvent=e;
@@ -244,14 +238,19 @@ internal static class SitePriceEdit
       const titleChanged=p.titleChanged?.()===true;
       const invalid=[...p.form.querySelectorAll(':invalid')].slice(0,5)
         .map(e=>String(e.name||e.id||'이름 없음').slice(0,35));
+      const safePath=s=>String(s||'unknown').replace(/\d{8,}/g,'ID')
+        .replace(/[^a-zA-Z0-9._/-]/g,'').slice(0,110);
+      const currentAction=(()=>{try{return new URL(p.form.action,location.href).pathname;}
+        catch{return '불명';}})();
       return '버튼 입력:'+ (p.clickSeen?(p.clickTrusted?'사용자형':'합성'):'감지 안 됨')+
         '; 키업/입력/변경/포커스이탈:'+[
           p.keyUps||0,p.inputEvents||0,p.changeEvents||0,p.blurEvents||0].join('/')+
         '; 제출 이벤트:'+(p.submitSeen?'감지':'미감지')+
         '; 제출 캡처:'+(p.submitCaptureSeen?'감지':'미감지')+
         '; 사이트 제출 취소:'+(cancellation?'예':'아니오/미확인')+
-        '; 취소 호출:'+(p.submitCancelTrace||
-          (p.cancelTraceUnavailable?'진단 불가':(cancellation?'호출 위치 미확인':'없음')))+
+        '; 취소 호출:비개입 관찰(호출 함수 추적 안 함)'+
+        '; DOM0 onsubmit:'+(p.dom0SubmitBound?'연결':'없음/미확인')+
+        '; 제출 전후 폼 action:'+safePath(p.submitActionAtEvent)+'→'+safePath(currentAction)+
         '; 제목 보호 차단:'+(p.guardBlocked?'예':'아니오')+
         '; 현재 제목 변형:'+(titleChanged?'예':'아니오')+
         '; HTML 유효성 오류 필드:'+(invalid.join(',')||'없음');
@@ -621,7 +620,7 @@ internal static class SitePriceEdit
           }
           const probe={clickSeen:false,clickTrusted:false,submitSeen:false,
             guardBlocked:false,submitEvent:null,submitCaptureSeen:false,
-            submitCancelTrace:'',cancelTraceUnavailable:false,
+            dom0SubmitBound:false,submitActionAtEvent:'',
             keyUps:0,inputEvents:0,changeEvents:0,blurEvents:0,
             form,button,priceInput,others,desired,money,
             titleChanged:()=>titleSignature(titleInputs[0].value)!==titleSignature(originalTitle),

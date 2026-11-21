@@ -22,6 +22,12 @@ assert.match(script, /VerifyNativePriceFocusScript/);
 assert.match(script, /SelectNativePriceForReplacementScript/);
 assert.match(script, /return result\('input-mismatch'/);
 assert.match(script, /FinalizeNativePriceScript/);
+const nativeFinalizer = script.split('public const string FinalizeNativePriceScript = """')[1]
+  ?.split('""";')[0];
+assert(nativeFinalizer, 'Native price submit finalizer must be present');
+assert.doesNotMatch(nativeFinalizer, /Object\.defineProperty\s*\(\s*e\s*,\s*['"]preventDefault['"]/,
+  "Never patch the site's native preventDefault during purchase edit submission");
+assert.match(nativeFinalizer, /window\.addEventListener\?\.\('submit',observeSiteSubmit/);
 assert.match(script, /mayRestoreTitle=!titlePreserved&&a\.nativeSingleApproval===true/);
 assert.match(script, /quantity\(rangeTitle\[1\]\)===verifiedMin&&quantity\(rangeTitle\[2\]\)===verifiedMax/);
 assert.match(script, /titleSignature\(rangeTitle\[3\]\)===titleSignature\(savedLevel\[2\]\)/);
