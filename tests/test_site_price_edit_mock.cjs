@@ -142,6 +142,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   let clicked = 0;
   let acceptedNativeSubmits = 0;
   const submitGuards = [];
+  const submitCaptures = [];
   const clickObservers = [];
   const clickedLabels = [];
   let inputEvents = 0;
@@ -195,6 +196,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
       const submitEvent = {target: form, defaultPrevented:false,
         preventDefault() {blocked=true;this.defaultPrevented=true;},
         stopImmediatePropagation: () => { blocked = true; }};
+      for(const check of submitCaptures)check(submitEvent);
       for(const check of submitGuards)check(submitEvent);
       if(siteCancelsSubmit)submitEvent.preventDefault();
       if (!blocked) acceptedNativeSubmits++;
@@ -245,7 +247,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     key.startsWith('tr,') ? [tr] :
     key.startsWith('button,') ? allButtons :
     key === 'input' ? [quantity, ...prices] : [] };
-  const window = {innerWidth:850,innerHeight:650};
+  const window = {innerWidth:850,innerHeight:650,
+    addEventListener: (event, fn) => {if(event==='submit')submitCaptures.push(fn);}};
   const evaluate = (submit = true, expected = number, expectedOld = '10000', nativeSingleApproval = false,
     verifiedMinQuantity = '', verifiedMaxQuantity = '', allowVerifiedTitleRestore = false,
     trustedOneClick = true, nativeKeyboardPrice = true) =>
@@ -310,7 +313,9 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   restored.simulateOneBrowserClick();
   assert.deepEqual(restored.clickedLabels, ['REAL_SITE_RE_REG']);
   assert.equal(restored.acceptedNativeSubmits, 1);
-  assert.match(restored.probe(), /버튼 입력:사용자형; 제출 이벤트:감지; 사이트 제출 취소:아니오/);
+  assert.match(restored.probe(), /버튼 입력:사용자형/);
+  assert.match(restored.probe(), /제출 이벤트:감지/);
+  assert.match(restored.probe(), /사이트 제출 취소:아니오/);
   assert.equal(restored.fetchCalls.length, 0);
   const lateMutation = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
     clickMutatesTitle: true});
@@ -338,7 +343,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   siteCancelled.simulateTyping();
   assert.equal(siteCancelled.finalize().status,'armed');
   siteCancelled.simulateOneBrowserClick();
-  assert.match(siteCancelled.probe(), /사이트 제출 취소:예; 제목 보호 차단:아니오/);
+  assert.match(siteCancelled.probe(), /사이트 제출 취소:예/);
+  assert.match(siteCancelled.probe(), /제목 보호 차단:아니오/);
   assert.equal(siteCancelled.acceptedNativeSubmits,0);
   const obscured = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle,
     buttonObscured:true});
@@ -406,6 +412,17 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(native.prices[0].value, '35100');
   assert.equal(native.fetchCalls.length, 0, 'Native site button, never synthetic full-form fetch');
   assert.equal(native.inputEvents, 2);
+  assert.match(native.probe(),/제출 캡처:감지/);
+  const canceled = editFormCase({approvedSubmit:true,siteCancelsSubmit:true});
+  assert.equal(canceled.evaluate(true, number, '10000', true).status,'input-ready');
+  canceled.simulateTyping();
+  assert.equal(canceled.finalize().status,'armed');
+  canceled.simulateOneBrowserClick();
+  assert.match(canceled.probe(),/사이트 제출 취소:예/);
+  assert.match(canceled.probe(),/제목 보호 차단:아니오/);
+  assert.match(canceled.probe(),/취소 호출:(?!없음)/,
+    'A site-canceled submit must provide a bounded handler-name trace');
+  assert.equal(canceled.acceptedNativeSubmits,0);
   const shifted = editFormCase({approvedSubmit: true});
   assert.equal(shifted.evaluate(true, number, '10000', true).status,'input-ready');
   shifted.simulateTyping();
