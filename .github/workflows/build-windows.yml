@@ -188,15 +188,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.9'
+          $version = '22.3.10'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.9
-          path: LuzenBrowser_22.3.9_BinaryUpdate.zip
+          name: vanta-windows-v22.3.10
+          path: LuzenBrowser_22.3.10_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -204,7 +204,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.9'
+          $version = '22.3.10'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -216,7 +216,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.9 구매글 단건 가격변경 브라우저 클릭 안정화. 입력 후 사이트 재등록 버튼이 마우스 이동으로 재배치되면 동일 버튼의 정확한 위치와 등록번호·원본 제목·가격·비가격 필드를 다시 검증하고 한 번만 클릭합니다. 브라우저 입력 실패 시 오류 단계와 실제 예외 메시지를 실행 로그에 남깁니다. 제출 불확실 글의 자동 재제출 및 일괄 사이트 가격 반영은 계속 잠급니다. 사이트 실계정 가격수정 성공은 별도 확인이 필요합니다.'
+            releaseNotes = 'v22.3.10 구매글 단건 가격변경 실패 원인 진단 강화. 실제 키보드 입력·변경 이벤트 발생 여부와 사이트 제출 취소 호출의 함수 이름을 개인정보 없이 확인합니다. 현재 사이트에서 POST가 취소되는 정확한 이유는 진단 결과가 필요하며, 자동 재제출이나 직접 POST 우회는 하지 않습니다. 원본 제목 보호와 일괄 가격 반영 제한을 유지합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

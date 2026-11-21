@@ -123,6 +123,11 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   assert(site.attempted);
   assert(site.accepted,'Fake-site keyboard/change validator must accept native price entry');
   assert.equal(requests.length,0,'Fake site must never POST');
+  assert.match(probe,/키업\/입력\/변경\/포커스이탈:\d+\/\d+\/\d+\/\d+/,
+    'Every real browser input category must be visible in the submit diagnostic');
+  assert.match(probe,/제출 캡처:감지/);
+  assert.match(probe,/취소 호출:/,'A prevented submit must identify the cancellation trace');
+  assert.doesNotMatch(probe,/https?:\/\//,'Diagnostics must never expose a full site URL');
   if(mutateTitle){
     assert.match(probe,/제목 보호 차단:예/);
   }else{
