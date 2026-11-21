@@ -25,7 +25,7 @@ assert.doesNotMatch(single, /기존 사이트 가격 예약.*취소/);
 // Drafts (both BUY and SELL) have no posted number or prior submit; never
 // attempt to call the existing-listing price endpoint for their first post.
 const draft = planner.slice(planner.indexOf('private static bool IsUnsubmittedNewListing('),
-  planner.indexOf('// Explicit, single-listing pilot.'));
+  planner.indexOf('// Immediate, explicit one-listing operation.'));
 for (const required of ['!job.ImportedFromSite', '!ListingIdentity.HasNumber(job.ListingNumber)',
   '!job.InitialCompleted', '!job.LastSucceededUtc.HasValue', '!job.PendingRepostAttemptUtc.HasValue',
   'job.Operation is "구매등록" or "판매등록"'])

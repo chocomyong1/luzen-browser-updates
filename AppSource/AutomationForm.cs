@@ -953,6 +953,14 @@ internal sealed partial class AutomationForm : Form
         Add("서버", "Server", 105);
         Add("수량", "Quantity", 75);
         Add("가격", "Price", 95);
+        // Each button binds to its own DataBoundItem, never the checked batch
+        // or an older selection in the separate edit tab.
+        _autoGrid.Columns.Add(new DataGridViewButtonColumn
+        {
+            Name = "ImmediatePriceEdit", HeaderText = "즉시 가격 수정",
+            Text = "이 1건 수정", UseColumnTextForButtonValue = true,
+            Width = 120, ReadOnly = true
+        });
         _autoGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             HeaderText = "물품 제목", DataPropertyName = "Title", MinimumWidth = 200,
@@ -969,6 +977,13 @@ internal sealed partial class AutomationForm : Form
         {
             if (_autoGrid.IsCurrentCellDirty)
                 _autoGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        _autoGrid.CellContentClick += async (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+                _autoGrid.Columns[e.ColumnIndex].Name != "ImmediatePriceEdit") return;
+            if (_autoGrid.Rows[e.RowIndex].DataBoundItem is ListingJob target)
+                await ApplySelectedSitePriceAsync(target);
         };
         _autoGrid.CellValueChanged += (_, e) =>
         {
@@ -1209,8 +1224,10 @@ internal sealed partial class AutomationForm : Form
             return b;
         }
         FooterButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
+        FooterButton("1건 즉시 가격 수정", 156,
+            () => _ = ApplySelectedSitePriceAsync(_selected), true);
         var extraActions = new ContextMenuStrip();
-        extraActions.Items.Add("사이트 구매글 가격 변경 (한 건 시험)", null,
+        extraActions.Items.Add("선택 1건 즉시 가격 수정 (실제 제출)", null,
             async (_, _) => await ApplySelectedSitePriceAsync());
         extraActions.Items.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,
             async (_, _) => await InspectSelectedPriceSubmitBindingsAsync());
