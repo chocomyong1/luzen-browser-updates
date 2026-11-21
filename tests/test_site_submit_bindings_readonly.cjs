@@ -89,7 +89,7 @@ assert.equal(inspect({hasButton:false}).status, 'error');
 assert.match(menu, /사이트 가격 수정폼 분석·복사 \(제출 없음\)/);
 assert.match(flow, /await ApplySitePriceAsync\(_selected, bulkApproval: false, diagnosticOnly: true\)/);
 assert.match(flow, /if \(diagnosticOnly\)\s*\{\s*var inspection = SitePriceEdit\.Decode\(/);
-const diagnosticStart = flow.indexOf('if (diagnosticOnly)\n            {\n                var inspection');
+const diagnosticStart = flow.search(/if \(diagnosticOnly\)\s*\{\s*var inspection/);
 const actualPostObserver = flow.indexOf('using var submissionObserver = new SitePriceSubmitObserver');
 assert(diagnosticStart > 0 && actualPostObserver > diagnosticStart,
   'Diagnostic must exit before setting up any real price edit submission');
