@@ -22,7 +22,7 @@ assert.match(scheduler, /if \(!_schedulerRunning\)/);
 assert.match(scheduler, /시간당 등록 한도 대기/);
 assert.match(scheduler, /HourlyServerQuota\.NextAllowedUtc/);
 assert.match(ui, /현재 사이트 가격/);
-assert.match(ui, /변경 예약 가격/);
+assert.match(ui, /미적용 요청 가격/);
 assert.match(ui, /예상 반영/);
 assert.match(ui, /예약 가격 다시 수정/);
 assert.match(ui, /new IntegratedEditCommand\(IntegratedEditField\.Price, value\)/);

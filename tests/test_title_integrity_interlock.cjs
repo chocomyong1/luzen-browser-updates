@@ -24,7 +24,9 @@ assert.doesNotMatch(startup, /oldJob\.Title\s*=/,
   'loading the saved configuration must not silently rewrite a historical title');
 assert.match(startup, /HasSuspiciousDuplicatedLevel\(oldJob\.Title\)/);
 assert.match(startup, /oldJob\.RequiresReview\s*=\s*true/);
-assert.match(form, /!string\.IsNullOrWhiteSpace\(oldJob\.PendingSitePriceTarget\) && !oldJob\.RequiresReview/);
+assert.match(form, /!string\.IsNullOrWhiteSpace\(oldJob\.PendingSitePriceTarget\) &&/);
+assert.match(form, /oldJob\.LastStatus == "제목 보호 모드: 가격 예약 자동 제출 중지"/);
+assert.match(form, /!oldJob\.PendingRepostAttemptUtc\.HasValue/);
 assert.match(form, /oldJob\.LastStatus = "제목 보호 모드: 가격 예약 자동 제출 중지"/);
 
 assert.match(sitePriceScript, /AutomaticPriceSubmissionEnabled\s*=>\s*false/);
