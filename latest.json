@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.13",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.13/LuzenBrowser_22.3.13_BinaryUpdate.zip",
-  "sha256": "6b2c99a2297510b58cf3211eb2dd36b800dd7d44e93239a95c791e2bbfc33ef1",
+  "version": "22.3.14",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.14/LuzenBrowser_22.3.14_BinaryUpdate.zip",
+  "sha256": "58ada0d77b5a16033e9c6a83703e91f321f3e2382a9efc9845efb59e94e76039",
   "format": "binary",
-  "releaseNotes": "v22.3.13 가격 변경 대상을 본인 관리목록의 정확한 등록번호·거래방향·서버로 식별합니다. 저장된 예전 제목과 현재 사이트 제목이 다르다는 이유로 단건 가격 수정을 막지 않고, 사이트에서 확인한 현재 제목을 수정폼 보호 및 결과 조회에 사용합니다. 제출 전 사이트 제목은 보류 상태에서도 재조회할 수 있도록 안전하게 저장합니다. 사이트 자체의 onsubmit 취소 및 미감지 POST 문제는 별도 검증이 필요하며, 자동 일괄 가격 제출은 비활성 상태를 유지합니다."
+  "releaseNotes": "v22.3.14 사이트 구매 가격 수정의 DOM0 onsubmit 취소 원인을 파악하기 위한 읽기 전용 검증 JS 분석을 추가했습니다. 관리의 사이트 가격 수정폼 분석·복사를 실행하면 공식 수정폼에서 참조된 동일 출처 정적 JS 파일만 GET으로 조사하고, 개인정보·등록번호·가격·제목 입력값은 제외한 검증 코드 발췌를 복사합니다. 사이트 가격 입력과 수정 제출은 일절 하지 않습니다. 실제 가격 수정 제출 실패 원인은 아직 해결되지 않았으므로 기존 실패 글을 재제출하지 마세요."
 }
