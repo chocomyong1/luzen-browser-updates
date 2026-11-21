@@ -30,7 +30,7 @@ function inspect({hostname = 'www.itemmania.com', hiddenId = number, hasButton =
   const form = {
     method: 'post', enctype: 'application/x-www-form-urlencoded',
     action: 'https://www.itemmania.com/myroom/buy/buy_re_reg_ok.php?TOP_SECRET_TOKEN=abc',
-    onsubmit: function siteValidationHandler() { return false; },
+    onsubmit: function siteValidationHandler() { const token = 'TOP_SECRET_INLINE'; return token ? false : true; },
     getAttribute: name => name === 'onsubmit' ? 'return validatePriceAndSubmit();' : null,
     querySelector: selector => {
       if (selector === 'button#ok_btn.buy_re_reg[type="submit"]') return hasButton ? button : null;
