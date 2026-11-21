@@ -77,7 +77,8 @@ assert.equal(valid.status, 'inspected');
 assert.match(valid.message, /폼 action 경로: \/myroom\/buy\/buy_re_reg_ok\.php/);
 assert.match(valid.message, /onsubmit 함수: 함수=siteValidationHandler/);
 assert.match(valid.message, /jQuery 폼 submit.*nativeSiteSubmitGuard/);
-assert.match(valid.message, /관련 사이트 스크립트 파일명: buy_re_reg.js/);
+assert.match(valid.message, /관련 사이트 스크립트 경로\(쿼리 제외\): \/js\/buy_re_reg.js/);
+assert.match(valid.message, /폼 onsubmit 함수: .*호출=siteValidationHandler; 코드길이=\d+/);
 assert.match(valid.message, /버튼 onclick.*submitWithSiteChecks/);
 assert.match(valid.message, /가격 입력·네트워크 요청을 실행하지 않았습니다/);
 assert.doesNotMatch(valid.message, /TOP_SECRET|2026112100145715|90000|https?:\/\//,
