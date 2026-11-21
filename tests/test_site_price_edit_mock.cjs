@@ -146,6 +146,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const clickedLabels = [];
   let inputEvents = 0;
   let hitTarget = null;
+  let submitButtonVerticalShift = 0;
   class HTMLInputElement {
     constructor(value) { this.value = value; this.type = 'text'; this.tagName = 'INPUT'; this.disabled = false; this.readOnly = false; this.isConnected = true; }
     set value(v) { this._value = v; }
@@ -200,7 +201,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     },
     addEventListener: (event, fn) => { if(event==='click')clickObservers.push(fn); },
     scrollIntoView() {hitTarget=this;},
-    getBoundingClientRect: () => ({left:110,right:230,top:90,bottom:130}),
+    getBoundingClientRect: () => ({left:110,right:230,
+      top:90+submitButtonVerticalShift,bottom:130+submitButtonVerticalShift}),
     contains: () => false
   }));
   const allButtons = [...buttons, ...nativeSubmits];
@@ -265,6 +267,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const selectForReplacement = () => vm.runInNewContext(script('SelectNativePriceForReplacementScript'),
     {window,document}, {timeout:1000});
   const verifyNativeClick = () => vm.runInNewContext(script('VerifyNativeClickScript'), {window}, {timeout:1000});
+  const refreshNativeClickTarget = () => vm.runInNewContext(script('RefreshNativeClickTargetScript'),
+    {window,document}, {timeout:1000});
   const simulateTyping = (value='35100') => {
     document.activeElement=prices[0];
     prices[0].value=value;
@@ -272,7 +276,8 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   };
   const simulateOneBrowserClick = () => nativeSubmits[0]?.click();
   return { evaluate, probe, verifyNativePriceInput, verifyNativePriceFocus, finalize,
-    selectForReplacement, verifyNativeClick,
+    selectForReplacement, verifyNativeClick, refreshNativeClickTarget,
+    shiftSubmitButton: offset => {submitButtonVerticalShift=offset;},
     simulateTyping, simulateOneBrowserClick,
     get clicked() { return clicked; }, get inputEvents() { return inputEvents; },
     get acceptedNativeSubmits() { return acceptedNativeSubmits; },
@@ -394,12 +399,28 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(native.evaluate(true, number, '10000', true).status, 'input-ready');
   native.simulateTyping();
   assert.equal(native.finalize().status,'armed');
+  assert.equal(native.refreshNativeClickTarget().status,'click-ready');
   assert.equal(native.clicked, 0);
   native.simulateOneBrowserClick();
   assert.deepEqual(native.clickedLabels, ['REAL_SITE_RE_REG']);
   assert.equal(native.prices[0].value, '35100');
   assert.equal(native.fetchCalls.length, 0, 'Native site button, never synthetic full-form fetch');
   assert.equal(native.inputEvents, 2);
+  const shifted = editFormCase({approvedSubmit: true});
+  assert.equal(shifted.evaluate(true, number, '10000', true).status,'input-ready');
+  shifted.simulateTyping();
+  const originallyArmed = shifted.finalize();
+  assert.equal(originallyArmed.status,'armed');
+  shifted.shiftSubmitButton(24);
+  const retarget = shifted.refreshNativeClickTarget();
+  assert.equal(retarget.status,'click-ready',retarget.message);
+  assert.equal(retarget.y,originallyArmed.y+24,
+    'A hover-shifted button must use its new verified coordinates');
+  assert.equal(shifted.clicked,0,'Retargeting alone must never submit a listing');
+  shifted.titleInput.value='9 9 레벨 겁화 구매합니다';
+  assert.equal(shifted.refreshNativeClickTarget().status,'error',
+    'No retarget is allowed if the title changes');
+  assert.equal(shifted.clicked,0);
   const mutated = editFormCase({approvedSubmit: true, eventMutatesTitle: true});
   assert.equal(mutated.evaluate(true, number, '10000', true).status, 'input-ready');
   mutated.simulateTyping();

@@ -18,7 +18,7 @@ const siteTitle = '1 ~ 9,995 레벨 겁화 삽니다 24 시';
 const target = '35100';
 const url = 'https://www.itemmania.com/myroom/buy/buy_re_reg.html';
 
-async function oneTrial(browser, mutateTitle, maskPerKey=false) {
+async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit=false) {
   const context = await browser.newContext({viewport:{width:1100,height:750}});
   const page = await context.newPage();
   const requests = [];
@@ -36,6 +36,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false) {
       window.siteAttempted=false;window.siteAccepted=false;
       const price=document.querySelector('[name=user_division_price]');
       const form=document.querySelector('#frmBuy');
+      if(${hoverMovesSubmit?'true':'false'})document.querySelector('#ok_btn').addEventListener(
+        'mouseenter',event=>{event.currentTarget.style.marginTop='30px';},{once:true});
       price.addEventListener('keyup',()=>window.keyboardCount++);
       if(${maskPerKey?'true':'false'})price.addEventListener('keyup',()=>{
         if(!price.dataset.masked){price.dataset.masked='1';price.value='10,000'+price.value;}
@@ -102,9 +104,19 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false) {
   }
   assert.equal(finalized.status,'armed',finalized.message);
   await move('mouseMoved','none',0,0,finalized.x,finalized.y);
+  let refreshed=await page.evaluate(script('RefreshNativeClickTargetScript'));
+  assert.equal(refreshed.status,'click-ready',JSON.stringify(refreshed));
+  if(Math.abs(refreshed.x-finalized.x)>1||Math.abs(refreshed.y-finalized.y)>1){
+    await move('mouseMoved','none',0,0,refreshed.x,refreshed.y);
+    const second=await page.evaluate(script('RefreshNativeClickTargetScript'));
+    assert.equal(second.status,'click-ready',JSON.stringify(second));
+    assert(Math.abs(second.x-refreshed.x)<=1&&Math.abs(second.y-refreshed.y)<=1,
+      'The submit button must settle before one native click');
+    refreshed=second;
+  }
   assert.equal(await page.evaluate(script('VerifyNativeClickScript')),true);
-  await move('mousePressed','left',1,1,finalized.x,finalized.y);
-  await move('mouseReleased','left',0,1,finalized.x,finalized.y);
+  await move('mousePressed','left',1,1,refreshed.x,refreshed.y);
+  await move('mouseReleased','left',0,1,refreshed.x,refreshed.y);
   const site=await page.evaluate(()=>({attempted:window.siteAttempted,accepted:window.siteAccepted,
     title:document.querySelector('[name=user_title]').value}));
   const probe=await page.evaluate(script('SubmitProbeScript'));
@@ -124,7 +136,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false) {
   const options={headless:true,args:['--no-sandbox','--disable-dev-shm-usage']};
   if(process.env.LUZEN_TEST_CHROMIUM_BIN)options.executablePath=process.env.LUZEN_TEST_CHROMIUM_BIN;
   const browser=await chromium.launch(options);
-  try{await oneTrial(browser,false);await oneTrial(browser,true);await oneTrial(browser,false,true);}
+  try{await oneTrial(browser,false);await oneTrial(browser,true);
+    await oneTrial(browser,false,true);await oneTrial(browser,false,false,true);}
   finally{await browser.close();}
   console.log('PASS real Chromium key input triggers site validators; only one native click; late title mutation blocked');
 })().catch(error=>{console.error(error);process.exitCode=1;});
