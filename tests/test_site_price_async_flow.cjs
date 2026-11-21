@@ -41,7 +41,7 @@ for(const value of [
 assert.match(flow,/SitePriceEdit\.OfficialPriceSubmitReadinessScript/);
 assert(flow.indexOf('SitePriceEdit.OfficialPriceSubmitReadinessScript')<
   flow.indexOf('using var submissionObserver = new SitePriceSubmitObserver'));
-assert.match(flow,/DispatchVerifiedSitePriceClickAsync\(final\.X, final\.Y, token\)/);
+assert.match(flow,/DispatchVerifiedSitePriceClickAsync\(final\.X, final\.Y, token, \(\) =>/);
 assert.match(flow,/ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
 assert.match(site,/AutomaticPriceSubmissionEnabled => false/);
 assert.match(site,/초기 취소 해석:FormChecker 비동기 검증에서는 정상 가능/);

@@ -39,6 +39,12 @@ internal sealed class SitePriceSubmitObserver : IDisposable
     // endpoint names and statuses ONLY, never request/response data.
     private readonly Dictionary<string, string> _validationRequests = new();
     private readonly List<string> _validationStages = new();
+    private bool _contactStarted;
+    private bool _contactFinished;
+    private bool _categoryStarted;
+    private bool _categoryFinished;
+    private int? _contactStatus;
+    private int? _categoryStatus;
     private int? _httpStatus;
     private bool _disposed;
 
@@ -78,6 +84,26 @@ internal sealed class SitePriceSubmitObserver : IDisposable
         ? "사전 검증 AJAX 미감지 (폼 검증 또는 사이트 스크립트 실행 단계 확인 필요)"
         : "사이트 비동기 검증: " + string.Join(" → ", _validationStages);
 
+    // HTTP 200 does not establish that the site's response body said "S".
+    // We deliberately never inspect body, credentials, or form values here.
+    // Identify the last observed stage only, without guessing why it stopped.
+    private string StalledBeforeFinalPost()
+    {
+        if (!_contactStarted)
+            return "중단 위치: 연락처 검사 요청 이전 (FormChecker 필수값·가격 조건·사이트 알림 확인)";
+        if (!_contactFinished)
+            return "중단 위치: 연락처 검사 요청 후 응답 처리 완료 이전";
+        if (_contactStatus is < 200 or >= 300)
+            return "중단 위치: 연락처 검사 HTTP 오류 (서버 상태 확인 필요)";
+        if (!_categoryStarted)
+            return "중단 위치: 연락처 검사 이후 분류 검사 이전 (응답 내용·추가 확인창 확인)";
+        if (!_categoryFinished)
+            return "중단 위치: 분류 검사 요청 후 응답 처리 완료 이전";
+        if (_categoryStatus is < 200 or >= 300)
+            return "중단 위치: 분류 검사 HTTP 오류 (서버 상태 확인 필요)";
+        return "중단 위치: 분류 검사 완료 이후 최종 제출 이전 (카테고리 확인·에디터·시세 제한 확인)";
+    }
+
     private void OnRequest(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
     {
         if (_disposed) return;
@@ -102,6 +128,8 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             var validation = ValidationStage(uri.AbsolutePath);
             if (validation is not null)
             {
+                if (validation == "연락처 검사") _contactStarted = true;
+                if (validation == "제목·카테고리 검사") _categoryStarted = true;
                 _validationRequests[requestId] = validation;
                 AppendStage(validation + " 요청");
                 return;
@@ -133,6 +161,8 @@ internal sealed class SitePriceSubmitObserver : IDisposable
                 !response.TryGetProperty("status", out var status) || !status.TryGetInt32(out var code)) return;
             if (_validationRequests.TryGetValue(requestId, out var stage))
             {
+                if (stage == "연락처 검사") _contactStatus = code;
+                if (stage == "제목·카테고리 검사") _categoryStatus = code;
                 AppendStage(stage + " HTTP " + code);
                 return;
             }
@@ -151,6 +181,8 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             var requestId = Str(doc.RootElement, "requestId");
             if (_validationRequests.Remove(requestId, out var stage))
             {
+                if (stage == "연락처 검사") _contactFinished = true;
+                if (stage == "제목·카테고리 검사") _categoryFinished = true;
                 AppendStage(stage + " 완료");
                 return;
             }
@@ -199,7 +231,8 @@ internal sealed class SitePriceSubmitObserver : IDisposable
                 OtherBuyPostPath = _otherBuyPostPath,
                 Detail = (_requestId.Length > 0
                     ? "요청은 확인했으나 완료 신호가 없어 결과 확인 필요"
-                    : "사이트 최종 재등록 POST 요청 미감지") + " · " + StageSummary()
+                    : "사이트 최종 재등록 POST 요청 미감지") + " · " + StageSummary() +
+                    (_requestId.Length > 0 ? "" : " · " + StalledBeforeFinalPost())
             };
         }
     }

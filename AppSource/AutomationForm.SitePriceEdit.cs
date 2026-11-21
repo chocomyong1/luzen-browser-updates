@@ -88,7 +88,8 @@ internal sealed partial class AutomationForm
     // Only for one explicitly approved, exact-ID BUY form. A browser mouse
     // input activates the site's own click/submit handlers; it is NOT a
     // direct form POST, synthetic fetch, or bypass of site validation.
-    private async Task DispatchVerifiedSitePriceClickAsync(double x, double y, CancellationToken token)
+    private async Task DispatchVerifiedSitePriceClickAsync(double x, double y, CancellationToken token,
+        Action checkpointBeforeMousePress)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y) || x <= 0 || y <= 0)
             throw new InvalidOperationException("사이트 재등록 버튼 좌표를 검증하지 못했습니다");
@@ -129,6 +130,11 @@ internal sealed partial class AutomationForm
                     "true", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("등록번호·제목·가격·버튼 최종 검증 실패");
             token.ThrowIfCancellationRequested();
+            // The site has not received a submit attempt yet. Persist the
+            // uncertain-outcome checkpoint only at the last verified moment,
+            // immediately before the first irreversible mouse press.
+            stage = "클릭 직전 결과 확인 대기 상태 저장";
+            checkpointBeforeMousePress();
             stage = "재등록 버튼 마우스 누름";
             await MouseAsync("mousePressed", "left", 1, 1, x, y);
             stage = "재등록 버튼 마우스 놓음";
@@ -924,31 +930,15 @@ internal sealed partial class AutomationForm
             using var submissionObserver = new SitePriceSubmitObserver(_web.CoreWebView2);
             await submissionObserver.StartAsync();
 
-            // Commit a crash-safe review checkpoint BEFORE touching the site.
-            // A navigation can abort ExecuteScriptAsync after the site accepts;
-            // never retry a submission when its result is uncertain.
+            // Verify quota and scheduler state before touching the site.
+            // Input/DOM checks may fail; only a genuine submit click needs
+            // an uncertain-outcome checkpoint or quota attempt.
             if (fromScheduler && !_schedulerRunning)
                 throw new OperationCanceledException("자동등록이 중지되어 가격 제출을 시작하지 않았습니다.");
             if (!CanRunNow(job, out quotaReason)) throw new InvalidOperationException(quotaReason);
-            var submittedAt = DateTime.UtcNow;
-            HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
-            _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
-            job.RequiresReview = true;
-            job.Enabled = false;
-            job.LastStatus = "구매글 가격 재등록 제출 중: 결과 확인 필요";
-            job.NextDueUtc = DateTime.MaxValue;
-            // Persist the intended amount before the native click. When a
-            // submit outcome is uncertain, the user can verify this exact
-            // target later WITHOUT clicking the site's submit button again.
-            if (nativeSingleApproval) job.PendingSitePriceTarget = desired.ToString();
-            job.PriceEditSiteTitleSnapshot = siteTitleSnapshot;
-            _config.Jobs = _jobs.ToList();
-            _config.Save();
             _armedSitePriceEditNumber = job.ListingNumber;
             _sitePriceEditDialogWarning = "";
-            _submissionVerificationPending = true;
-            submitted = true;
-            string submitScriptNote = "제출 스크립트 반환 전 페이지 이동";
+            string submitScriptNote = "제출 버튼 클릭 전 입력 검증 중";
             try
             {
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
@@ -976,18 +966,42 @@ internal sealed partial class AutomationForm
                 if (final.Status != "armed")
                     throw new InvalidOperationException("사이트 키보드 입력 후 폼 검증 실패: " + final.Message);
                 AppendLog("사이트 키보드 입력 후 제출폼 검증: " + final.Message);
-                // Exactly one native browser click, and only after the
-                // uncertain-result review checkpoint was saved above.
-                await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token);
+                // The callback runs only after the browser has validated
+                // the exact button and its coordinates for the last time.
+                // Save BEFORE mousePressed, never after a possibly accepted POST.
+                await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token, () =>
+                {
+                    if (fromScheduler && !_schedulerRunning)
+                        throw new OperationCanceledException("자동등록 중지로 사이트 제출 전 취소됐습니다.");
+                    if (!CanRunNow(job, out var clickQuotaReason))
+                        throw new InvalidOperationException(clickQuotaReason);
+                    var submittedAt = DateTime.UtcNow;
+                    HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
+                    _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
+                    job.RequiresReview = true;
+                    job.Enabled = false;
+                    job.LastStatus = "구매글 가격 재등록 제출 중: 결과 확인 필요";
+                    job.NextDueUtc = DateTime.MaxValue;
+                    if (nativeSingleApproval) job.PendingSitePriceTarget = desired.ToString();
+                    job.PriceEditSiteTitleSnapshot = siteTitleSnapshot;
+                    _config.Jobs = _jobs.ToList();
+                    _config.Save();
+                    _submissionVerificationPending = true;
+                    submitted = true;
+                    AppendLog("구매글 선택 1건 실제 클릭 직전 결과 확인 대기 저장 (중복 제출 방지)");
+                });
                 submitScriptNote = "가격칸 실제 키보드 입력 후 검증된 재등록 버튼 브라우저 클릭 1회 (서버 반영은 별도 확인)";
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // A type-only log disguised a precise failed browser stage.
-                // Keep the bounded local error message without request data.
                 var diagnosis = ex.GetType().Name + ": " + ex.Message;
                 diagnosis = diagnosis.Replace('\r', ' ').Replace('\n', ' ');
                 if (diagnosis.Length > 300) diagnosis = diagnosis[..300];
+                // No mouse press was attempted: the site may have accepted
+                // input events, but VANTA did not request a submission.
+                // Do not strand this item in review or wait 35 s for a POST.
+                if (!submitted)
+                    throw new InvalidOperationException("가격 입력·버튼 최종 확인 단계에서 제출 전 중단: " + diagnosis, ex);
                 submitScriptNote += " · 브라우저 입력/화면 전환 결과 불확실: " + diagnosis;
                 AppendLog("구매글 가격 수정 버튼/화면 전환 결과 불확실: " + diagnosis + " (중복 제출 금지)");
             }
@@ -1025,6 +1039,7 @@ internal sealed partial class AutomationForm
                     "구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " :
                     "수정 POST 요청을 감지하지 못했고 관리목록에서도 변경된 단가를 확인하지 못했습니다. ") +
                     "새 등록번호가 생겼거나 사이트가 제출을 막았을 수 있어 확인 대기 상태를 유지하며 재제출하지 않습니다." +
+                    "\n사이트 단계별 검증: " + observed.Detail[..Math.Min(420, observed.Detail.Length)] +
                     "\n사이트 폼 실행: " + submitScriptNote[..Math.Min(420, submitScriptNote.Length)] +
                     (string.IsNullOrWhiteSpace(_sitePriceReadbackNote) ? "" :
                         "\n읽기 전용 목록 검사: " + _sitePriceReadbackNote) +

@@ -46,12 +46,17 @@ const safetyStart = price.indexOf('using var submissionObserver = new SitePriceS
 const siteSubmit = price.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,');
 const finish = price.indexOf('await submissionObserver.WaitAsync(token)', siteSubmit);
 const readback = price.indexOf('await ConfirmChangedSitePriceAsync(job, desired, token, siteTitleSnapshot)', siteSubmit);
-const checkpoint = price.indexOf('job.RequiresReview = true', safetyStart);
-assert(safetyStart >= 0 && safetyStart < checkpoint && checkpoint < siteSubmit);
+const finalVerify = price.indexOf('SitePriceEdit.FinalizeNativePriceScript', siteSubmit);
+const preClick = price.indexOf('await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token, () =>', finalVerify);
+const checkpoint = price.indexOf('job.RequiresReview = true', preClick);
+assert(safetyStart >= 0 && safetyStart < siteSubmit && siteSubmit < finalVerify &&
+  finalVerify < preClick && preClick < checkpoint && checkpoint < finish,
+  'No review checkpoint or quota attempt before verified price input and button checks');
 assert(siteSubmit < finish && finish < readback,
   'The site POST must finish or time out before another page navigation starts');
-assert.match(price.slice(checkpoint, siteSubmit), /_config\.Save\(\)/,
-  'Crash-safe review checkpoint must be persisted before the actual POST');
+assert.match(price.slice(checkpoint, finish), /_config\.Save\(\)[\s\S]*?submitted = true;/,
+  'Crash-safe review checkpoint must be persisted before the browser mouse press');
+assert.match(price, /stage = "클릭 직전 결과 확인 대기 상태 저장";\s*checkpointBeforeMousePress\(\);\s*stage = "재등록 버튼 마우스 누름";\s*await MouseAsync\("mousePressed"/);
 assert.doesNotMatch(price.slice(finish, readback), /if \(!observed\.RequestObserved\)[\s\S]*?throw/,
   'A missing POST observer event must NOT bypass read-only own-list verification');
 console.log('PASS passive request trace, crash-safe hold and real readback even when POST detection fails');
