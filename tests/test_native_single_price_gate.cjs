@@ -54,7 +54,7 @@ assert.match(app, /TypeVerifiedSitePriceAsync\(result\.X, result\.Y, desired, to
 assert.match(app, /ReplaceVerifiedSitePriceTextOnceAsync\(desired, token\)/);
 assert.match(app, /CallDevToolsProtocolMethodAsync\("Input\.insertText"/);
 assert.match(app, /core\.ExecuteScriptAsync\(SitePriceEdit\.VerifyNativePriceFocusScript\)/);
-assert.match(app, /DispatchVerifiedSitePriceClickAsync\(final\.X, final\.Y, token\)/);
+assert.match(app, /DispatchVerifiedSitePriceClickAsync\(final\.X, final\.Y, token, \(\) =>/);
 assert.match(app, /CallDevToolsProtocolMethodAsync\("Input\.dispatchMouseEvent"/);
 assert.match(app, /core\.ExecuteScriptAsync\(SitePriceEdit\.VerifyNativeClickScript\)/);
 assert.match(app, /trustedOneClick: true/);
