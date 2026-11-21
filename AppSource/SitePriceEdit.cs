@@ -60,6 +60,30 @@ internal static class SitePriceEdit
         SubmitBindingsInspectionScript.Replace("__ARG__", JsonSerializer.Serialize(new { number }),
             StringComparison.Ordinal);
 
+    // The official BUY edit script intentionally returns false from its
+    // FormChecker handler, then completes several asynchronous checks before
+    // submitting natively. Never click unless the whole first-party chain
+    // (checker, editor, sanitizer and AJAX helper) is initialized.
+    public const string OfficialPriceSubmitReadinessScript = """
+    (()=>{
+      const result=(status,message)=>({status,message});
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
+         location.pathname.toLowerCase()!=='/myroom/buy/buy_re_reg.html')
+        return result('error','공식 구매 수정폼이 아닙니다');
+      const form=document.querySelector('form#frmBuy');
+      if(!form||typeof form.onsubmit!=='function')
+        return result('error','사이트 FormChecker 제출 연결이 준비되지 않았습니다');
+      const missing=[];
+      if(typeof window.ajaxRequest!=='function')missing.push('연락처 AJAX');
+      if(typeof window.createLayerContent!=='function'||
+         typeof window.createLayerContentProceed!=='function')missing.push('카테고리·제출 처리');
+      if(typeof window.editor?.sendImages!=='function')missing.push('에디터 비동기 처리');
+      if(typeof window.DOMPurify?.sanitize!=='function')missing.push('상세설명 동기화');
+      return missing.length?result('error','사이트 제출 준비 미완료: '+missing.join(', ')):
+        result('ready','사이트 비동기 검사·에디터·최종 제출 함수 연결 확인');
+    })()
+    """;
+
     // A separately invoked, read-only look at already referenced first-party
     // JavaScript assets. Only static .js GETs (no URL parameters) are made;
     // no form field values, request bodies, cookies, or listing data are read.
@@ -355,6 +379,7 @@ internal static class SitePriceEdit
         '; 제출 이벤트:'+(p.submitSeen?'감지':'미감지')+
         '; 제출 캡처:'+(p.submitCaptureSeen?'감지':'미감지')+
         '; 사이트 제출 취소:'+(cancellation?'예':'아니오/미확인')+
+        '; 초기 취소 해석:FormChecker 비동기 검증에서는 정상 가능(최종 POST 별도 확인)'+
         '; 취소 호출:비개입 관찰(호출 함수 추적 안 함)'+
         '; DOM0 onsubmit:'+(p.dom0SubmitBound?'연결':'없음/미확인')+
         '; 제출 전후 폼 action:'+safePath(p.submitActionAtEvent)+'→'+safePath(currentAction)+

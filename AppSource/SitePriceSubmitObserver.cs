@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,11 @@ internal sealed class SitePriceSubmitObserver : IDisposable
     private CoreWebView2DevToolsProtocolEventReceiver? _failed;
     private string _requestId = "";
     private string _otherBuyPostPath = "";
+    // The official page's FormChecker intentionally cancels the first
+    // submit event while it performs these asynchronous checks. Observe
+    // endpoint names and statuses ONLY, never request/response data.
+    private readonly Dictionary<string, string> _validationRequests = new();
+    private readonly List<string> _validationStages = new();
     private int? _httpStatus;
     private bool _disposed;
 
@@ -55,6 +61,23 @@ internal sealed class SitePriceSubmitObserver : IDisposable
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var property) &&
         property.ValueKind == JsonValueKind.String ? property.GetString() ?? "" : "";
 
+    private static string? ValidationStage(string path) => path.ToLowerInvariant() switch
+    {
+        "/_include/_user_contact_restrict.php" => "연락처 검사",
+        "/_include/_ajax_trade_auto_class_check.php" => "제목·카테고리 검사",
+        "/_include/_ajax_image_upload.php" => "에디터 이미지 처리",
+        _ => null
+    };
+
+    private void AppendStage(string stage)
+    {
+        if (_validationStages.Count < 18) _validationStages.Add(stage);
+    }
+
+    private string StageSummary() => _validationStages.Count == 0
+        ? "사전 검증 AJAX 미감지 (폼 검증 또는 사이트 스크립트 실행 단계 확인 필요)"
+        : "사이트 비동기 검증: " + string.Join(" → ", _validationStages);
+
     private void OnRequest(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
     {
         if (_disposed) return;
@@ -76,6 +99,13 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             if (Str(req, "method") != "POST" || requestId.Length == 0 ||
                 !Uri.TryCreate(Str(req, "url"), UriKind.Absolute, out var uri) ||
                 !ItemManiaAccountStore.IsOfficialSite(uri)) return;
+            var validation = ValidationStage(uri.AbsolutePath);
+            if (validation is not null)
+            {
+                _validationRequests[requestId] = validation;
+                AppendStage(validation + " 요청");
+                return;
+            }
             if (!uri.AbsolutePath.Equals(BuyReRegistrationPostPath, StringComparison.OrdinalIgnoreCase))
             {
                 // A site revision may submit the same edit to another BUY
@@ -93,14 +123,20 @@ internal sealed class SitePriceSubmitObserver : IDisposable
 
     private void OnResponse(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
     {
-        if (_disposed || _requestId.Length == 0) return;
+        if (_disposed) return;
         try
         {
             using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
             var root = doc.RootElement;
-            if (Str(root, "requestId") != _requestId ||
-                !root.TryGetProperty("response", out var response) ||
+            string requestId = Str(root, "requestId");
+            if (!root.TryGetProperty("response", out var response) ||
                 !response.TryGetProperty("status", out var status) || !status.TryGetInt32(out var code)) return;
+            if (_validationRequests.TryGetValue(requestId, out var stage))
+            {
+                AppendStage(stage + " HTTP " + code);
+                return;
+            }
+            if (requestId != _requestId) return;
             _httpStatus = code;
         }
         catch (Exception) { /* No response status is safer than a guessed one. */ }
@@ -108,16 +144,22 @@ internal sealed class SitePriceSubmitObserver : IDisposable
 
     private void OnFinished(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
     {
-        if (_disposed || _requestId.Length == 0) return;
+        if (_disposed) return;
         try
         {
             using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
-            if (Str(doc.RootElement, "requestId") != _requestId) return;
+            var requestId = Str(doc.RootElement, "requestId");
+            if (_validationRequests.Remove(requestId, out var stage))
+            {
+                AppendStage(stage + " 완료");
+                return;
+            }
+            if (requestId != _requestId) return;
             _done.TrySetResult(new SitePriceSubmitObservation
             {
                 RequestObserved = true, NetworkFinished = true, HttpStatus = _httpStatus,
                 OtherBuyPostPath = _otherBuyPostPath,
-                Detail = "사이트 제출 요청의 네트워크 전송 완료"
+                Detail = "사이트 제출 요청의 네트워크 전송 완료 · " + StageSummary()
             });
         }
         catch (Exception) { /* Observe only the matching request. */ }
@@ -125,16 +167,22 @@ internal sealed class SitePriceSubmitObserver : IDisposable
 
     private void OnFailed(object? sender, CoreWebView2DevToolsProtocolEventReceivedEventArgs e)
     {
-        if (_disposed || _requestId.Length == 0) return;
+        if (_disposed) return;
         try
         {
             using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
-            if (Str(doc.RootElement, "requestId") != _requestId) return;
+            var requestId = Str(doc.RootElement, "requestId");
+            if (_validationRequests.Remove(requestId, out var stage))
+            {
+                AppendStage(stage + " 전송 실패");
+                return;
+            }
+            if (requestId != _requestId) return;
             _done.TrySetResult(new SitePriceSubmitObservation
             {
                 RequestObserved = true, HttpStatus = _httpStatus,
                 OtherBuyPostPath = _otherBuyPostPath,
-                Detail = "사이트 제출 요청이 네트워크 단계에서 끝나지 못함"
+                Detail = "사이트 제출 요청이 네트워크 단계에서 끝나지 못함 · " + StageSummary()
             });
         }
         catch (Exception) { /* Preserve an uncertain result. */ }
@@ -149,9 +197,9 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             {
                 RequestObserved = _requestId.Length > 0, HttpStatus = _httpStatus,
                 OtherBuyPostPath = _otherBuyPostPath,
-                Detail = _requestId.Length > 0
+                Detail = (_requestId.Length > 0
                     ? "요청은 확인했으나 완료 신호가 없어 결과 확인 필요"
-                    : "사이트의 구매글 재등록 POST 요청이 감지되지 않음"
+                    : "사이트 최종 재등록 POST 요청 미감지") + " · " + StageSummary()
             };
         }
     }

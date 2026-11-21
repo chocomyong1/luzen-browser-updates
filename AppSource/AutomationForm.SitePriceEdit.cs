@@ -775,6 +775,23 @@ internal sealed partial class AutomationForm
             if (form.Status != "ready" && !titleRestoreApproved)
                 throw new InvalidOperationException("수정 페이지를 안전하게 확인하지 못했습니다: " + form.Message);
 
+            // The site's own FormChecker cancels the initial submit event
+            // while contact, category and editor checks run. Ensure that
+            // genuine asynchronous submission chain is initialized before
+            // any price is typed or any review checkpoint is persisted.
+            SitePriceEditResult siteChain = new();
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                token.ThrowIfCancellationRequested();
+                siteChain = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.OfficialPriceSubmitReadinessScript));
+                if (siteChain.Status == "ready") break;
+                await Task.Delay(350, token);
+            }
+            if (siteChain.Status != "ready")
+                throw new InvalidOperationException("사이트 원본 비동기 제출 경로가 준비되지 않았습니다: " + siteChain.Message);
+            AppendLog("구매글 사이트 비동기 제출 경로 준비 확인 (연락처·카테고리·에디터·최종 POST)");
+
             // Subscribe BEFORE the click. Previously the first readback
             // navigation could interrupt the POST that the site initiated.
             // No automatic fallback or duplicate POST is ever attempted.
@@ -1138,26 +1155,65 @@ internal sealed partial class AutomationForm
         bool official = Uri.TryCreate(e.Uri, UriKind.Absolute, out var url) &&
             url.Scheme == Uri.UriSchemeHttps && ItemManiaAccountStore.IsOfficialSite(url);
         string message = (e.Message ?? "").Trim();
+        string compact = message[..Math.Min(message.Length, 120)];
         bool unsafeMessage = new[] { "결제", "유료", "마일리지", "삭제", "비밀번호", "인증", "충전", "입금" }
             .Any(x => message.Contains(x, StringComparison.OrdinalIgnoreCase));
         bool priceRepost = message.Contains("재등록", StringComparison.Ordinal) ||
             message.Contains("가격 수정", StringComparison.Ordinal) ||
             message.Contains("물품 수정", StringComparison.Ordinal) ||
             message.Contains("수정", StringComparison.Ordinal);
-        if (!official || unsafeMessage || !priceRepost)
+        if (!official)
         {
-            _sitePriceEditDialogWarning = "확인할 수 없는 사이트 안내: " + message[..Math.Min(80, message.Length)];
-            AppendLog("사이트 가격 수정 확인창 차단: " + _sitePriceEditDialogWarning);
+            _sitePriceEditDialogWarning = "외부 사이트 확인창 자동 처리 차단";
+            AppendLog("사이트 가격 수정 중 외부 확인창 차단");
             return;
         }
-        if (e.Kind is Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogKind.Alert or
-            Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogKind.Confirm)
+        // The official FormChecker validation uses alert() before its AJAX
+        // chain, and WebView2 intentionally hides native JS dialogs. An
+        // unacknowledged ALERT can stall the entire submit with no final
+        // POST. Dismiss alerts only; they can NEVER approve a transaction.
+        if (e.Kind == Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogKind.Alert)
         {
-            if (new[] { "실패", "오류", "불가", "제한", "초과", "취소", "못", "않" }.Any(message.Contains))
-                _sitePriceEditDialogWarning = message[..Math.Min(100, message.Length)];
+            _sitePriceEditDialogWarning = compact;
             e.Accept();
-            AppendLog("사이트 가격 수정 재등록 안내 확인 (실제 결과는 관리목록 가격 재검증): " +
-                message[..Math.Min(100, message.Length)]);
+            AppendLog("사이트 가격 수정 FormChecker 안내 (알림 닫음·제출 승인 아님): " + compact);
+            return;
         }
+        // Only a genuine, same-page re-registration confirmation is eligible
+        // for the earlier one-item user approval. Category changes require a
+        // SECOND explicit decision; never auto-approve payments/security.
+        if (unsafeMessage || e.Kind != Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogKind.Confirm ||
+            !string.Equals(_web.Source?.AbsolutePath, "/myroom/buy/buy_re_reg.html", StringComparison.OrdinalIgnoreCase))
+        {
+            _sitePriceEditDialogWarning = "사이트 추가 승인 차단: " + compact;
+            AppendLog("사이트 가격 수정 추가 확인 차단: " + compact);
+            return;
+        }
+        if (message.Contains("카테고리", StringComparison.Ordinal) &&
+            message.Contains("변경", StringComparison.Ordinal))
+        {
+            if (MessageBox.Show(this, "아이템매니아에서 카테고리 변경을 요청했습니다.\n\n" + compact +
+                    "\n\n이 한 건의 변경을 계속할까요?", "사이트 카테고리 변경 확인",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+            {
+                e.Accept();
+                AppendLog("사이트 카테고리 변경 확인: 사용자 별도 승인");
+            }
+            else
+            {
+                _sitePriceEditDialogWarning = "사이트 카테고리 변경을 사용자가 승인하지 않았습니다";
+                AppendLog(_sitePriceEditDialogWarning);
+            }
+            return;
+        }
+        if (priceRepost)
+        {
+            e.Accept();
+            AppendLog("사이트 원본 재등록 확인 처리 (실제 성공은 관리목록 재검증): " + compact);
+            return;
+        }
+        _sitePriceEditDialogWarning = "사이트 예상 밖 확인창 차단: " + compact;
+        AppendLog(_sitePriceEditDialogWarning);
     }
 }
