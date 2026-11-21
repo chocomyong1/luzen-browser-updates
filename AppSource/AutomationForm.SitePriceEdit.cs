@@ -93,20 +93,51 @@ internal sealed partial class AutomationForm
         if (!double.IsFinite(x) || !double.IsFinite(y) || x <= 0 || y <= 0)
             throw new InvalidOperationException("사이트 재등록 버튼 좌표를 검증하지 못했습니다");
         var core = _web.CoreWebView2 ?? throw new InvalidOperationException("사이트 브라우저 연결 없음");
-        foreach (var (type, button, buttons, clickCount) in new[]
-        {
-            ("mouseMoved", "none", 0, 0),
-            ("mousePressed", "left", 1, 1),
-            ("mouseReleased", "left", 0, 1)
-        })
+        string stage = "제출 버튼 마우스 이동";
+        async Task MouseAsync(string type, string button, int buttons, int clickCount,
+            double mouseX, double mouseY) =>
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                System.Text.Json.JsonSerializer.Serialize(new
+                { type, x = mouseX, y = mouseY, button, buttons, clickCount }));
+        try
         {
             token.ThrowIfCancellationRequested();
-            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
-                System.Text.Json.JsonSerializer.Serialize(new { type, x, y, button, buttons, clickCount }));
-            if (type == "mouseMoved" &&
-                !string.Equals(await core.ExecuteScriptAsync(SitePriceEdit.VerifyNativeClickScript),
+            await MouseAsync("mouseMoved", "none", 0, 0, x, y);
+            stage = "마우스 이동 후 등록번호·제목·가격·버튼 재검증";
+            var refreshed = SitePriceEdit.Decode(await core.ExecuteScriptAsync(
+                SitePriceEdit.RefreshNativeClickTargetScript));
+            if (refreshed.Status != "click-ready")
+                throw new InvalidOperationException(refreshed.Message);
+            if (Math.Abs(refreshed.X - x) > 1 || Math.Abs(refreshed.Y - y) > 1)
+            {
+                // The footer moved after hovering. Never click the old
+                // coordinates; move once more to the same audited button.
+                x = refreshed.X;
+                y = refreshed.Y;
+                stage = "재등록 버튼 위치 변화 후 마우스 재이동";
+                await MouseAsync("mouseMoved", "none", 0, 0, x, y);
+                stage = "재이동 후 최종 버튼 재검증";
+                refreshed = SitePriceEdit.Decode(await core.ExecuteScriptAsync(
+                    SitePriceEdit.RefreshNativeClickTargetScript));
+                if (refreshed.Status != "click-ready" ||
+                    Math.Abs(refreshed.X - x) > 1 || Math.Abs(refreshed.Y - y) > 1)
+                    throw new InvalidOperationException("재등록 버튼 위치가 계속 변동됨: " +
+                        refreshed.Message);
+            }
+            stage = "마우스 누름 직전 최종 안전 검증";
+            if (!string.Equals(await core.ExecuteScriptAsync(SitePriceEdit.VerifyNativeClickScript),
                     "true", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("클릭 직전 사이트 버튼·등록정보·원본 제목 검증 실패. 제출하지 않았습니다");
+                throw new InvalidOperationException("등록번호·제목·가격·버튼 최종 검증 실패");
+            token.ThrowIfCancellationRequested();
+            stage = "재등록 버튼 마우스 누름";
+            await MouseAsync("mousePressed", "left", 1, 1, x, y);
+            stage = "재등록 버튼 마우스 놓음";
+            await MouseAsync("mouseReleased", "left", 0, 1, x, y);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new InvalidOperationException("브라우저 클릭 단계 [" + stage + "] 실패: " +
+                ex.GetType().Name + " · " + ex.Message, ex);
         }
     }
 
@@ -733,8 +764,13 @@ internal sealed partial class AutomationForm
             }
             catch (Exception ex)
             {
-                submitScriptNote += " · 브라우저 입력/화면 전환 결과 불확실: " + ex.GetType().Name;
-                AppendLog("구매글 가격 수정 버튼/화면 전환 결과 불확실: " + ex.GetType().Name + " (중복 제출 금지)");
+                // A type-only log disguised a precise failed browser stage.
+                // Keep the bounded local error message without request data.
+                var diagnosis = ex.GetType().Name + ": " + ex.Message;
+                diagnosis = diagnosis.Replace('\r', ' ').Replace('\n', ' ');
+                if (diagnosis.Length > 300) diagnosis = diagnosis[..300];
+                submitScriptNote += " · 브라우저 입력/화면 전환 결과 불확실: " + diagnosis;
+                AppendLog("구매글 가격 수정 버튼/화면 전환 결과 불확실: " + diagnosis + " (중복 제출 금지)");
             }
 
             var observed = await submissionObserver.WaitAsync(token);
@@ -770,7 +806,7 @@ internal sealed partial class AutomationForm
                     "구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " :
                     "수정 POST 요청을 감지하지 못했고 관리목록에서도 변경된 단가를 확인하지 못했습니다. ") +
                     "새 등록번호가 생겼거나 사이트가 제출을 막았을 수 있어 확인 대기 상태를 유지하며 재제출하지 않습니다." +
-                    "\n사이트 폼 실행: " + submitScriptNote[..Math.Min(180, submitScriptNote.Length)] +
+                    "\n사이트 폼 실행: " + submitScriptNote[..Math.Min(420, submitScriptNote.Length)] +
                     (string.IsNullOrWhiteSpace(_sitePriceReadbackNote) ? "" :
                         "\n읽기 전용 목록 검사: " + _sitePriceReadbackNote) +
                     (string.IsNullOrWhiteSpace(_sitePriceEditDialogWarning) ? "" :

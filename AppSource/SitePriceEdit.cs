@@ -161,6 +161,46 @@ internal static class SitePriceEdit
     (()=>window.__luzenPriceNativeProbe?.canClick?.()===true)()
     """;
 
+    // The footer can move after the native mouse enters the page. Refresh
+    // coordinates from the same verified submit button, never from a label.
+    // This script is read-only: no click, price edit, or POST occurs here.
+    public const string RefreshNativeClickTargetScript = """
+    (()=>{
+      const p=window.__luzenPriceNativeProbe;
+      const result=(status,message='',x=0,y=0)=>({status,message,x,y});
+      if(!p||p.clickSeen||p.submitSeen||!p.canType?.())
+        return result('error','등록번호·제목 검증 실패 또는 이미 클릭됨');
+      if(p.money(p.priceInput.value)!==p.desired||p.titleChanged())
+        return result('error','가격 또는 원본 제목이 변경됐습니다');
+      const safePriceField=o=>{
+        const e=o.element,name=String(e.name||e.id||'');
+        return String(e.type||'').toLowerCase()==='hidden'&&
+          /(?:price|amount|total|sum|fee|cost|charge|money|payment)/i.test(name)&&
+          /^[-+\d,.]*$/.test(String(e.value||''));
+      };
+      if(p.others.some(o=>String(o.element.value??'')!==o.value&&!safePriceField(o)))
+        return result('error','가격 외 수정폼 필드가 변경됐습니다');
+      const button=p.button;
+      if(!button?.isConnected||button.disabled||button.closest?.('form')!==p.form)
+        return result('error','검증된 재등록 버튼이 폼에서 사라졌습니다');
+      const rect=button.getBoundingClientRect?.();
+      const x=rect?(rect.left+rect.right)/2:NaN;
+      const y=rect?(rect.top+rect.bottom)/2:NaN;
+      if(!Number.isFinite(x)||!Number.isFinite(y)||x<=0||y<=0||
+         x>=window.innerWidth||y>=window.innerHeight)
+        return result('error','재등록 버튼이 브라우저 화면 밖으로 이동했습니다');
+      const isButtonPoint=()=>{
+        const hit=document.elementFromPoint?.(x,y);
+        return !!hit&&(hit===button||button.contains?.(hit));
+      };
+      if(!isButtonPoint())return result('error','재등록 버튼이 다른 요소에 가려져 있습니다');
+      p.canClick=()=>p.canType()&&p.money(p.priceInput.value)===p.desired&&
+        !p.titleChanged()&&p.others.every(o=>String(o.element.value??'')===o.value||safePriceField(o))&&
+        isButtonPoint();
+      return result('click-ready','등록번호·제목·가격·재등록 버튼 위치 재검증 완료',x,y);
+    })()
+    """;
+
     public const string OwnedRowScript = """
     (() => {
       const a=__ARG__;
