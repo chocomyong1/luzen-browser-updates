@@ -69,7 +69,7 @@ assert.match(app, /form\.Status == "restore-needed" && nativeSingleApproval/);
 assert.match(app, /MessageBoxDefaultButton\.Button2/);
 assert.match(app, /records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
 assert.match(app, /job\.Price = desired\.ToString\("N0"\)/);
-assert.match(editor, /선택 1건 즉시 가격 수정 \(실제 제출\)/);
+assert.match(editor, /선택 1건 가격 수정 \(사이트 창\)/);
 assert.match(editor, /async \(_, _\) => await ApplySelectedSitePriceAsync\(\)/);
 assert.match(editor, /가격 변경 결과 재조회 \(제출 없음\)/);
 assert.doesNotMatch(editor, /ApplySitePriceAsync\(job, bulkApproval: true, fromScheduler: true, nativeSingleApproval:/);

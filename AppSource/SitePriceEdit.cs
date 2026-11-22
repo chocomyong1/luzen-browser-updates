@@ -452,8 +452,9 @@ internal static class SitePriceEdit
 
     // Read-only signal used when closing the visible official editor. A
     // canceled click does not count as a price submission attempt.
-    public const string NativePriceButtonClickedScript =
-        "(()=>window.__luzenPriceNativeProbe?.clickSeen===true)()";
+    public const string NativePriceButtonClickedScript = """
+    (()=>window.__luzenPriceNativeProbe?.clickSeen===true)()
+    """;
 
     // Read-only result of the ONE native browser-input trial; does not inspect
     // field values, credentials or request contents and never invokes submit.
