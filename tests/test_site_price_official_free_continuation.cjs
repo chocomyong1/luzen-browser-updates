@@ -7,6 +7,9 @@ const path = require('node:path');
 const code = fs.readFileSync(path.join(__dirname, '../AppSource/SitePriceEdit.cs'), 'utf8');
 const flow = fs.readFileSync(path.join(__dirname, '../AppSource/AutomationForm.SitePriceEdit.cs'), 'utf8');
 const observer = fs.readFileSync(path.join(__dirname, '../AppSource/SitePriceSubmitObserver.cs'), 'utf8');
+assert.doesNotMatch(flow, /ShowSiteBrowserInWorkspace\(\)/);
+assert.match(flow, /approvedZeroConfirmation = requiresSiteConfirmation && backgroundApproved/);
+assert.match(flow, /if \(approvedZeroConfirmation\)\s*await ConfirmZeroCostPremiumAsync/);
 
 function script(name) {
   const match = code.match(new RegExp(`public const string ${name} = """\\s*([\\s\\S]*?)\\s*""";`));

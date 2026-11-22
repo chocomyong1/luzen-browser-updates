@@ -284,8 +284,8 @@ internal sealed partial class AutomationForm
                 await core.ExecuteScriptAsync(SitePriceEdit.OfficialPremiumConfirmationScript),
                 "true", StringComparison.OrdinalIgnoreCase))
             {
-                _state.Text = "아이템매니아 프리미엄 설정 확인 대기";
-                AppendLog("아이템매니아 공식 추가 확인 화면 표시 · 기존 설정 유지 확인 필요");
+                _state.Text = "아이템매니아 프리미엄 0원 확인 중";
+                AppendLog("아이템매니아 공식 추가 확인 감지 · 기존 설정과 총 결제금액 검증");
                 return true;
             }
             await Task.Delay(200, token);
@@ -293,7 +293,7 @@ internal sealed partial class AutomationForm
         return false;
     }
 
-    private async Task<bool> ConfirmZeroCostPremiumForBatchAsync(SitePriceSubmitObserver observer,
+    private async Task<bool> ConfirmZeroCostPremiumAsync(SitePriceSubmitObserver observer,
         CancellationToken token)
     {
         var core = _web.CoreWebView2!;
@@ -317,12 +317,12 @@ internal sealed partial class AutomationForm
         if (final.Status != "ready" || first.X != final.X || first.Y != final.Y ||
             !observer.ContactApproved || observer.CategoryCheckStarted || observer.FinalPostStarted)
         {
-            _sitePriceEditDialogWarning = "사이트 0원 확인 상태가 바뀌어 일괄 수정을 중단했습니다";
+            _sitePriceEditDialogWarning = "사이트 0원 확인 상태가 바뀌어 가격 수정을 중단했습니다";
             return false;
         }
         await MouseAsync("mousePressed", "left", 1, 1, final);
         await MouseAsync("mouseReleased", "left", 0, 1, final);
-        AppendLog("일괄 승인으로 아이템매니아의 공식 확인 버튼 1회 입력 · 결제 0원 · 프리미엄 0시간");
+        AppendLog("사용자 승인으로 아이템매니아의 공식 확인 버튼 1회 입력 · 결제 0원 · 프리미엄 0시간");
         return true;
     }
 
@@ -505,7 +505,8 @@ internal sealed partial class AutomationForm
         };
         var description = new Label
         {
-            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n사이트 수정 화면에서 이 등록번호의 가격을 적용합니다.",
+            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n" +
+                "사이트 가격을 수정하며 결제 0원·프리미엄 0시간인 확인만 자동 진행합니다.",
             AutoSize = true, Left = 18, Top = 17
         };
         var amount = new NumericUpDown
@@ -1044,13 +1045,8 @@ internal sealed partial class AutomationForm
         DateTime previousDue = job.NextDueUtc;
         string previousStatus = job.LastStatus;
         string previousPendingPrice = job.PendingSitePriceTarget;
-        bool showBrowser = backgroundApproved && !bulkApproval;
-        var originalBrowserBounds = _web.Bounds;
-        var originalBrowserDock = _web.Dock;
         try
         {
-            if (showBrowser)
-                ShowSiteBrowserInWorkspace();
             await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
             if (_web.CoreWebView2 is null) throw new InvalidOperationException("아이템매니아 브라우저를 시작하지 못했습니다.");
             if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(token);
@@ -1103,7 +1099,7 @@ internal sealed partial class AutomationForm
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
                 (nativeSingleApproval ?
                     (backgroundApproved
-                        ? "사이트 수정 화면에서 공식 재등록 버튼을 확인한 뒤 한 번 누릅니다.\n"
+                        ? "백그라운드에서 사이트 공식 저장 절차를 진행합니다.\n"
                         : "사이트 수정 창에서 '재등록' 버튼을 직접 눌러야 합니다.\n") +
                     "사이트가 최종 제출을 거부하거나 결과가 불확실하면 자동 재시도하지 않습니다.\n\n" : "") +
                 "사이트 구매 수정 화면(frmBuy)의 단가만 입력하고 다른 내용은 유지합니다.\n" +
@@ -1461,10 +1457,10 @@ internal sealed partial class AutomationForm
             // re-registration button or sends a synthetic form POST.
             bool requiresSiteConfirmation = _unattendedSitePriceEdit &&
                 await WaitForOfficialPremiumPromptAsync(submissionObserver, token);
-            bool approvedBatchConfirmation = requiresSiteConfirmation && bulkApproval && backgroundApproved;
-            if (approvedBatchConfirmation)
-                await ConfirmZeroCostPremiumForBatchAsync(submissionObserver, token);
-            var observing = requiresSiteConfirmation && !approvedBatchConfirmation
+            bool approvedZeroConfirmation = requiresSiteConfirmation && backgroundApproved;
+            if (approvedZeroConfirmation)
+                await ConfirmZeroCostPremiumAsync(submissionObserver, token);
+            var observing = requiresSiteConfirmation && !approvedZeroConfirmation
                 ? submissionObserver.WaitAsync(token, TimeSpan.FromMinutes(2))
                 : submissionObserver.WaitAsync(token);
             if (_unattendedSitePriceEdit && !bulkApproval && !requiresSiteConfirmation &&
@@ -1592,11 +1588,6 @@ internal sealed partial class AutomationForm
         }
         finally
         {
-            if (showBrowser && !_web.IsDisposed)
-            {
-                _web.Dock = originalBrowserDock;
-                _web.Bounds = originalBrowserBounds;
-            }
             _unattendedSitePriceEdit = false;
             _armedSitePriceEditNumber = "";
             _submissionVerificationPending = false;
