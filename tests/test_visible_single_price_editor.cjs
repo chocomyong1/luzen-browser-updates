@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = name => fs.readFileSync(path.join(__dirname, '../AppSource', name), 'utf8');
-const app = read('AutomationForm.SitePriceEdit.cs');
+const app = read('AutomationForm.SitePriceEdit.cs').replace(/\r\n/g, '\n');
 const grid = read('AutomationForm.cs');
 const site = read('SitePriceEdit.cs');
 const observer = read('SitePriceSubmitObserver.cs');
