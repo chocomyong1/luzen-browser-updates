@@ -171,6 +171,62 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   await context.close();
 }
 
+async function asynchronousFirstPartySubmitTrial(browser) {
+  // The live site's FormChecker intentionally cancels the first DOM0
+  // submit, then calls native form.submit() after asynchronous validation.
+  // Exercise that sequence with a real Chromium mouse click and a local
+  // intercepted fake endpoint. No real ItemMania request is made.
+  const context=await browser.newContext({viewport:{width:1100,height:750}});
+  const page=await context.newPage();
+  const finalPosts=[];
+  page.on('request',request=>{
+    if(request.method()==='POST'&&request.url().endsWith('/myroom/buy/buy_re_reg_ok.php'))
+      finalPosts.push(request);
+  });
+  await page.route(url,route=>route.fulfill({status:200,contentType:'text/html',body:`
+    <!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
+    <form id="frmBuy" method="post" action="/myroom/buy/buy_re_reg_ok.php">
+      <input type="hidden" name="registration_id" value="${listingId}">
+      <input name="user_title" value="${title}">
+      <table><tr><th>구매금액</th><td><input name="user_division_price" value="10,000"></td></tr></table>
+      <button type="submit" id="ok_btn" class="buy_re_reg">재등록</button>
+    </form>
+    <script>
+      window.validationStarted=false;
+      document.querySelector('#frmBuy').onsubmit=function(){
+        if(window.validationStarted)return false;
+        window.validationStarted=true;
+        setTimeout(()=>{
+          const form=document.querySelector('#frmBuy');
+          form.onsubmit=null;
+          form.submit();
+        },80);
+        return false;
+      };
+    </script></body></html>`}));
+  await page.route('**/myroom/buy/buy_re_reg_ok.php',route=>
+    route.fulfill({status:200,contentType:'text/html',body:'site received one POST'}));
+  await page.goto(url);
+  const prepared=await page.evaluate(script('EditFormScript').replace('__ARG__',JSON.stringify({
+    number:listingId,oldPrice:'10000',newPrice:target,submit:true,expectedTitle:title,
+    nativeSingleApproval:true,verifiedMinQuantity:'1',verifiedMaxQuantity:'999',
+    allowVerifiedTitleRestore:false,trustedOneClick:true,nativeKeyboardPrice:true
+  })));
+  assert.equal(prepared.status,'input-ready',prepared.message);
+  await page.locator('[name=user_division_price]').fill(target);
+  await page.locator('[name=user_division_price]').press('Tab');
+  const final=await page.evaluate(script('FinalizeNativePriceScript'));
+  assert.equal(final.status,'armed',final.message);
+  const posted=page.waitForRequest(r=>r.method()==='POST'&&
+    r.url().endsWith('/myroom/buy/buy_re_reg_ok.php'));
+  await page.mouse.click(final.x,final.y);
+  await posted;
+  await page.waitForURL('**/myroom/buy/buy_re_reg_ok.php');
+  assert.equal(finalPosts.length,1,'One genuine user-like click must yield exactly one official async POST');
+  assert.equal(await page.evaluate(()=>document.body.textContent.trim()),'site received one POST');
+  await context.close();
+}
+
 (async()=>{
   const options={headless:true,args:['--no-sandbox','--disable-dev-shm-usage']};
   if(process.env.LUZEN_TEST_CHROMIUM_BIN)options.executablePath=process.env.LUZEN_TEST_CHROMIUM_BIN;
@@ -179,7 +235,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
     await oneTrial(browser,false,true);await oneTrial(browser,false,false,true);
     await oneTrial(browser,false,false,false,true);
     await oneTrial(browser,false,false,false,false,true);
-    await oneTrial(browser,false,false,false,false,false,true);}
+    await oneTrial(browser,false,false,false,false,false,true);
+    await asynchronousFirstPartySubmitTrial(browser);}
   finally{await browser.close();}
-  console.log('PASS real Chromium key input triggers site validators; only one native click; late title mutation blocked');
+  console.log('PASS real Chromium keyboard/mouse, original title guards, and asynchronous first-party final POST');
 })().catch(error=>{console.error(error);process.exitCode=1;});

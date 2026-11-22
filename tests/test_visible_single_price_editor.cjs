@@ -1,6 +1,6 @@
 'use strict';
-// The single existing-listing price feature must expose the genuine first-
-// party editor. Do not return to a silent background FormChecker click.
+// The old manual editor remains as a recovery/diagnostic path; the newly
+// approved single and checked-list actions use the verified native click.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -23,8 +23,8 @@ assert.match(app, /if \(!observer\.FinalPostStarted\) await Task\.Delay/);
 assert.match(app, /if \(!observer\.FinalPostStarted\)[\s\S]*?"사이트의 최종 가격 수정 요청이 아직 확인되지 않았습니다/);
 assert.match(observer, /public bool FinalPostStarted => _requestId\.Length > 0/);
 
-const singleBranch = app.slice(app.indexOf('if (nativeSingleApproval)\n                {\n                    // User-driven'),
-  app.indexOf('\n                else\n                {\n                    // This fallback'));
+const singleBranch = app.slice(app.indexOf('if (nativeSingleApproval && !backgroundApproved)'),
+  app.indexOf('\n                else\n                {\n                    // Explicit single-item'));
 assert(singleBranch.length > 500, 'single-item visible branch must be present');
 assert.match(singleBranch, /job\.RequiresReview = true/);
 assert.match(singleBranch, /ShowVisibleSinglePriceEditor\(job, current, desired, submissionObserver\)/);
@@ -35,6 +35,8 @@ assert(singleBranch.indexOf('if (!siteButtonClicked && !submissionObserver.Final
   singleBranch.indexOf('HourlyServerQuota.MarkAttempt('),
   'Canceled visible editing must not consume the posting quota');
 assert.doesNotMatch(singleBranch, /DispatchVerifiedSitePriceClickAsync|mousePressed|\.submit\(|\.click\(/);
+assert.match(app, /backgroundApproved: true\);/);
+assert.match(app, /_unattendedSitePriceEdit = true;\s*await DispatchVerifiedSitePriceClickAsync/);
 
 assert.match(grid, /if \(_visibleSitePriceEditWindow is not null\)[\s\S]*?HandleVisibleSitePriceDialog\(e\)/);
 assert.match(app, /MessageBox\.Show\(window, message, "아이템매니아 안내"/);

@@ -291,8 +291,10 @@ internal sealed partial class MainForm : Form
         moreMenu.Items.Add("C VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("C"));
         moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("선택 1건 조회시험", null, async (_, _) => await _module.ProbeSelectedRepostFromHeaderAsync());
-        moreMenu.Items.Add("선택 1건 가격 수정 (사이트 창)", null,
+        moreMenu.Items.Add("선택 1건 가격 즉시 수정 (사이트 자동 클릭)", null,
             async (_, _) => await _module.ApplySelectedSitePriceFromHeaderAsync());
+        moreMenu.Items.Add("체크한 구매글 가격 일괄 반영", null,
+            async (_, _) => await _module.ApplyCheckedSitePricesFromHeaderAsync());
         moreMenu.Items.Add("신규글 입력시험 (미제출)", null,
             async (_, _) => await _module.TestSelectedNewRegistrationFromHeaderAsync());
         moreMenu.Items.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,

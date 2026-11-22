@@ -33,7 +33,7 @@ assert.match(site, /_config\.Save\(\);[\s\S]*?_activeSitePriceJob = null;/);
 assert.match(scheduler, /string submittedTarget = job\.PendingSitePriceTarget;/);
 assert.match(scheduler, /if \(string\.Equals\(job\.PendingSitePriceTarget, submittedTarget, StringComparison\.Ordinal\)\)\s*job\.PendingSitePriceTarget = "";/);
 assert.match(scheduler, /reserved != local/);
-assert.match(panel, /기존 예약은 새 금액으로 교체합니다/);
+assert.match(panel, /기존 구매글은 가격만 저장하고 사이트에는 아직 제출하지 않습니다/);
 
 // Immediate stop cannot terminate an unverified submission; updates wait for
 // all systems to be idle and save the pending jobs outside the install root.
@@ -41,5 +41,5 @@ assert.match(scheduler, /if \(!_submissionVerificationPending\) _currentRun\?\.C
 assert.match(scheduler, /!_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport/);
 assert.match(main, /if \(!CanInstallUpdateAcrossSystems\)/);
 assert.match(main, /_moduleA\.SaveListings\(\); _moduleB\.SaveListings\(\); _moduleC\.SaveListings\(\)/);
-assert.match(updater, /public const string CurrentVersion = "22\.3\.25"/);
+assert.match(updater, /public const string CurrentVersion = "22\.3\.26"/);
 console.log('PASS re-edit queued prices, defer active submission edits, preserve latest request across stop/update');

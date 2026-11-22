@@ -39,6 +39,8 @@ assert.match(draft, /ItemManiaAccountStore\.Load\(_system\)\.UserId/);
 assert.match(draft, /_jobs\.Any\(other => !ReferenceEquals\(other, job\)/);
 assert.match(draft, /!changed\.Contains\(job\)/);
 assert.match(draft, /IsUnsubmittedNewListing\(job\) \? "" : amountValue\.ToString\(\)/);
+assert.doesNotMatch(draft, /if \(existing\.Count > 0 && !SitePriceEdit\.AutomaticPriceSubmissionEnabled\)/,
+  'A disabled scheduler must not prevent saving prices for explicit checked-item submission');
 assert.doesNotMatch(draft, /Navigate\(|ExecuteScriptAsync|ApplySitePriceAsync\(/);
 
 // Bulk + ABC apply both use per-listing pending values, so selecting drafted
@@ -52,11 +54,14 @@ assert.match(abc, /command\.Field == IntegratedEditField\.Price\s*\? pendingByJo
 assert.match(abc, /Action afterSubmission = \(\) => ApplyBatchUndoChange\(change\)/);
 assert.doesNotMatch(abcDialog, /var reserve = new CheckBox|reserveSite/);
 
-// The original scheduler remains the only path to an on-site POST, preserving
-// hourly limits and the hold-on-uncertainty behavior.
+// The old scheduler remains guarded and cannot submit prices; explicit
+// checked-list action has its own quota-checked native click and readback.
 const schedule = single.slice(single.indexOf('private async Task SchedulerTickAsync()'),
   single.indexOf('private async Task ExecuteJobAsync(', single.indexOf('private async Task SchedulerTickAsync()')));
 assert.match(schedule, /if \(!CanRunNow\(job, out _\)\) continue;/);
 assert.match(schedule, /ApplySitePriceAsync\(job, bulkApproval: true, fromScheduler: true\)/);
 assert.match(schedule, /job\.RequiresReview = true;/);
+assert.match(planner, /ApplyCheckedSitePricesNowAsync\(\)/);
+assert.match(planner, /nativeSingleApproval: true,[\s\S]*?backgroundApproved: true/);
+assert.match(bulk, /사이트에는 아직 반영되지 않습니다/);
 console.log('PASS one-click price apply: new posts, verified BUY posts, A/B/C bulk and paced safety');
