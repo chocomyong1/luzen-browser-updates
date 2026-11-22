@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.36",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.36/LuzenBrowser_22.3.36_BinaryUpdate.zip",
-  "sha256": "261a9e5c15e445395b911b5967472365f6dce70e0f324fbc8fdfad23a6f648d7",
+  "version": "22.3.37",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.37/LuzenBrowser_22.3.37_BinaryUpdate.zip",
+  "sha256": "7f189f092cd94a093737767aef23c39e9d46e0c906b34e9e9c932dbb59ce7f3f",
   "format": "binary",
-  "releaseNotes": "v22.3.36 단건 가격 수정도 사이트 화면 없이 진행합니다. 결제 0원·프리미엄 0시간이 검증된 공식 확인만 자동 진행합니다."
+  "releaseNotes": "v22.3.37 단건·일괄 가격 수정은 백그라운드에서 진행합니다. 제목 보호 모드의 예약 제출 차단을 해제하고, 명시적으로 승인한 예약을 기존 등록번호의 공식 수정 절차와 0원 확인으로 처리합니다."
 }
