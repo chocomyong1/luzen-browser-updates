@@ -11,7 +11,7 @@ internal sealed partial class AutomationForm
 {
     // Cancel only an unsubmitted LOCAL price target. This never touches the
     // browser or the actual site price; keep any uncertain submit evidence.
-    internal bool TryCancelUnsubmittedPriceReservation(ListingJob job, out string problem)
+    internal bool CanCancelUnsubmittedPriceReservation(ListingJob job, out string problem)
     {
         problem = "";
         if (!_jobs.Contains(job) || string.IsNullOrWhiteSpace(job.PendingSitePriceTarget))
@@ -36,6 +36,12 @@ internal sealed partial class AutomationForm
                 "먼저 '가격 변경 결과 재조회 (제출 없음)'로 사이트 상태를 확인해 주세요.";
             return false;
         }
+        return true;
+    }
+
+    internal bool TryCancelUnsubmittedPriceReservation(ListingJob job, out string problem)
+    {
+        if (!CanCancelUnsubmittedPriceReservation(job, out problem)) return false;
         string beforeTarget = job.PendingSitePriceTarget;
         string beforeStatus = job.LastStatus;
         bool beforeReview = job.RequiresReview;
@@ -44,7 +50,7 @@ internal sealed partial class AutomationForm
         try
         {
             job.PendingSitePriceTarget = "";
-            if (legacyHold)
+            if (job.RequiresReview)
             {
                 job.RequiresReview = false;
                 job.Enabled = false;
@@ -83,13 +89,13 @@ internal sealed partial class AutomationForm
         var snapshots = new List<PriceReservationSnapshot>();
         foreach (var job in _jobs.Where(j => !string.IsNullOrWhiteSpace(j.PendingSitePriceTarget)))
         {
-            if (!SitePriceEdit.AutomaticPriceSubmissionEnabled)
-            {
-                snapshots.Add(new(job, "제목 보호 모드 · 사이트 가격 자동 제출 중지", null, 0)); continue;
-            }
             if (job.RequiresReview)
             {
                 snapshots.Add(new(job, "확인 필요 · 자동 보류", null, 0)); continue;
+            }
+            if (!SitePriceEdit.AutomaticPriceSubmissionEnabled)
+            {
+                snapshots.Add(new(job, "저장됨 · 사이트 제출 대기", null, 0)); continue;
             }
             if (!job.Enabled)
             {

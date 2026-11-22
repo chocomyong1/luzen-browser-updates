@@ -96,6 +96,9 @@ internal sealed partial class MainForm : Form
         footer.Controls.Add(_accountInfo);
         Controls.Add(body);
         Controls.Add(footer);
+        AddSitePriceBatchProgressBanner(_moduleA, "A");
+        AddSitePriceBatchProgressBanner(_moduleB, "B");
+        AddSitePriceBatchProgressBanner(_moduleC, "C");
         Controls.Add(_importProgressBanner);
         Controls.Add(top);
         StartMarketBridge();

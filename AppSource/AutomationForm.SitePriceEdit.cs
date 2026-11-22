@@ -121,6 +121,16 @@ internal sealed partial class AutomationForm
     private ListingJob? _activeSitePriceJob;
     private bool _sitePriceBatchRunning;
     private CancellationTokenSource? _sitePriceBatchCancellation;
+    private Action<string>? _reportSitePriceBatchStage;
+    public event Action<string, bool, string?>? SitePriceBatchProgress;
+
+    internal void RequestStopSitePriceBatch()
+    {
+        var cancellation = _sitePriceBatchCancellation;
+        if (cancellation is null || cancellation.IsCancellationRequested) return;
+        cancellation.Cancel();
+        _reportSitePriceBatchStage?.Invoke("중지 요청 · 현재 건의 결과 확인 후 종료");
+    }
 
     private static bool TrySitePrice(string? text, out long value) =>
         long.TryParse((text ?? "").Replace(",", "", StringComparison.Ordinal).Trim(), out value) && value >= 1000;
@@ -844,12 +854,17 @@ internal sealed partial class AutomationForm
         _sitePriceBatchRunning = true;
         int verified = 0;
         string stopReason = "";
+        SitePriceBatchProgress?.Invoke($"0/{targets.Count}건 확인 · 일괄 수정 시작", true, null);
+        AppendLog($"선택 구매글 가격 일괄 수정 시작: {targets.Count}건");
         try
         {
             foreach (var job in targets)
             {
                 var cancel = _sitePriceBatchCancellation.Token;
                 cancel.ThrowIfCancellationRequested();
+                _reportSitePriceBatchStage = stage => SitePriceBatchProgress?.Invoke(
+                    $"{verified}/{targets.Count}건 확인 · {job.Server} · {job.ListingNumber} · " +
+                    (cancel.IsCancellationRequested ? "중지 요청 · 현재 건의 결과 확인 후 종료" : stage), true, null);
                 // Only normal server-spacing delays are waited through.
                 // Exhausted hourly quotas require a later explicit batch.
                 while (!CanRunNow(job, out var pacingReason))
@@ -860,6 +875,7 @@ internal sealed partial class AutomationForm
                         break;
                     }
                     _state.Text = $"가격 일괄 수정 간격 대기 {verified}/{targets.Count} · {pacingReason}";
+                    _reportSitePriceBatchStage?.Invoke("서버별 등록 간격 대기");
                     await Task.Delay(1000, cancel);
                 }
                 if (!string.IsNullOrWhiteSpace(stopReason)) break;
@@ -869,6 +885,7 @@ internal sealed partial class AutomationForm
                     break;
                 }
                 _state.Text = $"가격 일괄 수정 {verified + 1}/{targets.Count} · 등록번호 {job.ListingNumber}";
+                _reportSitePriceBatchStage?.Invoke("기존 등록글 조회 중");
                 if (!await ApplySitePriceAsync(job, bulkApproval: true, nativeSingleApproval: true,
                         manuallyApprovedPrice: desired, backgroundApproved: true))
                 {
@@ -882,9 +899,14 @@ internal sealed partial class AutomationForm
         {
             stopReason = "사용자가 중지를 요청했습니다. 이미 제출한 한 건의 결과는 별도 확인이 필요할 수 있습니다.";
         }
+        catch (Exception ex)
+        {
+            stopReason = ex.Message;
+        }
         finally
         {
             _sitePriceBatchRunning = false;
+            _reportSitePriceBatchStage = null;
             _sitePriceBatchCancellation.Dispose();
             _sitePriceBatchCancellation = null;
             _state.Text = _schedulerRunning ? "자동 실행 중" : "중지/대기";
@@ -894,6 +916,15 @@ internal sealed partial class AutomationForm
         }
         AppendLog($"선택 구매글 가격 일괄 수정 종료: {verified}/{targets.Count}건 확인" +
             (string.IsNullOrWhiteSpace(stopReason) ? "" : " · 중단: " + stopReason));
+        if (SitePriceBatchProgress is { } reportProgress)
+        {
+            if (string.IsNullOrWhiteSpace(stopReason))
+                reportProgress($"완료 · {verified}/{targets.Count}건의 사이트 가격 확인", false, null);
+            else
+                reportProgress($"중단 · {verified}/{targets.Count}건의 사이트 가격 확인 · {stopReason}",
+                    false, stopReason);
+            return;
+        }
         MessageBox.Show(this, $"{targets.Count}건 중 {verified}건의 사이트 가격 확인을 완료했습니다." +
             (string.IsNullOrWhiteSpace(stopReason) ? "" : "\n\n나머지 글은 제출하지 않았습니다.\n" + stopReason),
             "가격 일괄 수정 결과", MessageBoxButtons.OK,
@@ -1085,6 +1116,7 @@ internal sealed partial class AutomationForm
             if (!diagnosticOnly)
                 await submissionObserver.StartAsync();
             var record = records[0];
+            if (bulkApproval) _reportSitePriceBatchStage?.Invoke("사이트 수정폼 확인 중");
             bool hasDetailUrl = MyListingsImport.IsSafeDetailUrl(record.ListingUrl, job.ListingNumber);
             bool hasEditUrl = MyListingsImport.IsSafeDetailUrl(record.EditUrl, job.ListingNumber);
             if (hasDetailUrl || !hasEditUrl)
@@ -1265,6 +1297,7 @@ internal sealed partial class AutomationForm
             // requests finish. In particular the free-pass response initializes
             // the premium continuation used by the contact approval callback.
             await submissionObserver.WaitForFormLoadAsync(token);
+            if (bulkApproval) _sitePriceBatchCancellation?.Token.ThrowIfCancellationRequested();
             AppendLog("사이트 수정폼 초기 조회 완료 (안심번호·파워 등록권·무료 이용권)");
             AppendLog("구매글 사이트 비동기 제출 경로 준비 확인 (연락처·카테고리·에디터·최종 POST)");
 
@@ -1330,6 +1363,7 @@ internal sealed partial class AutomationForm
                 if (final.Status != "armed")
                     throw new InvalidOperationException("사이트 키보드 입력 후 폼 검증 실패: " + final.Message);
                 AppendLog("사이트 키보드 입력 후 제출폼 검증: " + final.Message);
+                if (bulkApproval) _reportSitePriceBatchStage?.Invoke("사이트 가격 저장 요청 중");
                 if (nativeSingleApproval && !backgroundApproved)
                 {
                     // User-driven price editing is a separate, visible path.
@@ -1383,6 +1417,7 @@ internal sealed partial class AutomationForm
                     _unattendedSitePriceEdit = true;
                     await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token, () =>
                     {
+                        if (bulkApproval) _sitePriceBatchCancellation?.Token.ThrowIfCancellationRequested();
                         if (fromScheduler && !_schedulerRunning)
                             throw new OperationCanceledException("자동등록 중지로 사이트 제출 전 취소됐습니다.");
                         if (!CanRunNow(job, out var clickQuotaReason))
@@ -1469,6 +1504,7 @@ internal sealed partial class AutomationForm
             if (observed.NetworkFinished) await Task.Delay(950, token);
 
             _state.Text = "구매글 가격 변경 결과 확인 중";
+            if (bulkApproval) _reportSitePriceBatchStage?.Invoke("같은 등록번호의 변경 가격 확인 중");
             if (!await ConfirmChangedSitePriceAsync(job, desired, token, siteTitleSnapshot))
             {
                 // Unlike a missing CDP event, an actual non-S response from

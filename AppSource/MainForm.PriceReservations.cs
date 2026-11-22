@@ -75,7 +75,7 @@ internal sealed partial class MainForm
         {
             Dock = DockStyle.Fill, AutoGenerateColumns = false, AllowUserToAddRows = false,
             AllowUserToDeleteRows = false, ReadOnly = true, RowHeadersVisible = false,
-            MultiSelect = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            MultiSelect = true, SelectionMode = DataGridViewSelectionMode.FullRowSelect,
             BackgroundColor = UiTheme.Surface, BorderStyle = BorderStyle.None,
             CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
             GridColor = UiTheme.Border, EnableHeadersVisualStyles = false,
@@ -125,7 +125,7 @@ internal sealed partial class MainForm
         close.Click += (_, _) => dialog.Close();
         var edit = new Button { Text = "예약 가격 다시 수정", Width = 165, Height = 34 };
         UiTheme.StyleButton(edit, UiTheme.ButtonTone.Primary);
-        var cancelRequest = new Button { Text = "선택 요청 취소", Width = 136, Height = 34 };
+        var cancelRequest = new Button { Text = "선택 요청 일괄 취소", Width = 158, Height = 34 };
         UiTheme.StyleButton(cancelRequest);
         var refresh = new Button { Text = "새로고침", Width = 108, Height = 34 };
         UiTheme.StyleButton(refresh);
@@ -142,11 +142,22 @@ internal sealed partial class MainForm
 
         var rows = new List<PriceReservationRow>();
         PriceReservationRow? Selected() => grid.CurrentRow?.DataBoundItem as PriceReservationRow;
+        List<PriceReservationRow> SelectedRequests() => grid.SelectedRows.Cast<DataGridViewRow>()
+            .Select(row => row.DataBoundItem).OfType<PriceReservationRow>().ToList();
         void ShowSelected()
         {
             var selected = Selected();
-            edit.Enabled = selected is not null && SitePriceEdit.AutomaticPriceSubmissionEnabled;
-            cancelRequest.Enabled = selected is not null;
+            var selection = SelectedRequests();
+            edit.Enabled = selection.Count == 1 && SitePriceEdit.AutomaticPriceSubmissionEnabled;
+            var canCancel = selection.Count(row =>
+                IntegratedOwner(row.System).CanCancelUnsubmittedPriceReservation(row.Job, out _));
+            cancelRequest.Enabled = canCancel > 0;
+            if (selection.Count > 1)
+            {
+                selectedCard.Text = $"선택 {selection.Count}건 · 취소 가능 {canCancel}건\n" +
+                    "Ctrl 또는 Shift로 여러 요청을 선택할 수 있습니다.";
+                return;
+            }
             if (selected is null)
             {
                 selectedCard.Text = "대기 중인 가격 변경 예약이 없습니다.";
@@ -161,8 +172,7 @@ internal sealed partial class MainForm
         grid.SelectionChanged += (_, _) => ShowSelected();
         void Reload()
         {
-            string? selectedId = Selected()?.Job.Id;
-            string? selectedSystem = Selected()?.System;
+            var selectedKeys = SelectedRequests().Select(row => (row.System, row.Job.Id)).ToHashSet();
             rows = (new[] { "A", "B", "C" })
                 .SelectMany(system => IntegratedOwner(system).CurrentPriceReservations()
                     .Select(snapshot => new PriceReservationRow { System = system, Snapshot = snapshot }))
@@ -170,13 +180,14 @@ internal sealed partial class MainForm
                 .ThenBy(row => row.Job.Title).ToList();
             grid.DataSource = null;
             grid.DataSource = rows;
-            if (selectedId is not null)
+            if (selectedKeys.Count > 0)
+            {
+                grid.ClearSelection();
                 foreach (DataGridViewRow gridRow in grid.Rows)
                     if (gridRow.DataBoundItem is PriceReservationRow candidate &&
-                        candidate.Job.Id == selectedId && candidate.System == selectedSystem)
-                    {
-                        grid.CurrentCell = gridRow.Cells[0]; break;
-                    }
+                        selectedKeys.Contains((candidate.System, candidate.Job.Id)))
+                        gridRow.Selected = true;
+            }
             header.Text = (SitePriceEdit.AutomaticPriceSubmissionEnabled ? "가격 변경 예약" : "미적용 가격 요청") +
                 $"  ·  {rows.Count}건";
             ShowSelected();
@@ -184,21 +195,25 @@ internal sealed partial class MainForm
         refresh.Click += (_, _) => Reload();
         cancelRequest.Click += (_, _) =>
         {
-            var selected = Selected();
-            if (selected is null) return;
+            var selection = SelectedRequests();
+            var cancellable = selection.Where(row =>
+                IntegratedOwner(row.System).CanCancelUnsubmittedPriceReservation(row.Job, out _)).ToList();
+            if (cancellable.Count == 0) return;
             if (MessageBox.Show(dialog,
-                    selected.SystemName + " · " + selected.Item + "\n\n" +
-                    "미적용 가격 요청 " + selected.TargetPrice + "을(를) 취소할까요?\n" +
-                    "사이트에 제출하지 않으며, 실제 사이트 가격과 저장된 물품 가격은 바꾸지 않습니다.\n" +
-                    "이전 제출이 불확실한 물품은 취소할 수 없습니다.",
-                    "가격 요청 1건 취소 · 사이트 미제출", MessageBoxButtons.YesNo,
+                    $"선택한 요청 중 아직 제출하지 않은 {cancellable.Count}건을 취소할까요?\n" +
+                    $"확인 대기 또는 처리 중인 {selection.Count - cancellable.Count}건은 유지합니다.",
+                    "미제출 가격 요청 일괄 취소", MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-            if (!IntegratedOwner(selected.System).TryCancelUnsubmittedPriceReservation(selected.Job, out var problem))
+            var failures = new List<string>();
+            foreach (var selected in cancellable)
             {
-                MessageBox.Show(dialog, problem, "가격 요청 취소 불가", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                if (!IntegratedOwner(selected.System).TryCancelUnsubmittedPriceReservation(selected.Job, out var problem))
+                    failures.Add($"{selected.SystemName} · {selected.Job.ListingNumber} · {problem}");
             }
             Reload();
+            if (failures.Count > 0)
+                MessageBox.Show(dialog, $"취소 {cancellable.Count - failures.Count}건 · 실패 {failures.Count}건\n\n" +
+                    string.Join("\n", failures), "가격 요청 취소 결과", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         };
         edit.Click += (_, _) =>
         {

@@ -35,7 +35,7 @@ assert.doesNotMatch(priceExecutable, /\bfetch\s*\(/,
 assert.doesNotMatch(priceExecutable, /\bnew\s+FormData\s*\(/);
 assert.match(sitePriceScript, /return result\('blocked','제목 보호 모드/);
 assert.match(sitePriceForm, /if \(!SitePriceEdit\.AutomaticPriceSubmissionEnabled\)/);
-assert.match(reservations, /제목 보호 모드 · 사이트 가격 자동 제출 중지/);
+assert.match(reservations, /저장됨 · 사이트 제출 대기/);
 
 assert.doesNotMatch(repost, /if\(!matching\[0\]\.identity\.titleMatches/);
 assert.doesNotMatch(repost, /return result\('unsafe-title'/);
