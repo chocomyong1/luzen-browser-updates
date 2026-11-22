@@ -19,7 +19,7 @@ assert.match(form, /실행 가능한 물품이 0건/);
 assert.match(form, /자동 ON \{autoOn\}건 · 확인 필요 \{review\}건/);
 
 const cancel = scheduler.slice(scheduler.indexOf('internal bool CanCancelUnsubmittedPriceReservation('),
-  scheduler.indexOf('internal IReadOnlyList<PriceReservationSnapshot> CurrentPriceReservations('));
+  scheduler.indexOf('internal bool CanReconcilePriceReservation('));
 assert.match(cancel, /job\.RequiresReview && !legacyHold/);
 assert.match(cancel, /job\.PendingRepostAttemptUtc\.HasValue/);
 assert.match(cancel, /!string\.IsNullOrWhiteSpace\(job\.PriceEditSiteTitleSnapshot\)/);
@@ -30,12 +30,19 @@ assert.match(cancel, /_config\.Save\(\)/);
 assert.match(cancel, /job\.PendingSitePriceTarget = beforeTarget/);
 assert.doesNotMatch(cancel, /ExecuteScriptAsync|ApplySitePriceAsync|SubmitAsync|\.click\(|Fetch\.|Network\.|HttpClient|\.Price\s*=/);
 
-assert.match(ui, /"선택 요청 일괄 취소"/);
+assert.match(ui, /"선택 요청 정리"/);
 assert.match(ui, /MultiSelect = true/);
 assert.match(ui, /CanCancelUnsubmittedPriceReservation\(row\.Job, out _\)/);
-assert.match(ui, /TryCancelUnsubmittedPriceReservation\(selected\.Job, out var problem\)/);
+assert.match(ui, /await owner\.ReconcilePriceReservationAsync\(selected\.Job\)/);
+const reconcile = scheduler.slice(scheduler.indexOf('internal async Task<string?> ReconcilePriceReservationAsync('),
+  scheduler.indexOf('internal IReadOnlyList<PriceReservationSnapshot> CurrentPriceReservations('));
+assert.match(reconcile, /ReadSitePriceAfterRepostAsync\(job, target, cancellation\.Token\)/);
+assert.match(reconcile, /result\.ExactCurrentPrice is not long current/);
+assert.match(reconcile, /job\.Enabled = false/);
+assert.doesNotMatch(reconcile, /ApplySitePriceAsync|SubmitAsync|\.click\(/);
+assert.match(ui, /TryCancelUnsubmittedPriceReservation\(selected\.Job, out var cancelProblem\)/);
 assert.match(ui, /MessageBoxButtons\.YesNo/);
-assert.match(ui, /실제 사이트 가격과 저장된 물품 금액은 바뀌지 않습니다/);
+assert.match(ui, /요청 정리는 사이트 가격을 변경하지 않습니다/);
 assert.match(ui, /edit\.Enabled = selection\.Count == 1 && SitePriceEdit\.AutomaticPriceSubmissionEnabled/);
 assert.doesNotMatch(ui, /ExecuteScriptAsync|ApplySitePriceAsync|\.submit\(/);
 console.log('PASS safe stale-price holds, explicit local-only cancellation and per-system empty-state explanation');

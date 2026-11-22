@@ -125,7 +125,7 @@ internal sealed partial class MainForm
         close.Click += (_, _) => dialog.Close();
         var edit = new Button { Text = "예약 가격 다시 수정", Width = 165, Height = 34 };
         UiTheme.StyleButton(edit, UiTheme.ButtonTone.Primary);
-        var cancelRequest = new Button { Text = "선택 요청 일괄 취소", Width = 158, Height = 34 };
+        var cancelRequest = new Button { Text = "선택 요청 정리", Width = 158, Height = 34 };
         UiTheme.StyleButton(cancelRequest);
         var refresh = new Button { Text = "새로고침", Width = 108, Height = 34 };
         UiTheme.StyleButton(refresh);
@@ -135,26 +135,34 @@ internal sealed partial class MainForm
         bottom.Controls.Add(refresh);
         bottom.Controls.Add(new Label
         {
-            Text = "※ 취소해도 실제 사이트 가격과 저장된 물품 금액은 바뀌지 않습니다.",
+            Text = "※ 요청 정리는 사이트 가격을 변경하지 않습니다.",
             AutoSize = true, Padding = new Padding(0, 10, 14, 0), ForeColor = UiTheme.Muted
         });
         layout.Controls.Add(bottom, 0, 4);
 
         var rows = new List<PriceReservationRow>();
+        bool reconciling = false;
+        dialog.FormClosing += (_, e) => { if (reconciling) e.Cancel = true; };
         PriceReservationRow? Selected() => grid.CurrentRow?.DataBoundItem as PriceReservationRow;
         List<PriceReservationRow> SelectedRequests() => grid.SelectedRows.Cast<DataGridViewRow>()
             .Select(row => row.DataBoundItem).OfType<PriceReservationRow>().ToList();
+        bool CanClear(PriceReservationRow row)
+        {
+            var owner = IntegratedOwner(row.System);
+            return owner.CanCancelUnsubmittedPriceReservation(row.Job, out _) ||
+                owner.CanReconcilePriceReservation(row.Job);
+        }
         void ShowSelected()
         {
+            if (reconciling) return;
             var selected = Selected();
             var selection = SelectedRequests();
             edit.Enabled = selection.Count == 1 && SitePriceEdit.AutomaticPriceSubmissionEnabled;
-            var canCancel = selection.Count(row =>
-                IntegratedOwner(row.System).CanCancelUnsubmittedPriceReservation(row.Job, out _));
+            var canCancel = selection.Count(CanClear);
             cancelRequest.Enabled = canCancel > 0;
             if (selection.Count > 1)
             {
-                selectedCard.Text = $"선택 {selection.Count}건 · 취소 가능 {canCancel}건\n" +
+                selectedCard.Text = $"선택 {selection.Count}건 · 정리 가능 {canCancel}건\n" +
                     "Ctrl 또는 Shift로 여러 요청을 선택할 수 있습니다.";
                 return;
             }
@@ -193,27 +201,47 @@ internal sealed partial class MainForm
             ShowSelected();
         }
         refresh.Click += (_, _) => Reload();
-        cancelRequest.Click += (_, _) =>
+        cancelRequest.Click += async (_, _) =>
         {
             var selection = SelectedRequests();
-            var cancellable = selection.Where(row =>
-                IntegratedOwner(row.System).CanCancelUnsubmittedPriceReservation(row.Job, out _)).ToList();
+            var cancellable = selection.Where(CanClear).ToList();
             if (cancellable.Count == 0) return;
             if (MessageBox.Show(dialog,
-                    $"선택한 요청 중 아직 제출하지 않은 {cancellable.Count}건을 취소할까요?\n" +
-                    $"확인 대기 또는 처리 중인 {selection.Count - cancellable.Count}건은 유지합니다.",
-                    "미제출 가격 요청 일괄 취소", MessageBoxButtons.YesNo,
+                    $"선택한 가격 요청 {cancellable.Count}건을 정리할까요?\n\n" +
+                    "미제출 요청은 취소하고, 확인 대기는 사이트에서 같은 등록번호의 가격을 조회합니다.\n" +
+                    "사이트에는 가격을 제출하지 않습니다.",
+                    "선택 가격 요청 정리", MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
             var failures = new List<string>();
-            foreach (var selected in cancellable)
+            reconciling = true;
+            close.Enabled = refresh.Enabled = edit.Enabled = cancelRequest.Enabled = grid.Enabled = false;
+            try
             {
-                if (!IntegratedOwner(selected.System).TryCancelUnsubmittedPriceReservation(selected.Job, out var problem))
-                    failures.Add($"{selected.SystemName} · {selected.Job.ListingNumber} · {problem}");
+                for (var i = 0; i < cancellable.Count; i++)
+                {
+                    var selected = cancellable[i];
+                    selectedCard.Text = $"요청 정리 중 {i + 1}/{cancellable.Count} · {selected.SystemName} · {selected.Job.ListingNumber}";
+                    var owner = IntegratedOwner(selected.System);
+                    string? problem;
+                    if (owner.CanReconcilePriceReservation(selected.Job))
+                        problem = await owner.ReconcilePriceReservationAsync(selected.Job);
+                    else if (owner.TryCancelUnsubmittedPriceReservation(selected.Job, out var cancelProblem))
+                        problem = null;
+                    else problem = cancelProblem;
+                    if (problem is not null)
+                        failures.Add($"{selected.SystemName} · {selected.Job.ListingNumber} · {problem}");
+                }
             }
-            Reload();
-            if (failures.Count > 0)
-                MessageBox.Show(dialog, $"취소 {cancellable.Count - failures.Count}건 · 실패 {failures.Count}건\n\n" +
-                    string.Join("\n", failures), "가격 요청 취소 결과", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            finally
+            {
+                reconciling = false;
+                close.Enabled = refresh.Enabled = grid.Enabled = true;
+                Reload();
+            }
+            MessageBox.Show(dialog, $"정리 {cancellable.Count - failures.Count}건 · 유지 {selection.Count - cancellable.Count + failures.Count}건" +
+                (failures.Count == 0 ? "" : "\n\n" + string.Join("\n", failures)),
+                "가격 요청 정리 결과", MessageBoxButtons.OK,
+                failures.Count == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         };
         edit.Click += (_, _) =>
         {
@@ -269,7 +297,7 @@ internal sealed partial class MainForm
             if (prompt.ShowDialog(dialog) == DialogResult.OK) Reload();
         };
         using var clock = new System.Windows.Forms.Timer { Interval = 5000 };
-        clock.Tick += (_, _) => { if (!dialog.IsDisposed && !grid.IsCurrentCellInEditMode) Reload(); };
+        clock.Tick += (_, _) => { if (!reconciling && !dialog.IsDisposed && !grid.IsCurrentCellInEditMode) Reload(); };
         Reload();
         clock.Start();
         dialog.ShowDialog(this);

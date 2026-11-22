@@ -1634,6 +1634,7 @@ internal sealed partial class AutomationForm
     private sealed class SitePriceReadback
     {
         public bool ExactIdVerified { get; set; }
+        public long? ExactCurrentPrice { get; set; }
         public bool OriginalUnchangedNoReplacement { get; set; }
         public string Message { get; set; } = "";
     }
@@ -1785,7 +1786,7 @@ internal sealed partial class AutomationForm
             // title difference never negates that proof or reassigns the ID.
             bool titleDifferent = expectedTitle.Length > 0 &&
                 PriceReadbackTitle(matchingOld[0].Title) != expectedTitle;
-            return new SitePriceReadback { ExactIdVerified = true,
+            return new SitePriceReadback { ExactIdVerified = true, ExactCurrentPrice = current,
                 Message = summary + $"기존 등록번호 {job.ListingNumber}의 변경 단가 {target:N0}원 확인." +
                     (titleDifferent ? " 사이트 표시 제목은 저장된 제목과 다르지만 가격 결과 판별에는 사용하지 않았습니다." : "") };
         }
@@ -1808,6 +1809,8 @@ internal sealed partial class AutomationForm
                 string.Join(", ", newCandidates.Keys.Take(4)) + ". 동일 물품을 특정할 수 없음.";
         else summary += "변경 가격과 제목·서버가 모두 일치하는 새 등록번호 후보 없음.";
         return new SitePriceReadback { OriginalUnchangedNoReplacement = originalUnchangedNoReplacement,
+            ExactCurrentPrice = matchingOld.Count == 1 && TrySitePrice(matchingOld[0].Price, out var exactCurrent)
+                ? exactCurrent : null,
             Message = summary };
     }
 

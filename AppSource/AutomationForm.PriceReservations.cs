@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LuzenBrowserReplica;
 
@@ -74,6 +76,83 @@ internal sealed partial class AutomationForm
             job.NextDueUtc = beforeDue;
             problem = "예약 취소 내용을 저장하지 못해 변경을 되돌렸습니다: " + ex.Message;
             return false;
+        }
+    }
+
+    internal bool CanReconcilePriceReservation(ListingJob job) =>
+        !_busy && !_myListingsImportRunning && !_sitePriceBatchRunning && !_siteRequestTraceActive &&
+        _jobs.Contains(job) && IsRegisteredOwnedBuyPriceTarget(job) && job.RequiresReview &&
+        job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
+        !job.PendingRepostAttemptUtc.HasValue && string.IsNullOrWhiteSpace(job.PendingRepostBeforeStamp) &&
+        TrySitePrice(job.PendingSitePriceTarget, out _);
+
+    internal async Task<string?> ReconcilePriceReservationAsync(ListingJob job)
+    {
+        if (!CanReconcilePriceReservation(job))
+            return "이 요청은 지금 조회할 수 없습니다.";
+        if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
+            return "독립 네트워크 연결을 확인할 수 없습니다.";
+        string account = ItemManiaAccountStore.Load(_system).UserId;
+        if (string.IsNullOrWhiteSpace(account) ||
+            !string.Equals(job.SiteId, account, StringComparison.OrdinalIgnoreCase))
+            return "현재 로그인 계정과 등록글 계정이 다릅니다.";
+        if (!TrySitePrice(job.PendingSitePriceTarget, out long target))
+            return "이전 요청 가격을 확인할 수 없습니다.";
+
+        _busy = true;
+        _activeSitePriceJob = job;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        try
+        {
+            await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
+            if (_web.CoreWebView2 is null) return "사이트 브라우저를 열 수 없습니다.";
+            if (_autoLogin is not null) await _autoLogin.WaitForLoginNavigationAsync(cancellation.Token);
+            var result = await ReadSitePriceAfterRepostAsync(job, target, cancellation.Token);
+            if (result.ExactCurrentPrice is not long current ||
+                (!result.ExactIdVerified &&
+                 (!TrySitePrice(job.VerifiedSitePrice, out var oldPrice) || current != oldPrice)))
+                return result.Message;
+
+            var previous = (job.Price, job.VerifiedSitePrice, job.VerifiedSitePriceUtc,
+                job.PendingSitePriceTarget, job.PriceEditSiteTitleSnapshot,
+                job.RequiresReview, job.Enabled, job.NextDueUtc, job.LastStatus);
+            try
+            {
+                job.Price = current.ToString("N0");
+                job.VerifiedSitePrice = current.ToString();
+                job.VerifiedSitePriceUtc = DateTime.UtcNow;
+                job.PendingSitePriceTarget = "";
+                job.PriceEditSiteTitleSnapshot = "";
+                job.RequiresReview = false;
+                job.Enabled = false;
+                job.NextDueUtc = DateTime.MaxValue;
+                job.LastStatus = result.ExactIdVerified ? "사이트 가격 확인 완료 · 자동 OFF" :
+                    "기존 사이트 가격 확인 · 미반영 요청 정리 · 자동 OFF";
+                _config.Jobs = _jobs.ToList();
+                _config.Save();
+            }
+            catch
+            {
+                (job.Price, job.VerifiedSitePrice, job.VerifiedSitePriceUtc,
+                    job.PendingSitePriceTarget, job.PriceEditSiteTitleSnapshot,
+                    job.RequiresReview, job.Enabled, job.NextDueUtc, job.LastStatus) = previous;
+                throw;
+            }
+            AppendLog($"가격 요청 정리 (사이트 제출 없음): {job.ListingNumber} · {current:N0}원");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+        finally
+        {
+            _activeSitePriceJob = null;
+            _busy = false;
+            _jobsGrid.Refresh();
+            _autoGrid.Refresh();
+            RefreshAutoSummary();
+            DispatchQueuedMyListingsImport();
         }
     }
 
