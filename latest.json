@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.32",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.32/LuzenBrowser_22.3.32_BinaryUpdate.zip",
-  "sha256": "9208e486a8dd05fd779e06dedffd76ce3da2c6de1116a2cd09361d60e691d8a5",
+  "version": "22.3.33",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.33/LuzenBrowser_22.3.33_BinaryUpdate.zip",
+  "sha256": "80eb946d2e3c77bedd65fa923b0d2fb28c264a1eeab645da424d7511b5722bed",
   "format": "binary",
-  "releaseNotes": "v22.3.32 일괄 가격 수정이 진행되는 동안 현재 단계와 확인 건수를 표시합니다. 남은 건 중지와 미제출 가격 요청 일괄 취소 기능을 추가했습니다. 아이템매니아에서 동일한 등록번호의 구매글 2건 가격 변경을 확인했습니다."
+  "releaseNotes": "v22.3.33 예약 현황에서 미제출 요청을 취소하고 확인 대기 요청의 기존 등록번호와 사이트 가격을 재조회해 여러 건을 정리할 수 있습니다. 사이트에 가격을 다시 제출하지 않습니다."
 }
