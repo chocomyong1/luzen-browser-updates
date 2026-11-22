@@ -283,6 +283,39 @@ internal sealed partial class AutomationForm
         return false;
     }
 
+    private async Task<bool> ConfirmZeroCostPremiumForBatchAsync(SitePriceSubmitObserver observer,
+        CancellationToken token)
+    {
+        var core = _web.CoreWebView2!;
+        async Task<SitePriceEditResult> VerifyAsync() => SitePriceEdit.Decode(
+            await core.ExecuteScriptAsync(SitePriceEdit.ZeroCostPremiumConfirmationScript));
+
+        async Task MouseAsync(string type, string button, int buttons, int clickCount, SitePriceEditResult point) =>
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                System.Text.Json.JsonSerializer.Serialize(new
+                { type, button, buttons, clickCount, x = point.X, y = point.Y }));
+
+        var first = await VerifyAsync();
+        if (first.Status != "ready")
+        {
+            _sitePriceEditDialogWarning = first.Message;
+            return false;
+        }
+        await MouseAsync("mouseMoved", "none", 0, 0, first);
+        token.ThrowIfCancellationRequested();
+        var final = await VerifyAsync();
+        if (final.Status != "ready" || first.X != final.X || first.Y != final.Y ||
+            !observer.ContactApproved || observer.CategoryCheckStarted || observer.FinalPostStarted)
+        {
+            _sitePriceEditDialogWarning = "사이트 0원 확인 상태가 바뀌어 일괄 수정을 중단했습니다";
+            return false;
+        }
+        await MouseAsync("mousePressed", "left", 1, 1, final);
+        await MouseAsync("mouseReleased", "left", 0, 1, final);
+        AppendLog("일괄 승인으로 아이템매니아의 공식 확인 버튼 1회 입력 · 결제 0원 · 프리미엄 0시간");
+        return true;
+    }
+
     // Only for one explicitly approved, exact-ID BUY form. A browser mouse
     // input activates the site's own click/submit handlers; it is NOT a
     // direct form POST, synthetic fetch, or bypass of site validation.
@@ -799,7 +832,8 @@ internal sealed partial class AutomationForm
             $"{targets.Count}개 본인 구매글의 사이트 가격을 지금 수정할까요?\n\n{preview}\n\n" +
             "각 행에 저장된 가격을 사용합니다. 대상은 등록번호로 확인합니다.\n" +
             "사이트 재등록 버튼은 한 건씩 자동으로 누르고, 관리목록에서 실제 가격을 확인한 후 다음 글로 넘어갑니다.\n" +
-            "사이트 수정 폼의 제목이 현재 등록글과 다르면 해당 건에서 중단합니다.\n" +
+            "총 결제금액 0원·프리미엄 0시간인 사이트 확인도 이번 일괄 승인에 포함됩니다.\n" +
+            "사이트 수정 폼의 제목이 다르면 같은 등록번호의 관리목록 제목을 복원합니다.\n" +
             "오류·결과 불확실·추가 승인 요청 시 남은 건은 제출하지 않습니다.\n" +
             "서버별 등록 간격과 시간당 제한을 지킵니다.",
             "선택 구매글 사이트 가격 일괄 수정", MessageBoxButtons.YesNo,
@@ -979,11 +1013,12 @@ internal sealed partial class AutomationForm
         DateTime previousDue = job.NextDueUtc;
         string previousStatus = job.LastStatus;
         string previousPendingPrice = job.PendingSitePriceTarget;
+        bool showBrowser = backgroundApproved && !bulkApproval;
         var originalBrowserBounds = _web.Bounds;
         var originalBrowserDock = _web.Dock;
         try
         {
-            if (backgroundApproved)
+            if (showBrowser)
                 ShowSiteBrowserInWorkspace();
             await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
             if (_web.CoreWebView2 is null) throw new InvalidOperationException("아이템매니아 브라우저를 시작하지 못했습니다.");
@@ -1130,7 +1165,8 @@ internal sealed partial class AutomationForm
                 if (!IsAllowedCurrentPage()) throw new InvalidOperationException("수정 화면이 아이템매니아 공식 사이트를 벗어났습니다.");
                 form = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), false,
-                        siteTitleSnapshot, nativeSingleApproval || diagnosticOnly)));
+                        siteTitleSnapshot, nativeSingleApproval || diagnosticOnly,
+                        restoreCurrentTitle: !diagnosticOnly)));
                 if (form.Status is "ready" or "diagnostic") break;
             }
             if (diagnosticOnly)
@@ -1230,15 +1266,6 @@ internal sealed partial class AutomationForm
             // the premium continuation used by the contact approval callback.
             await submissionObserver.WaitForFormLoadAsync(token);
             AppendLog("사이트 수정폼 초기 조회 완료 (안심번호·파워 등록권·무료 이용권)");
-            // First-party FormChecker can silently reject a pre-existing
-            // listing if the editor's hidden detail field was never synced.
-            // Verify that editor mirror before arming the submission. A
-            // missing description stops before a click.
-            var preflight = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
-                SitePriceEdit.OfficialPricePreflightScript));
-            if (preflight.Status != "ready")
-                throw new InvalidOperationException("사이트 수정폼 입력 검증: " + preflight.Message);
-            AppendLog("사이트 구매글 단건 제출 전 검증: " + preflight.Message);
             AppendLog("구매글 사이트 비동기 제출 경로 준비 확인 (연락처·카테고리·에디터·최종 POST)");
 
             // Subscribe BEFORE the click. Previously the first readback
@@ -1262,11 +1289,17 @@ internal sealed partial class AutomationForm
             {
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
-                        siteTitleSnapshot, nativeSingleApproval, trustedOneClick: true, nativeKeyboardPrice: true)));
+                        siteTitleSnapshot, nativeSingleApproval, trustedOneClick: true, nativeKeyboardPrice: true,
+                        restoreCurrentTitle: true)));
                 submitScriptNote = result.Message;
                 if (result.Status != "input-ready")
                     throw new InvalidOperationException("사이트 가격 입력칸 검증 실패: " + result.Message);
                 AppendLog("사이트 가격칸 실제 입력 준비: " + result.Message);
+                var preflight = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                    SitePriceEdit.OfficialPricePreflightScript));
+                if (preflight.Status != "ready")
+                    throw new InvalidOperationException("사이트 수정폼 입력 검증: " + preflight.Message);
+                AppendLog("사이트 구매글 제출 전 검증: " + preflight.Message);
                 await TypeVerifiedSitePriceAsync(result.X, result.Y, desired, token);
                 // The native Tab/blur can trigger price validation. Recheck
                 // the first-party FormChecker conditions at the NEW price
@@ -1391,10 +1424,13 @@ internal sealed partial class AutomationForm
             // re-registration button or sends a synthetic form POST.
             bool requiresSiteConfirmation = _unattendedSitePriceEdit &&
                 await WaitForOfficialPremiumPromptAsync(submissionObserver, token);
-            var observing = requiresSiteConfirmation
+            bool approvedBatchConfirmation = requiresSiteConfirmation && bulkApproval && backgroundApproved;
+            if (approvedBatchConfirmation)
+                await ConfirmZeroCostPremiumForBatchAsync(submissionObserver, token);
+            var observing = requiresSiteConfirmation && !approvedBatchConfirmation
                 ? submissionObserver.WaitAsync(token, TimeSpan.FromMinutes(2))
                 : submissionObserver.WaitAsync(token);
-            if (_unattendedSitePriceEdit && !requiresSiteConfirmation &&
+            if (_unattendedSitePriceEdit && !bulkApproval && !requiresSiteConfirmation &&
                 string.IsNullOrEmpty(_sitePriceEditDialogWarning))
                 await TryAdvanceOfficialFreeRegistrationAsync(submissionObserver, observing, token);
             var observed = await observing;
@@ -1518,7 +1554,7 @@ internal sealed partial class AutomationForm
         }
         finally
         {
-            if (backgroundApproved && !_web.IsDisposed)
+            if (showBrowser && !_web.IsDisposed)
             {
                 _web.Dock = originalBrowserDock;
                 _web.Bounds = originalBrowserBounds;

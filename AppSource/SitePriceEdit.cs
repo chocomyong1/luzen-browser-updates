@@ -47,11 +47,11 @@ internal static class SitePriceEdit
     public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit,
         string expectedTitle = "", bool nativeSingleApproval = false,
         bool trustedOneClick = false,
-        bool nativeKeyboardPrice = false) =>
+        bool nativeKeyboardPrice = false, bool restoreCurrentTitle = false) =>
         EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new
         { number, oldPrice, newPrice, submit, expectedTitle, nativeSingleApproval,
             trustedOneClick,
-            nativeKeyboardPrice }), StringComparison.Ordinal);
+            nativeKeyboardPrice, restoreCurrentTitle }), StringComparison.Ordinal);
 
     // Read-only inspection of the authentic signed-in edit form. Never
     // return field values, inline source, cookies, query strings or tokens.
@@ -530,15 +530,46 @@ internal static class SitePriceEdit
       // existing settings and let the user make the site's own decision.
       const layerFields=[...layer.querySelectorAll('input,select')]
         .map(element=>({element,value:String(element.value??''),checked:element.checked}));
+      const unchanged=()=>p.canType()&&p.money(p.priceInput.value)===p.desired&&
+        [...p.fieldsBeforeSubmit,...layerFields].every(({element,value,checked})=>
+          String(element.value??'')===value&&element.checked===checked);
+      const premiumConfirmation={layer,button,unchanged};
+      p.premiumConfirmation=premiumConfirmation;
       button.addEventListener('click',e=>{
-        if(p.canType()&&p.money(p.priceInput.value)===p.desired&&
-           [...p.fieldsBeforeSubmit,...layerFields].every(({element,value,checked})=>
-             String(element.value??'')===value&&element.checked===checked))return;
+        if(unchanged()&&(!premiumConfirmation.requireZero||premiumConfirmation.requireZero()))return;
         e.preventDefault();
         e.stopImmediatePropagation();
         window.alert('가격 외 입력값이 변경되었습니다. 사이트의 기존 설정을 유지해 주세요.');
       },{capture:true});
       return true;
+    })()
+    """;
+
+    public const string ZeroCostPremiumConfirmationScript = """
+    (()=>{
+      const result=(status,message='',x=0,y=0)=>({status,message,x,y});
+      const p=window.__luzenPriceNativeProbe;
+      const c=p?.premiumConfirmation;
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
+         location.pathname.toLowerCase()!=='/myroom/buy/buy_re_reg.html'||
+         !c||p.guardBlocked||!c.unchanged()||!c.layer.isConnected||
+         c.layer.id!=='dvPremium'||!c.layer.contains(c.button)||
+         !c.button.isConnected||c.button.disabled||c.button.id!=='premium_btn'||
+         c.button.innerText.trim()!=='확인')
+        return result('blocked','공식 확인창 또는 기존 수정 항목을 확인할 수 없습니다');
+      const zero=()=>{
+        const total=[...c.layer.innerText.matchAll(/총\s*결제\s*금액\s*[:：]?\s*([\d,]+)\s*원/g)];
+        const hours=document.getElementById('user_premium_time')?.value?.trim();
+        return total.length===1&&total[0][1]==='0'&&hours==='0';
+      };
+      c.requireZero=zero;
+      if(!zero())return result('blocked','총 결제금액 0원과 프리미엄 0시간을 확인하지 못했습니다');
+      const rect=c.button.getBoundingClientRect();
+      const x=(rect.left+rect.right)/2,y=(rect.top+rect.bottom)/2;
+      const hit=document.elementFromPoint(x,y);
+      if(!hit||(hit!==c.button&&!c.button.contains(hit)))
+        return result('blocked','공식 확인 버튼을 누를 수 있는 위치가 아닙니다');
+      return result('ready','아이템매니아 공식 0원 확인을 검증했습니다',x,y);
     })()
     """;
 
@@ -931,20 +962,24 @@ internal static class SitePriceEdit
       // A price change sends the site's ENTIRE re-registration form, not just
       // the amount. Never send it unless the title captured from the exact
       // signed-in OWN-list row survives intact. Saved local titles may be old.
-      // Do not "repair" a corrupted title by guessing from quantity/level.
+      // Restore only the exact title read from the signed-in listing, with
+      // a second exact ID check on the site's edit form.
       const cleanTitle=s=>String(s||'').normalize('NFC').replace(/\s+/g,' ').trim();
-      // The edit form sometimes changes only spacing ("9 레벨" vs
-      // "9레벨"). That is display formatting, not permission to replace,
-      // repair, strip a quantity range, or add/remove ANY actual character.
-      // Keep all digits and punctuation; a doubled 9 or 10 MUST still fail.
+      // The edit form sometimes changes only spacing ("9 레벨" vs "9레벨").
       const titleSignature=s=>cleanTitle(s).replace(/\s/g,'');
       const titleName=/^(?:title|subject|goods_?title|item_?title|user_?title|goods_?subject|item_?subject|user_?subject|goods_?name|item_?name|user_?item_?name)$/i;
       const titleInputs=form?[...form.querySelectorAll('input,textarea')].filter(e=>
         titleName.test(String(e.getAttribute?.('name')||e.name||e.getAttribute?.('id')||''))):[];
       const originalTitle=cleanTitle(a.expectedTitle);
+      const exactOriginalTitle=String(a.expectedTitle||'');
       const siteTitle=titleInputs.length===1?cleanTitle(titleInputs[0].value):'';
       const titlePreserved=originalTitle.length>=3&&titleInputs.length===1&&
         titleSignature(siteTitle)===titleSignature(originalTitle);
+      const titleInput=titleInputs.length===1?titleInputs[0]:null;
+      const canRestoreTitle=a.restoreCurrentTitle===true&&originalTitle.length>=3&&
+        /^[0-9]{16}$/.test(a.number)&&titleInput&&visible(titleInput)&&!titleInput.readOnly&&
+        titleInput.name==='user_title'&&titleInput.type!=='hidden'&&
+        [...form.querySelectorAll('input[type="hidden"]')].some(e=>e.name==='id'&&e.value===a.number);
       const displayTitle=s=>String(s||'').replace(/[\r\n\t]/g,' ').trim().slice(0,90);
       const siteSubmit=isAuditedBuyForm?[...form.querySelectorAll('button[type="submit"]')].filter(e=>
         visible(e)&&attr(e,'id')==='ok_btn'&&attr(e,'class').split(/\s+/).includes('buy_re_reg')&&
@@ -952,7 +987,7 @@ internal static class SitePriceEdit
       // All of path, form, old site price, hidden listing ID, and the EXACT
       // native submit control must agree. A character-name save cannot pass.
       if(formOwnedId&&siteSubmit.length===1){
-        if(!titlePreserved)return result('error',titleInputs.length!==1?
+        if(!titlePreserved&&!canRestoreTitle)return result('error',titleInputs.length!==1?
           '가격 수정은 제목까지 재등록하므로 제목 입력칸을 유일하게 확인할 때까지 제출을 차단합니다':
           '실제 제목 내용이 달라 가격 제출을 막았습니다.\n'+
           '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
@@ -969,6 +1004,14 @@ internal static class SitePriceEdit
           if(a.trustedOneClick!==true)return result('blocked','가격 제출은 검증된 실제 브라우저 클릭 경로로만 허용합니다',old,1);
           if(a.nativeKeyboardPrice!==true)
             return result('blocked','실제 사이트 키보드로 가격칸을 입력하는 방식만 허용합니다',old,1);
+          if(!titlePreserved){
+            titleInput.value=exactOriginalTitle;
+            if(titleInput.value!==exactOriginalTitle)
+              return result('error','관리목록의 현재 제목을 수정폼에 복원하지 못했습니다');
+          }
+          const titleChanged=()=>!titleInput.isConnected||
+            (!titlePreserved?titleInput.value!==exactOriginalTitle:
+              titleSignature(titleInput.value)!==titleSignature(originalTitle));
           // Snapshot all other fields. Site-controlled numeric price totals
           // may update during real typing; identity/title/quantity changes
           // will still prevent the submit.
@@ -990,14 +1033,14 @@ internal static class SitePriceEdit
             dom0SubmitBound:false,submitActionAtEvent:'',
             keyUps:0,inputEvents:0,changeEvents:0,blurEvents:0,
             form,button,priceInput,others,desired,money,
-            titleChanged:()=>titleSignature(titleInputs[0].value)!==titleSignature(originalTitle),
+            titleChanged,
             canType:()=>location.pathname.toLowerCase()==='/myroom/buy/buy_re_reg.html'&&
               button.isConnected&&priceInput.isConnected&&!priceInput.disabled&&!priceInput.readOnly&&
-              titleSignature(titleInputs[0].value)===titleSignature(originalTitle)&&
+              !titleChanged()&&
               [...form.querySelectorAll('input[type="hidden"]')].some(e=>String(e.value||'')===a.number),
             canStartTyping:()=>location.pathname.toLowerCase()==='/myroom/buy/buy_re_reg.html'&&
               button.isConnected&&priceInput.isConnected&&
-              titleSignature(titleInputs[0].value)===titleSignature(originalTitle)&&
+              !titleChanged()&&
               document.elementFromPoint(x,y)&&
               (document.elementFromPoint(x,y)===priceInput||priceInput.contains?.(document.elementFromPoint(x,y)))};
           for(const [name,key] of [['keyup','keyUps'],['input','inputEvents'],
@@ -1006,7 +1049,8 @@ internal static class SitePriceEdit
           window.__luzenPriceNativeProbe=probe;
           // No price or submit action occurs in this script. The host types
           // through real browser keyboard events before the final readback.
-          return result('input-ready','사이트 가격 입력칸 검증 · 실제 키보드 입력 준비 (제출 없음)',old,1,x,y);
+          return result('input-ready',(!titlePreserved?'등록번호로 확인한 관리목록 제목 복원 · ':'')+
+            '사이트 가격 입력칸 검증 · 실제 키보드 입력 준비 (제출 없음)',old,1,x,y);
         }
         return result('blocked','제목 보호 모드: 예약·일괄 가격 자동 제출 중지',old,1);
       }

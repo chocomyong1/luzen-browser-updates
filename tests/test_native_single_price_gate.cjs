@@ -28,13 +28,13 @@ assert(nativeFinalizer, 'Native price submit finalizer must be present');
 assert.doesNotMatch(nativeFinalizer, /Object\.defineProperty\s*\(\s*e\s*,\s*['"]preventDefault['"]/,
   "Never patch the site's native preventDefault during purchase edit submission");
 assert.match(nativeFinalizer, /window\.addEventListener\?\.\('submit',observeSiteSubmit/);
-assert.match(script, /if\(!titlePreserved\)return result/);
+assert.match(script, /if\(!titlePreserved&&!canRestoreTitle\)return result/);
 assert.match(script, /p\.form\.addEventListener\('submit'/);
 assert.match(script, /e\.preventDefault\(\)/);
 assert.match(script, /p\.guardBlocked=true/);
 assert.match(script, /p\.submitEvent\?\.defaultPrevented/);
 assert.match(script, /changed\.some\(o=>!safePriceField\(o\)\)/);
-assert.match(script, /titleSignature\(titleInputs\[0\]\.value\)!==titleSignature\(originalTitle\)/);
+assert.match(script, /titleSignature\(titleInput\.value\)!==titleSignature\(originalTitle\)/);
 assert.match(script, /titleSignature\(siteTitle\)===titleSignature\(originalTitle\)/);
 assert.match(script, /사이트 수정폼: .*displayTitle\(siteTitle\)/);
 const submissionScripts = script.slice(script.indexOf('public const string VerifyNativePriceInputScript'));

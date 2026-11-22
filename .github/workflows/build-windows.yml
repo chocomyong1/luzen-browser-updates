@@ -215,15 +215,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.30'
+          $version = '22.3.31'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.30
-          path: LuzenBrowser_22.3.30_BinaryUpdate.zip
+          name: vanta-windows-v22.3.31
+          path: LuzenBrowser_22.3.31_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -231,7 +231,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.30'
+          $version = '22.3.31'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -243,7 +243,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.30 본인 구매글의 가격을 16자리 등록번호로 수정합니다. 아이템매니아의 공식 추가 확인창이 표시되면 확인을 기다리고, 같은 등록번호에서 변경 가격을 재조회합니다. Windows 실사이트에서 최종 POST와 기존 등록번호의 가격 변경을 확인했습니다.'
+            releaseNotes = 'v22.3.31 구매글 일괄 가격 수정을 백그라운드에서 실행합니다. 동일한 16자리 등록번호의 관리목록 제목을 복원하고, 0원·프리미엄 0시간인 사이트 확인은 일괄 승인 범위에서 진행합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

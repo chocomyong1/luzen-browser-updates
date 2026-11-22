@@ -19,19 +19,29 @@ function script(name) {
   let clicks = 0;
   const premiumHours = {value: '0'};
   const button = {
+    id: 'premium_btn', isConnected: true,
     innerText: '확인',
     getClientRects: () => [{}],
+    getBoundingClientRect: () => ({left: 10, right: 50, top: 20, bottom: 40}),
     addEventListener: (type, callback) => { listener = callback; },
     click: () => { clicks++; }
   };
-  const layer = {querySelectorAll: selector => selector === '#premium_btn' ? [button] : [premiumHours]};
+  const layer = {
+    id: 'dvPremium', isConnected: true, innerText: '총 결제금액 : 0원',
+    contains: element => element === button,
+    querySelectorAll: selector => selector === '#premium_btn' ? [button] : [premiumHours]
+  };
   const probe = {
     clickSeen: true, submitSeen: true, canType: () => true,
     priceInput: {value: '71990'}, desired: '71990', money: String, fieldsBeforeSubmit: []
   };
   const page = {
     window: {__luzenPriceNativeProbe: probe, alert() {}},
-    document: {getElementById: id => id === 'dvPremium' ? layer : {value: '1'}},
+    location: {protocol: 'https:', hostname: 'www.itemmania.com', pathname: '/myroom/buy/buy_re_reg.html'},
+    document: {
+      getElementById: id => id === 'dvPremium' ? layer : id === 'user_premium_time' ? premiumHours : {value: '1'},
+      elementFromPoint: () => button
+    },
     getComputedStyle: () => ({visibility: 'visible'})
   };
   assert.equal(vm.runInNewContext(script('OfficialPremiumConfirmationScript'), page), true);
@@ -40,7 +50,17 @@ function script(name) {
   const event = {preventDefault: () => { blocked = true; }, stopImmediatePropagation() {}};
   listener(event);
   assert.equal(blocked, false);
+  const checkZero = () => vm.runInNewContext(script('ZeroCostPremiumConfirmationScript'), page).status;
+  assert.equal(checkZero(), 'ready');
+  assert.equal(clicks, 0, 'Only the host can click after batch approval');
+  layer.innerText = '총 결제금액 : 100원';
+  assert.equal(checkZero(), 'blocked');
+  listener(event);
+  assert.equal(blocked, true, 'A price change between verification and click must block confirmation');
+  blocked = false;
+  layer.innerText = '총 결제금액 : 0원';
   premiumHours.value = '24';
+  assert.equal(checkZero(), 'blocked');
   listener(event);
   assert.equal(blocked, true, 'Changing premium options must block a price-only edit');
 }
@@ -112,7 +132,7 @@ assert.equal(find(page({pathname:'/myroom/buy/buy_regist.html'})).status,'blocke
   const site=page();site.p.canType=()=>false;
   assert.equal(find(site).status,'blocked', 'Exact ID/title safety must remain');
 }
-assert.match(flow,/if \(_unattendedSitePriceEdit && !requiresSiteConfirmation &&\s*string\.IsNullOrEmpty\(_sitePriceEditDialogWarning\)\)\s*await TryAdvanceOfficialFreeRegistrationAsync/);
+assert.match(flow,/if \(_unattendedSitePriceEdit && !bulkApproval && !requiresSiteConfirmation &&\s*string\.IsNullOrEmpty\(_sitePriceEditDialogWarning\)\)\s*await TryAdvanceOfficialFreeRegistrationAsync/);
 assert.match(flow,/var observed = await observing/);
 assert.match(flow,/VerifyOfficialFreeContinuationScript/);
 assert.match(flow,/observer\.ContactApproved/);

@@ -208,7 +208,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     contains: () => false
   }));
   const allButtons = [...buttons, ...nativeSubmits];
-  const hidden = { value: id, getAttribute: () => null };
+  const hidden = { name: 'id', value: id, getAttribute: () => null };
   const formAttrs = {id: formId, action: formAction, method: formMethod};
   const form = { tagName: 'FORM', dataset: {}, getAttribute: key => formAttrs[key] || null,
     addEventListener: (event, fn) => { if(event==='submit')submitGuards.push(fn); },
@@ -251,11 +251,11 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
     addEventListener: (event, fn) => {if(event==='submit')submitCaptures.push(fn);}};
   const evaluate = (submit = true, expected = number, expectedOld = '10000', nativeSingleApproval = false,
     verifiedMinQuantity = '', verifiedMaxQuantity = '', allowVerifiedTitleRestore = false,
-    trustedOneClick = true, nativeKeyboardPrice = true) =>
+    trustedOneClick = true, nativeKeyboardPrice = true, restoreCurrentTitle = false) =>
     vm.runInNewContext(script('EditFormScript').replace('__ARG__', JSON.stringify({
       number: expected, oldPrice: expectedOld, newPrice: '35100', submit,
       expectedTitle: savedTitle, nativeSingleApproval, verifiedMinQuantity,
-      verifiedMaxQuantity, allowVerifiedTitleRestore, trustedOneClick, nativeKeyboardPrice
+      verifiedMaxQuantity, allowVerifiedTitleRestore, trustedOneClick, nativeKeyboardPrice, restoreCurrentTitle
     })), {
       document, window, HTMLInputElement, FormData, fetch: networkFetch, Event: class { constructor() {} },
       location: { protocol: 'https:', hostname: host, pathname, search: '' },
@@ -317,6 +317,21 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(titleMismatch.evaluate(true, number, '10000', true).status, 'error');
   assert.equal(titleMismatch.titleInput.value, siteFormTitle);
   assert.equal(titleMismatch.clicked, 0);
+  const intendedTitle = '10 10 10 레벨 겁화 구매합니다';
+  const generatedTitle = '1 ~ 999 10 10 레벨 겁화 구매합니다';
+  const identified = editFormCase({approvedSubmit: true, savedTitle: intendedTitle, formTitle: generatedTitle});
+  assert.equal(identified.evaluate(false, number, '10000', true, '', '', false, true, true, true).status, 'ready');
+  assert.equal(identified.titleInput.value, generatedTitle);
+  assert.equal(identified.evaluate(true, number, '10000', true, '', '', false, true, true, true).status, 'input-ready');
+  assert.equal(identified.titleInput.value, intendedTitle);
+  assert.equal(identified.clicked, 0);
+  identified.simulateTyping();
+  assert.equal(identified.finalize().status, 'armed');
+  identified.simulateOneBrowserClick();
+  assert.equal(identified.acceptedNativeSubmits, 1);
+  const differentId = editFormCase({approvedSubmit: true, savedTitle: intendedTitle, formTitle: generatedTitle});
+  assert.notEqual(differentId.evaluate(true, '2026112100165417', '10000', true, '', '', false, true, true, true).status, 'input-ready');
+  assert.equal(differentId.titleInput.value, generatedTitle);
   const restored = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle});
   assert.equal(restored.evaluate(true, number, '10000', true).status, 'input-ready');
   assert.equal(restored.prices[0].value, '10,000', 'Preparation must not change the price');
