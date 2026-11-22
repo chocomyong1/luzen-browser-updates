@@ -8,6 +8,7 @@ const read = name => fs.readFileSync(path.join(__dirname, '..', 'AppSource', nam
 const form = read('AutomationForm.cs');
 const scheduler = read('AutomationForm.PriceReservations.cs');
 const ui = read('MainForm.PriceReservations.cs');
+const models = read('AutomationModels.cs');
 
 assert.match(form, /!SitePriceEdit\.AutomaticPriceSubmissionEnabled &&\s*!string\.IsNullOrWhiteSpace\(oldJob\.PendingSitePriceTarget\)/);
 assert.match(form, /oldJob\.LastStatus == "제목 보호 모드: 가격 예약 자동 제출 중지"/);
@@ -34,6 +35,13 @@ assert.match(ui, /"선택 요청 정리"/);
 assert.match(ui, /MultiSelect = true/);
 assert.match(ui, /CanCancelUnsubmittedPriceReservation\(row\.Job, out _\)/);
 assert.match(ui, /await owner\.ReconcilePriceReservationAsync\(selected\.Job\)/);
+assert.match(ui, /problem = owner\.DismissPriceRequest\(selected\.Job\)/);
+assert.match(models, /!RequiresReview \|\| !string\.Equals\(PendingSitePriceTarget, DismissedSitePriceRequestTarget/);
+assert.match(scheduler, /_jobs\.Where\(j => j\.HasVisibleSitePriceRequest\)/);
+const dismiss = scheduler.slice(scheduler.indexOf('internal string? DismissPriceRequest('),
+  scheduler.indexOf('internal async Task<string?> ReconcilePriceReservationAsync('));
+assert.match(dismiss, /job\.DismissedSitePriceRequestTarget = job\.PendingSitePriceTarget/);
+assert.doesNotMatch(dismiss, /job\.(?:RequiresReview|PendingSitePriceTarget|Enabled)\s*=|ReadSitePriceAfterRepostAsync|ApplySitePriceAsync/);
 const reconcile = scheduler.slice(scheduler.indexOf('internal async Task<string?> ReconcilePriceReservationAsync('),
   scheduler.indexOf('internal IReadOnlyList<PriceReservationSnapshot> CurrentPriceReservations('));
 assert.match(reconcile, /ReadSitePriceAfterRepostAsync\(job, target, cancellation\.Token\)/);

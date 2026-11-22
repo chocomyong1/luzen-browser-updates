@@ -150,7 +150,7 @@ internal sealed partial class MainForm
         {
             var owner = IntegratedOwner(row.System);
             return owner.CanCancelUnsubmittedPriceReservation(row.Job, out _) ||
-                owner.CanReconcilePriceReservation(row.Job);
+                owner.CanReconcilePriceReservation(row.Job) || owner.CanDismissPriceRequest(row.Job);
         }
         void ShowSelected()
         {
@@ -209,10 +209,11 @@ internal sealed partial class MainForm
             if (MessageBox.Show(dialog,
                     $"선택한 가격 요청 {cancellable.Count}건을 정리할까요?\n\n" +
                     "미제출 요청은 취소하고, 확인 대기는 사이트에서 같은 등록번호의 가격을 조회합니다.\n" +
-                    "사이트에는 가격을 제출하지 않습니다.",
+                    "확인되지 않은 요청은 이 목록에서 빼고 확인 기록을 보관합니다. 사이트에는 가격을 제출하지 않습니다.",
                     "선택 가격 요청 정리", MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
             var failures = new List<string>();
+            int dismissed = 0;
             reconciling = true;
             close.Enabled = refresh.Enabled = edit.Enabled = cancelRequest.Enabled = grid.Enabled = false;
             try
@@ -228,6 +229,11 @@ internal sealed partial class MainForm
                     else if (owner.TryCancelUnsubmittedPriceReservation(selected.Job, out var cancelProblem))
                         problem = null;
                     else problem = cancelProblem;
+                    if (problem is not null && owner.CanDismissPriceRequest(selected.Job))
+                    {
+                        problem = owner.DismissPriceRequest(selected.Job);
+                        if (problem is null) dismissed++;
+                    }
                     if (problem is not null)
                         failures.Add($"{selected.SystemName} · {selected.Job.ListingNumber} · {problem}");
                 }
@@ -239,6 +245,7 @@ internal sealed partial class MainForm
                 Reload();
             }
             MessageBox.Show(dialog, $"정리 {cancellable.Count - failures.Count}건 · 유지 {selection.Count - cancellable.Count + failures.Count}건" +
+                (dismissed == 0 ? "" : $"\n확인 기록을 보관하고 목록에서 뺀 요청 {dismissed}건") +
                 (failures.Count == 0 ? "" : "\n\n" + string.Join("\n", failures)),
                 "가격 요청 정리 결과", MessageBoxButtons.OK,
                 failures.Count == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);

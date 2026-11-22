@@ -45,6 +45,12 @@ internal sealed class ListingJob
     // this empty and use their new amount on first registration.
     // Keep the exact planned amount for mismatch detection before submission.
     public string PendingSitePriceTarget { get; set; } = "";
+    public string DismissedSitePriceRequestTarget { get; set; } = "";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasVisibleSitePriceRequest =>
+        !string.IsNullOrWhiteSpace(PendingSitePriceTarget) &&
+        (!RequiresReview || !string.Equals(PendingSitePriceTarget, DismissedSitePriceRequestTarget,
+            StringComparison.Ordinal));
     // Exact title captured from the authenticated OWN-list immediately before
     // a site price submission. Used only to detect unintended title changes
     // during read-only recovery after restart; NEVER an identity key.

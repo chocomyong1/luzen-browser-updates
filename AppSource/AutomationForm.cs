@@ -1021,7 +1021,7 @@ internal sealed partial class AutomationForm : Form
         if (_autoSummary.IsDisposed) return;
         int enabled = _jobs.Count(x => x.Enabled);
         int pending = _jobs.Count(x => x.RequiresReview);
-        int scheduledPrices = _jobs.Count(x => !string.IsNullOrWhiteSpace(x.PendingSitePriceTarget));
+        int scheduledPrices = _jobs.Count(x => x.HasVisibleSitePriceRequest);
         string state = _system == "B" && _schedulerRunning && _bConnectionRecheckRunning
             ? "B VPN 연결 재확인 중" :
             _schedulerRunning && _loginRecoveryPauseUntilUtc != DateTime.MinValue

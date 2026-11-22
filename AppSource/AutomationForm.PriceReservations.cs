@@ -86,6 +86,30 @@ internal sealed partial class AutomationForm
         !job.PendingRepostAttemptUtc.HasValue && string.IsNullOrWhiteSpace(job.PendingRepostBeforeStamp) &&
         TrySitePrice(job.PendingSitePriceTarget, out _);
 
+    internal bool CanDismissPriceRequest(ListingJob job) =>
+        !_busy && !_myListingsImportRunning && !_sitePriceBatchRunning &&
+        _jobs.Contains(job) && job.RequiresReview && job.HasVisibleSitePriceRequest &&
+        !ReferenceEquals(job, _currentlyExecutingJob);
+
+    internal string? DismissPriceRequest(ListingJob job)
+    {
+        if (!CanDismissPriceRequest(job)) return "이 요청은 지금 목록에서 정리할 수 없습니다.";
+        string previous = job.DismissedSitePriceRequestTarget;
+        try
+        {
+            job.DismissedSitePriceRequestTarget = job.PendingSitePriceTarget;
+            _config.Save();
+        }
+        catch (Exception ex)
+        {
+            job.DismissedSitePriceRequestTarget = previous;
+            return ex.Message;
+        }
+        AppendLog($"가격 요청 목록에서 정리 · 확인 기록 보관: {job.ListingNumber}");
+        RefreshAutoSummary();
+        return null;
+    }
+
     internal async Task<string?> ReconcilePriceReservationAsync(ListingJob job)
     {
         if (!CanReconcilePriceReservation(job))
@@ -166,7 +190,7 @@ internal sealed partial class AutomationForm
             .OrderBy(j => j.LastSucceededUtc ?? DateTime.MinValue)
             .ThenBy(j => j.NextDueUtc).ToList();
         var snapshots = new List<PriceReservationSnapshot>();
-        foreach (var job in _jobs.Where(j => !string.IsNullOrWhiteSpace(j.PendingSitePriceTarget)))
+        foreach (var job in _jobs.Where(j => j.HasVisibleSitePriceRequest))
         {
             if (job.RequiresReview)
             {

@@ -1378,6 +1378,7 @@ internal sealed partial class AutomationForm
                     job.NextDueUtc = DateTime.MaxValue;
                     if (nativeSingleApproval) job.PendingSitePriceTarget = desired.ToString();
                     job.PriceEditSiteTitleSnapshot = siteTitleSnapshot;
+                    job.DismissedSitePriceRequestTarget = "";
                     _config.Jobs = _jobs.ToList();
                     _config.Save();
                     _submissionVerificationPending = true;
@@ -1431,6 +1432,7 @@ internal sealed partial class AutomationForm
                         job.NextDueUtc = DateTime.MaxValue;
                         if (nativeSingleApproval) job.PendingSitePriceTarget = desired.ToString();
                         job.PriceEditSiteTitleSnapshot = siteTitleSnapshot;
+                        job.DismissedSitePriceRequestTarget = "";
                         _config.Jobs = _jobs.ToList();
                         _config.Save();
                         _submissionVerificationPending = true;
