@@ -32,9 +32,10 @@ internal static class OwnedListRepost
     }
 
     public static string BuildScript(string number, string title, bool? click,
-        string minQuantity = "", string maxQuantity = "", string server = "", string tradeSide = "") =>
+        string minQuantity = "", string maxQuantity = "", string server = "", string tradeSide = "",
+        string deleteAction = "") =>
         OwnedListingTitleIdentity.Inject(BrowserScript).Replace("__ARG__", JsonSerializer.Serialize(new
-            { number, title, click, minQuantity, maxQuantity, server, tradeSide }), StringComparison.Ordinal);
+            { number, title, click, minQuantity, maxQuantity, server, tradeSide, deleteAction }), StringComparison.Ordinal);
 
     // All controls are located from the current signed-in OWN listing page.
     // In particular, a page-level '재등록' button is NOT assumed to be the user's item.
@@ -171,6 +172,26 @@ internal static class OwnedListRepost
       if(matching.length!==1)return result(matching.length?'error':'not-found',matching.length?
         '동일 등록번호의 검증된 행이 여러 개라 중단했습니다':
         '이 페이지에서 등록번호가 일치하는 행을 찾지 못했습니다 (다른 페이지일 수 있음)','',diagnostic);
+      if(arg.deleteAction==='focus'||arg.deleteAction==='click'){
+        if(!/^[0-9]{16}$/.test(arg.number))return result('error','16자리 등록번호가 필요합니다');
+        const row=matching[0].row;
+        const controls=[...row.querySelectorAll('a[onclick],button[onclick],input[onclick]')].filter(visible)
+          .filter(e=>{
+            if(!names(e).some(name=>/^(삭제|등록삭제|물품삭제)$/.test(name)))return false;
+            const handler=String(e.getAttribute('onclick')||'');
+            const action=handler.match(/^\s*(?:return\s+)?tradeProcess\s*\(\s*(['"])deleteSelect\1\s*,\s*(['"])([0-9]{16})\2\s*\)\s*;?\s*$/);
+            return action?.[3]===arg.number;
+          });
+        if(arg.deleteAction==='focus'){
+          row.scrollIntoView?.({block:'center'});
+          row.style.outline='3px solid #00b968';
+          row.style.outlineOffset='-3px';
+          return result(controls.length===1?'delete-ready':'delete-manual','선택한 등록번호의 물품 행을 표시했습니다');
+        }
+        if(controls.length!==1)return result('error','같은 등록번호에 연결된 사이트 삭제 버튼을 하나로 확인하지 못했습니다');
+        controls[0].click();
+        return result('delete-clicked','사이트 삭제 버튼을 한 번 눌렀습니다');
+      }
       if(arg.click===null)return result('found','현재 내 등록글 목록의 해당 등록번호·거래 방향을 확인함',matching[0].stamp,diagnostic);
       // Site title (including repeated 10/9/8 tokens and quantity prefixes)
       // is diagnostic only. The exact ID-bound row and its single validated

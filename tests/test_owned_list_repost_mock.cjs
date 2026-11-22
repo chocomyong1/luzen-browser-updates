@@ -55,17 +55,18 @@ function makeRealMarkupRow(number, name, reinsertNumber = number, stamp = '11-16
   const postedAt = { tagName: 'P', textContent: stamp, getAttribute: () => null };
   const row = {
     tagName: 'TR', innerText: `${number} ${name}`, textContent: `${number} ${name}`,
+    style: {},
     closest: () => null, getAttribute: () => null,
     querySelector: key => key === '.trade_title' ? { textContent: name, getAttribute: () => null } : null,
     querySelectorAll: selector => selector === 'td.flex_box p.f_gray' ? [postedAt] : selector === '*' ? actions :
-      selector.startsWith('button,') ? actions : []
+      selector.startsWith('button,') || selector === 'a[onclick],button[onclick],input[onclick]' ? actions : []
   };
   return { row, actions, clicks };
 }
 
 function evaluate(rows, { number = id, name = title, click = false,
   pathname = '/myroom/buy/buy_regist.html', hostname = 'www.itemmania.com', siteReinsert,
-  minQuantity = '', maxQuantity = '', server = '', tradeSide = '' } = {}) {
+  minQuantity = '', maxQuantity = '', server = '', tradeSide = '', deleteAction = '' } = {}) {
   const document = {
     querySelectorAll: selector => selector === 'tr' ? rows.map(x => x.row) :
       selector.includes('[data-tid]') ? rows.map(x => x.row) : []
@@ -75,8 +76,25 @@ function evaluate(rows, { number = id, name = title, click = false,
   if (siteReinsert) scope.window = { reInsert: siteReinsert };
   const js = embedded.replace('__OWNED_TITLE_IDENTITY__', identityScript)
     .replace('__ARG__', JSON.stringify({ number, title: name, click,
-      minQuantity, maxQuantity, server, tradeSide }));
+      minQuantity, maxQuantity, server, tradeSide, deleteAction }));
   return vm.runInNewContext(js, scope, { timeout: 1000 });
+}
+
+{
+  const rows = [makeRealMarkupRow(id, title), makeRealMarkupRow(other, title)];
+  assert.equal(evaluate(rows, { deleteAction: 'focus' }).status, 'delete-ready');
+  assert.deepEqual(rows[0].clicks, []);
+  assert.equal(evaluate(rows, { deleteAction: 'click' }).status, 'delete-clicked');
+  assert.deepEqual(rows[0].clicks, ['delete']);
+  assert.deepEqual(rows[1].clicks, []);
+  assert.equal(evaluate(rows, { deleteAction: 'click', hostname: 'example.com' }).status, 'error');
+
+  const changed = makeRealMarkupRow(id, title);
+  const read = changed.actions[2].getAttribute;
+  changed.actions[2].getAttribute = key => key === 'onclick'
+    ? `tradeProcess('hideSelect', '${id}')` : read(key);
+  assert.equal(evaluate([changed], { deleteAction: 'click' }).status, 'error');
+  assert.deepEqual(changed.clicks, []);
 }
 
 {

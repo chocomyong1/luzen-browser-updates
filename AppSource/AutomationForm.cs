@@ -1704,6 +1704,14 @@ internal sealed partial class AutomationForm : Form
         // Save the selected editor before building the remaining snapshot;
         // commit to disk FIRST so a failed save never removes visible rows.
         SaveSelectedJob(false);
+        if (!TryRemoveLocalJobs(targets, out string problem))
+            MessageBox.Show(this, "삭제 내용을 저장하지 못했습니다. 목록은 그대로 유지됩니다.\n" + problem,
+                "물품 삭제 실패", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+
+    private bool TryRemoveLocalJobs(IReadOnlyList<ListingJob> targets, out string problem)
+    {
+        problem = "";
         var ids = new HashSet<string>(targets.Select(j => j.Id), StringComparer.Ordinal);
         var remaining = _jobs.Where(j => !ids.Contains(j.Id)).ToList();
         var original = _config.Jobs;
@@ -1715,9 +1723,8 @@ internal sealed partial class AutomationForm : Form
         catch (Exception ex)
         {
             _config.Jobs = original;
-            MessageBox.Show(this, "삭제 내용을 저장하지 못했습니다. 목록은 그대로 유지됩니다.\n" + ex.Message,
-                "물품 삭제 실패", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return;
+            problem = ex.Message;
+            return false;
         }
         foreach (var job in targets) _jobs.Remove(job);
         _selected = null;
@@ -1726,6 +1733,7 @@ internal sealed partial class AutomationForm : Form
         AppendLog($"선택 물품 {targets.Count}건 삭제 완료 (프로그램 내부 목록만 변경)");
         foreach (var job in targets.Where(job => !string.IsNullOrWhiteSpace(job.ListingNumber)))
             AppendLog($"로컬 삭제 등록번호: {_system} · {job.ListingNumber}");
+        return true;
     }
 
     private void SelectCurrentJob()
@@ -3568,6 +3576,11 @@ internal sealed partial class AutomationForm : Form
     // generic confirmation, payments, deletion, account checks or other pages.
     private void OnItemManiaScriptDialog(object? sender, CoreWebView2ScriptDialogOpeningEventArgs e)
     {
+        if (_siteDeletionWindow is not null)
+        {
+            HandleSiteDeletionDialog(e);
+            return;
+        }
         if (_visibleSitePriceEditWindow is not null)
         {
             HandleVisibleSitePriceDialog(e);

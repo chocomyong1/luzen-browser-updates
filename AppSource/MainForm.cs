@@ -283,7 +283,9 @@ internal sealed partial class MainForm : Form
         listingMenu.DropDownItems.Add("재등록 추가", null, (_, _) => AddNewListing("재등록"));
         listingMenu.DropDownItems.Add(new ToolStripSeparator());
         listingMenu.DropDownItems.Add("물품 복제", null, (_, _) => _module.DuplicateListing());
-        listingMenu.DropDownItems.Add("선택 물품 삭제", null, (_, _) => _module.RemoveListing());
+        listingMenu.DropDownItems.Add("VANTA 목록에서만 삭제", null, (_, _) => _module.RemoveListing());
+        listingMenu.DropDownItems.Add("아이템매니아 등록글 삭제", null,
+            async (_, _) => await _module.DeleteSiteListingAsync());
         listingMenu.DropDownItems.Add("설정 저장", null, (_, _) => _module.SaveListings());
         listingMenu.DropDownItems.Add("로컬 목록 새로고침", null, (_, _) => _module.RefreshListings());
         moreMenu.Items.Add(listingMenu);
