@@ -41,5 +41,7 @@ assert(scheduler.indexOf('_ownedListRecoveryUtc != DateTime.MinValue') < schedul
   'A/C must check recovery before running the next job');
 assert.match(runner, /_ownedListRecoveryRun\?\.Cancel\(\)/);
 assert.match(owned, /if \(expectOwnedList && sawTransportFailure\)/);
+assert.match(runner, /MissingAfterCompleteScan = firstPageRechecked && queue\.Count == 0 && loadedPages > 0 &&\s*visited\.Count < maxPages && unrenderedPages == 0 && numberRows == 0/);
+assert.match(runner, /if \(missingOwnedListing && !submitted\)\s*\{\s*job\.Enabled = false;\s*job\.NextDueUtc = DateTime\.MaxValue;/);
 assert.match(split, /관리목록 복구 대기/);
 console.log('PASS system-wide unrendered-list cooldown, B VPN + DOM probe, manual stop and zero-submit recovery');

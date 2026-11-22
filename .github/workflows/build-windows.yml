@@ -215,15 +215,15 @@ jobs:
       - name: Package binary-only update
         shell: pwsh
         run: |
-          $version = '22.3.37'
+          $version = '22.3.38'
           Compress-Archive -Path 'Published' -DestinationPath "LuzenBrowser_${version}_BinaryUpdate.zip" -CompressionLevel Optimal
           $digest = (Get-FileHash -Path "LuzenBrowser_${version}_BinaryUpdate.zip" -Algorithm SHA256).Hash
           Write-Host "Windows binary ZIP SHA-256: $digest"
       - name: Keep build artifact private
         uses: actions/upload-artifact@v4
         with:
-          name: vanta-windows-v22.3.37
-          path: LuzenBrowser_22.3.37_BinaryUpdate.zip
+          name: vanta-windows-v22.3.38
+          path: LuzenBrowser_22.3.38_BinaryUpdate.zip
           if-no-files-found: error
           retention-days: 7
       - name: Publish verified binary to existing automatic update channel
@@ -231,7 +231,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '22.3.37'
+          $version = '22.3.38'
           $fileName = "LuzenBrowser_${version}_BinaryUpdate.zip"
           $releaseDir = "releases/v${version}"
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -243,7 +243,7 @@ jobs:
             packageUrl = "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/$releaseDir/$fileName"
             sha256 = $digest
             format = 'binary'
-            releaseNotes = 'v22.3.37 단건·일괄 가격 수정은 백그라운드에서 진행합니다. 제목 보호 모드의 예약 제출 차단을 해제하고, 명시적으로 승인한 예약을 기존 등록번호의 공식 수정 절차와 0원 확인으로 처리합니다.'
+            releaseNotes = 'v22.3.38 관리목록 조회와 첫 페이지 재확인이 완료돼도 등록번호가 없으면 해당 글만 자동 OFF로 전환합니다. 로컬 목록 삭제 전에는 시스템과 실제 삭제할 등록번호를 표시합니다.'
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path latest.json -Encoding utf8
           git config user.name 'luzen-auto-release'

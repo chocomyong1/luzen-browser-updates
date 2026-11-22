@@ -25,7 +25,8 @@ assert.match(automation, /ConnectionRecoveryProbeFailed\("B VPN", "B VPN 연결 
 assert.match(automation, /NotifyAutomationIssue\("예약 가격 수정 보류"/);
 assert.match(automation, /ConnectionRecoveryProbeFailed\("login", "사이트 로그인 복구 대기"/);
 assert.match(automation, /ConnectionRecoveryProbeFailed\("B VPN", "B VPN 접속 대기"/);
-assert.match(automation, /NotifyAutomationIssue\(submitted \? "제출 결과 확인 필요" : "등록 작업 오류"/);
+assert.match(automation, /NotifyAutomationIssue\(missingOwnedListing && !submitted \? "관리목록에 없음 · 자동 OFF"/);
+assert.match(automation, /submitted \? "제출 결과 확인 필요" : "등록 작업 오류", ex\.Message, job/);
 const manualMethods = automation.slice(automation.indexOf('private void PauseScheduler()'),
   automation.indexOf('private bool CanRunNow('));
 assert.doesNotMatch(manualMethods, /NotifyAutomationIssue/);

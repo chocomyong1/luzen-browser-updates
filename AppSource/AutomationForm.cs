@@ -1693,7 +1693,11 @@ internal sealed partial class AutomationForm : Form
         string question = marked.Count > 0
             ? $"체크한 {targets.Count}건의 물품 설정을 한 번에 삭제할까요?"
             : "현재 물품 설정 1건을 삭제할까요?";
-        if (MessageBox.Show(this, question + "\n\n프로그램 내부 목록에서만 삭제되며, 아이템매니아 사이트의 등록글은 삭제되지 않습니다.",
+        string preview = string.Join("\n", targets.Take(8).Select(job =>
+            $"{job.Server} · {job.ListingNumber} · {job.Title}"));
+        if (targets.Count > 8) preview += $"\n외 {targets.Count - 8}건";
+        if (MessageBox.Show(this, $"{_system} 시스템 · {question}\n\n{preview}" +
+            "\n\nVANTA 목록에서만 삭제합니다. 아이템매니아 등록글은 유지됩니다.",
             "물품 일괄 삭제 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
 
@@ -1720,6 +1724,8 @@ internal sealed partial class AutomationForm : Form
         RefreshFilterChoices();
         RefreshFilteredLists();
         AppendLog($"선택 물품 {targets.Count}건 삭제 완료 (프로그램 내부 목록만 변경)");
+        foreach (var job in targets.Where(job => !string.IsNullOrWhiteSpace(job.ListingNumber)))
+            AppendLog($"로컬 삭제 등록번호: {_system} · {job.ListingNumber}");
     }
 
     private void SelectCurrentJob()
@@ -2883,6 +2889,7 @@ internal sealed partial class AutomationForm : Form
         _currentRun?.Dispose(); _currentRun = new CancellationTokenSource();
         var token = _currentRun.Token;
         bool submitted = false;
+        bool missingOwnedListing = false;
         string preSubmitUrl = "";
         bool successSelectorBefore = false;
         string preSubmitListingNumber = "";
@@ -2971,6 +2978,7 @@ internal sealed partial class AutomationForm : Form
                         if (repostFromOwnedList)
                         {
                             var ownRow = await LocateOwnedListRepostAsync(job, token);
+                            missingOwnedListing = ownRow.MissingAfterCompleteScan;
                             if (ownRow.Status != "ready")
                                 throw new InvalidOperationException("내 등록목록 재등록 차단: " + ownRow.Message +
                                     ". 등록번호에 직접 연결된 물품 행의 버튼을 찾지 못했습니다. 제출하지 않았습니다.");
@@ -3231,13 +3239,23 @@ internal sealed partial class AutomationForm : Form
                 AppendLog($"{_system} 로그인 세션 거절 감지: 다른 물품 제출도 중단하고 30초 후 관리목록을 재검증합니다. " +
                     "해당 글은 등록시각 확인 전까지 다시 제출하지 않습니다.");
             }
-            job.LastStatus = submitted ? "제출 결과 확인 필요" : "오류 (미제출)";
-            if (submitted) job.RequiresReview = true;
-            job.NextDueUtc = submitted ? DateTime.MaxValue : DateTime.UtcNow.AddMinutes(10);
+            if (missingOwnedListing && !submitted)
+            {
+                job.Enabled = false;
+                job.NextDueUtc = DateTime.MaxValue;
+                job.LastStatus = "관리목록에 없음 · 자동 OFF";
+            }
+            else
+            {
+                job.LastStatus = submitted ? "제출 결과 확인 필요" : "오류 (미제출)";
+                if (submitted) job.RequiresReview = true;
+                job.NextDueUtc = submitted ? DateTime.MaxValue : DateTime.UtcNow.AddMinutes(10);
+            }
             AppendLog("작업 오류: " + ex.Message);
             AppendLog($"{(flow.Operation == "재등록" ? "재등록 실패 요약:" : "등록 실패 요약:")} " +
                 $"{job.Server} · {job.ListingNumber} · {ex.Message}");
-            if (!dryRun) NotifyAutomationIssue(submitted ? "제출 결과 확인 필요" : "등록 작업 오류", ex.Message, job);
+            if (!dryRun) NotifyAutomationIssue(missingOwnedListing && !submitted ? "관리목록에 없음 · 자동 OFF" :
+                submitted ? "제출 결과 확인 필요" : "등록 작업 오류", ex.Message, job);
             if (_schedulerRunning && submitted && !_repostLoginRejected)
                 AppendLog("결과 확인이 필요한 물품 1건만 보류했습니다. 다른 정상 물품은 계속 등록하며 " +
                     "해당 물품은 사이트의 정확한 등록번호·재등록 시각을 백그라운드에서 검사합니다.");
@@ -3386,6 +3404,7 @@ internal sealed partial class AutomationForm : Form
         // first page exactly once. This is read-only; never submit an unverified
         // row or widen the listing ID/control-binding matching rules.
         token.ThrowIfCancellationRequested();
+        bool firstPageRechecked = false;
         AppendLog($"관리 목록 {visited.Count}페이지 검사: 표시 확인 {loadedPages}페이지, " +
             $"물품 {visibleListings}건, 미표시 {unrenderedPages}페이지, " +
             $"등록번호 일치 행 {numberRows}건, 제목 일치 행 {titleRows}건. " +
@@ -3393,7 +3412,7 @@ internal sealed partial class AutomationForm : Form
         try
         {
             await NavigateOwnedListAsync(baseUrl, token);
-            var (updated, _) = await InspectOwnedListPageAsync(job, token, requireRepostButton);
+            var (updated, updatedPage) = await InspectOwnedListPageAsync(job, token, requireRepostButton);
             if (updated.Status == "ready" || (!requireRepostButton && updated.Status == "found"))
             {
                 if (!string.Equals(job.SourceListUrl, baseUrl, StringComparison.OrdinalIgnoreCase))
@@ -3405,13 +3424,22 @@ internal sealed partial class AutomationForm : Form
                 return updated;
             }
             if (updated.Status != "not-found") return updated;
+            firstPageRechecked = updated.NumberRows == 0 &&
+                (updatedPage.Listings.Count > 0 || updatedPage.IsEmptyList) &&
+                updatedPage.NextPageUrls.All(link => visited.Contains(link));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception ex) { AppendLog("최신 첫 페이지 재확인 실패: " + ex.GetType().Name); }
-        return new OwnedListRepostResult { Status = "not-found", Message =
+        return new OwnedListRepostResult
+        {
+            Status = "not-found",
+            MissingAfterCompleteScan = firstPageRechecked && queue.Count == 0 && loadedPages > 0 &&
+                visited.Count < maxPages && unrenderedPages == 0 && numberRows == 0,
+            Message =
             $"관리 목록 {visited.Count}페이지에서 등록번호 {job.ListingNumber}를 찾지 못했습니다 " +
             $"(읽힌 물품 {visibleListings}건, 미표시 {unrenderedPages}페이지). " +
-            "원본 글이 다른 상태/페이지로 이동했거나 저장된 등록번호가 변경됐을 수 있습니다" };
+            "원본 글이 다른 상태/페이지로 이동했거나 저장된 등록번호가 변경됐을 수 있습니다"
+        };
     }
 
     private static bool IsTransientOwnedListPageError(OwnedListRepostResult result) =>

@@ -127,6 +127,7 @@ internal sealed class ListingJob
         get
         {
             if (RequiresReview) return "확인 필요";
+            if (LastStatus == "관리목록에 없음 · 자동 OFF") return LastStatus;
             if (LastStatus == "실행 중") return "실행 중";
             if (LastStatus.StartsWith("제출 중", StringComparison.Ordinal)) return "제출 확인 중";
             if (!string.IsNullOrWhiteSpace(PendingSitePriceTarget))

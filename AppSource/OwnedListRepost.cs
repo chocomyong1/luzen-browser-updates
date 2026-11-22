@@ -19,6 +19,7 @@ internal sealed class OwnedListRepostResult
     public int ScannedRows { get; set; }
     public int NumberRows { get; set; }
     public int TitleRows { get; set; }
+    public bool MissingAfterCompleteScan { get; set; }
 }
 
 internal static class OwnedListRepost
