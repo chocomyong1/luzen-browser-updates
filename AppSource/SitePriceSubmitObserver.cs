@@ -60,6 +60,13 @@ internal sealed class SitePriceSubmitObserver : IDisposable
     // open when FormChecker has not sent its final request yet.
     public bool FinalPostStarted => _requestId.Length > 0;
 
+    // A verified 'S' from the first-party contact endpoint is a necessary
+    // condition for advancing any optional no-fee site UI. HTTP 200 alone
+    // never authorizes it. These indicators do not disclose response data.
+    public bool ContactApproved => _contactDecision.Task.IsCompletedSuccessfully &&
+        _contactDecision.Task.Result.Approved == true;
+    public bool CategoryCheckStarted => _categoryStarted;
+
     public SitePriceSubmitObserver(CoreWebView2 core) => _core = core;
 
     public async Task StartAsync()

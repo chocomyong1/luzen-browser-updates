@@ -25,7 +25,7 @@ const singleClick = flow.indexOf('await DispatchVerifiedSitePriceClickAsync(', p
 const reviewState = flow.indexOf('job.RequiresReview = true;', singleClick);
 const save = flow.indexOf('_config.Save();', reviewState);
 const submitted = flow.indexOf('submitted = true;', save);
-const observed = flow.indexOf('var observed = await submissionObserver.WaitAsync(token)', submitted);
+const observed = flow.indexOf('var observed = await observing;', submitted);
 assert(flowStart >= 0 && flowStart < priceInput && priceInput < singleClick &&
   singleClick < reviewState && reviewState < save && save < submitted && submitted < observed,
   'Typing or pre-click validation failure must not mark the listing as submitted');
@@ -49,5 +49,6 @@ assert.match(observer, /_ => new ContactDecision\(false/);
 assert.match(observer, /first == _contactDecision\.Task/);
 assert.doesNotMatch(observer, /GetRequestPostData|\.postData|\.headers|Fetch\.enable|AppendLog|Console\.Write/);
 assert.doesNotMatch(flow.slice(flowStart, observed), /Network\.getRequestPostData|form\.submit\(|fetch\(/);
+assert.match(flow.slice(submitted, observed), /var observing = submissionObserver\.WaitAsync\(token\)/);
 
 console.log('PASS precise pre-click checkpoint, user-visible first-party stages and non-retry safety');

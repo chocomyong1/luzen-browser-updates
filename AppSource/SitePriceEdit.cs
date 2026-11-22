@@ -499,6 +499,79 @@ internal static class SitePriceEdit
     })()
     """;
 
+    // Alternative to repeatedly pressing the site's re-registration button:
+    // after the official contact check ACCEPTS, inspect the actual premium
+    // layer for an explicit FREE/ORDINARY continuation. Never submit a form,
+    // synthesize a network request, select a paid option or dismiss security.
+    // The host uses a real browser pointer, guarded again immediately before
+    // pressing, and the same exact-ID/price signed-in readback afterwards.
+    public const string FindOfficialFreeContinuationScript = """
+    (()=>{
+      const result=(status,message='',x=0,y=0)=>({status,message,x,y});
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
+         location.pathname.toLowerCase()!=='/myroom/buy/buy_re_reg.html')
+        return result('blocked','공식 구매 수정 화면 아님');
+      const p=window.__luzenPriceNativeProbe;
+      if(!p||!p.clickSeen||!p.submitSeen||!p.canType?.()||p.titleChanged?.()||
+         p.money(p.priceInput.value)!==p.desired||p.guardBlocked)
+        return result('blocked','원본 등록번호·제목·가격 또는 첫 제출 상태 불일치');
+      if(String(document.getElementById('user_premium_penalty')?.value)!=='1')
+        return result('not-applicable','프리미엄 분기 대상 아님');
+      const visible=e=>{
+        if(!e?.isConnected||e.disabled)return false;
+        const r=e.getBoundingClientRect?.(),s=getComputedStyle(e);
+        return !!r&&r.width>0&&r.height>0&&s.visibility!=='hidden'&&
+          s.display!=='none'&&s.pointerEvents!=='none';
+      };
+      const text=e=>String(e?.innerText||e?.value||e?.textContent||'').replace(/\s+/g,'').trim();
+      const free=/^(?:무료등록(?:하기)?|일반등록(?:하기)?|프리미엄없이등록(?:하기)?|유료서비스이용안함)$/;
+      const candidates=[...document.querySelectorAll(
+          'button,input[type="button"],input[type="submit"],a[role="button"]')]
+        .filter(visible).filter(e=>free.test(text(e)))
+        .map(button=>({button,layer:button.closest(
+          '[role="dialog"],.layer_pop,.layer_wrap,.modal,.popup,[id*="premium" i],[class*="premium" i]')}))
+        .filter(({button,layer})=>layer&&layer!==p.form&&
+          !p.form.contains(layer)&&visible(layer)&&
+          /프리미엄|부가서비스|유료등록|무료등록/.test(String(layer.innerText||'')));
+      if(candidates.length===0)return result('absent','무료·일반 진행 버튼 없음');
+      if(candidates.length!==1)return result('ambiguous','무료·일반 진행 버튼 중복');
+      const {button,layer}=candidates[0];
+      const label=text(button);
+      const content=String(layer.innerText||'').replace(/\s+/g,'');
+      // A free button cannot authorize a modal that is already charging for
+      // another selected service. In that case ask for human consent instead.
+      const amount=content.match(/(?:총결제금액|결제예정금액|결제금액)[:：]?([\d,]+)원/);
+      if(amount&&Number(amount[1].replace(/,/g,''))!==0)
+        return result('paid','현재 추가 서비스 결제 금액이 0원이 아님');
+      button.scrollIntoView?.({block:'center',inline:'center'});
+      const r=button.getBoundingClientRect();const x=(r.left+r.right)/2,y=(r.top+r.bottom)/2;
+      const hit=Number.isFinite(x)&&Number.isFinite(y)&&x>0&&y>0&&
+        x<innerWidth&&y<innerHeight?document.elementFromPoint?.(x,y):null;
+      if(!hit||!(hit===button||button.contains(hit)))
+        return result('covered','무료·일반 진행 버튼이 화면에서 가려짐');
+      window.__vantaFreePremiumCandidate={button,layer,label,desired:p.desired};
+      return result('free-ready','공식 프리미엄 안내의 무료·일반 진행 버튼 1개 검증',x,y);
+    })()
+    """;
+
+    public const string VerifyOfficialFreeContinuationScript = """
+    (()=>{
+      const p=window.__luzenPriceNativeProbe,c=window.__vantaFreePremiumCandidate;
+      if(!p||!c||!p.clickSeen||!p.submitSeen||!p.canType?.()||p.guardBlocked||
+         p.titleChanged?.()||p.money(p.priceInput.value)!==p.desired||
+         c.desired!==p.desired||!c.button?.isConnected||c.button.disabled||
+         !c.layer?.contains(c.button)||!c.layer?.isConnected||
+         String(document.getElementById('user_premium_penalty')?.value)!=='1')return false;
+      const label=String(c.button.innerText||c.button.value||c.button.textContent||'')
+        .replace(/\s+/g,'').trim();
+      if(label!==c.label)return false;
+      const r=c.button.getBoundingClientRect(),x=(r.left+r.right)/2,y=(r.top+r.bottom)/2;
+      const hit=document.elementFromPoint?.(x,y);
+      return x>0&&y>0&&x<innerWidth&&y<innerHeight&&
+        !!hit&&(hit===c.button||c.button.contains(hit));
+    })()
+    """;
+
     // Read-only result of the ONE native browser-input trial; does not inspect
     // field values, credentials or request contents and never invokes submit.
     public const string SubmitProbeScript = """

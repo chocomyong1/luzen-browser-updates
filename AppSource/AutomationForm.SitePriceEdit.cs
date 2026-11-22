@@ -202,6 +202,75 @@ internal sealed partial class AutomationForm
             "{\"type\":\"keyUp\",\"key\":\"Tab\",\"code\":\"Tab\",\"windowsVirtualKeyCode\":9}");
     }
 
+    // The original BUY form may pause at a first-party premium/ordinary
+    // registration layer after the official contact check answers S. This is
+    // a separate DOM/UI route, NOT a replay of the registration button and
+    // NEVER an independent POST. Only an unambiguous no-fee site action can
+    // receive one native click; paid/security/unclear choices stay untouched.
+    private async Task TryAdvanceOfficialFreeRegistrationAsync(
+        SitePriceSubmitObserver observer, Task<SitePriceSubmitObservation> observing,
+        CancellationToken token)
+    {
+        var core = _web.CoreWebView2;
+        if (core is null) return;
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        bool searched = false;
+        while (DateTime.UtcNow < deadline && !observing.IsCompleted &&
+               !observer.FinalPostStarted && !observer.CategoryCheckStarted)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!IsAllowedCurrentPage() ||
+                !string.Equals(_web.Source?.AbsolutePath, "/myroom/buy/buy_re_reg.html",
+                    StringComparison.OrdinalIgnoreCase)) return;
+            if (!observer.ContactApproved)
+            {
+                await Task.Delay(250, token);
+                continue;
+            }
+            searched = true;
+            SitePriceEditResult option;
+            try
+            {
+                option = SitePriceEdit.Decode(await core.ExecuteScriptAsync(
+                    SitePriceEdit.FindOfficialFreeContinuationScript));
+            }
+            catch (Exception) { return; } // uncertain page state: no click
+            if (option.Status is "paid" or "ambiguous" or "blocked" or "not-applicable")
+            {
+                AppendLog("사이트 무료 등록 분기 진행 불가: " + option.Message);
+                return;
+            }
+            if (option.Status == "free-ready")
+            {
+                // Browser pointer events preserve the site's authentic
+                // handler; never invoke form.submit(), fetch() or bypass
+                // premiumLayerOpen(). Validate again just before mouse-down.
+                double x = option.X, y = option.Y;
+                if (!double.IsFinite(x) || !double.IsFinite(y) || x <= 0 || y <= 0) return;
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    { type = "mouseMoved", x, y, button = "none", buttons = 0, clickCount = 0 }));
+                if (observer.FinalPostStarted || observer.CategoryCheckStarted ||
+                    !observer.ContactApproved ||
+                    !string.Equals(await core.ExecuteScriptAsync(
+                        SitePriceEdit.VerifyOfficialFreeContinuationScript), "true",
+                        StringComparison.OrdinalIgnoreCase)) return;
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    { type = "mousePressed", x, y, button = "left", buttons = 1, clickCount = 1 }));
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    { type = "mouseReleased", x, y, button = "left", buttons = 0, clickCount = 1 }));
+                AppendLog("사이트 공식 무료·일반 등록 후속 버튼 1회 클릭 (유료 선택·독립 POST 없음)");
+                return; // No second click. Observe the site's own next step.
+            }
+            await Task.Delay(300, token);
+        }
+        if (searched && !observer.CategoryCheckStarted && !observer.FinalPostStarted &&
+            !observing.IsCompleted)
+            AppendLog("사이트 무료·일반 등록 후속 버튼 없음 · 추가 제출하지 않음");
+    }
+
     // Only for one explicitly approved, exact-ID BUY form. A browser mouse
     // input activates the site's own click/submit handlers; it is NOT a
     // direct form POST, synthetic fetch, or bypass of site validation.
@@ -1311,7 +1380,14 @@ internal sealed partial class AutomationForm
                 AppendLog("구매글 가격 수정 버튼/화면 전환 결과 불확실: " + diagnosis + " (중복 제출 금지)");
             }
 
-            var observed = await submissionObserver.WaitAsync(token);
+            // Follow a clearly free, official on-page continuation if the
+            // contact check approved but the site has not started category
+            // validation. This alternative never re-clicks the original
+            // re-registration button or sends a synthetic form POST.
+            var observing = submissionObserver.WaitAsync(token);
+            if (_unattendedSitePriceEdit)
+                await TryAdvanceOfficialFreeRegistrationAsync(submissionObserver, observing, token);
+            var observed = await observing;
             AppendLog("구매글 실제 사이트 수정 POST 확인: " +
                 (observed.RequestObserved ? SitePriceSubmitObserver.BuyReRegistrationPostPath : "요청 없음") +
                 " · HTTP " + (observed.HttpStatus?.ToString() ?? "미확인") + " · " + observed.Detail +
