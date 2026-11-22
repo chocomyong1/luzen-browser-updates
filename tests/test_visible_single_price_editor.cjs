@@ -31,6 +31,9 @@ assert.match(singleBranch, /ShowVisibleSinglePriceEditor\(job, current, desired,
 assert.match(singleBranch, /SitePriceEdit\.NativePriceButtonClickedScript/);
 assert.match(singleBranch, /if \(!siteButtonClicked && !submissionObserver\.FinalPostStarted\)/);
 assert.match(singleBranch, /submitted = false/);
+assert(singleBranch.indexOf('if (!siteButtonClicked && !submissionObserver.FinalPostStarted)') <
+  singleBranch.indexOf('HourlyServerQuota.MarkAttempt('),
+  'Canceled visible editing must not consume the posting quota');
 assert.doesNotMatch(singleBranch, /DispatchVerifiedSitePriceClickAsync|mousePressed|\.submit\(|\.click\(/);
 
 assert.match(grid, /if \(_visibleSitePriceEditWindow is not null\)[\s\S]*?HandleVisibleSitePriceDialog\(e\)/);

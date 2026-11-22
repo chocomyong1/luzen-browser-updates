@@ -1088,9 +1088,6 @@ internal sealed partial class AutomationForm
                     // must see that native form and its validation messages.
                     // Save the uncertain-outcome checkpoint BEFORE exposing
                     // the actual site submit button, not after a possible POST.
-                    var submittedAt = DateTime.UtcNow;
-                    HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
-                    _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
                     job.RequiresReview = true;
                     job.Enabled = false;
                     job.LastStatus = "구매글 가격 재등록 제출 중: 결과 확인 필요";
@@ -1117,6 +1114,13 @@ internal sealed partial class AutomationForm
                         AppendLog("가격 수정 창을 닫았습니다. 사이트 제출이 없어 이 등록번호는 변경하지 않았습니다.");
                         return false;
                     }
+                    // Opening or canceling a price window is not a listing
+                    // attempt. Count the quota only after a genuine site
+                    // click or first-party POST has been observed.
+                    var submittedAt = DateTime.UtcNow;
+                    HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
+                    _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
+                    _config.Save();
                     submitScriptNote = windowResult == DialogResult.OK
                         ? "사용자가 공식 사이트 재등록 버튼을 눌러 제출 후 결과 확인을 요청함"
                         : "사용자가 수정 창을 닫았으나 사이트 재등록 클릭/POST 흔적이 있어 결과 확인 중";
