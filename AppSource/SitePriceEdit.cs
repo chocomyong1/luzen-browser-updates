@@ -459,6 +459,46 @@ internal static class SitePriceEdit
     (()=>window.__luzenPriceNativeProbe?.clickSeen===true)()
     """;
 
+    // Passive error counters installed BEFORE the original first-party form
+    // is clicked. No event is canceled, no site function is replaced, and no
+    // JavaScript exception message or stack (which could contain PII) is read.
+    public const string InstallSiteSubmitErrorProbeScript = """
+    (()=>{
+      if(window.__vantaPriceSiteErrors)return true;
+      const state={script:0,promise:0};
+      window.__vantaPriceSiteErrors=state;
+      window.addEventListener('error',e=>{
+        if(e && typeof e.message==='string')state.script++;
+      });
+      window.addEventListener('unhandledrejection',()=>{state.promise++;});
+      return true;
+    })()
+    """;
+
+    // Only reads branch indicators from the ACTUAL official edit page when
+    // its contact AJAX completed but no final POST followed. Never exposes
+    // contact fields, premium pricing, dialog text or a listing's form values.
+    public const string PostContactBlockerProbeScript = """
+    (()=>{
+      if(location.protocol!=='https:'||!/(^|\.)itemmania\.com$/i.test(location.hostname)||
+         location.pathname.toLowerCase()!=='/myroom/buy/buy_re_reg.html')
+        return '공식 수정 화면 아님';
+      const penalty=document.getElementById('user_premium_penalty');
+      const extra=penalty?(String(penalty.value)==='1'?'적용':'미적용'):'필드 없음';
+      const elements=[...document.querySelectorAll('[role="dialog"], [aria-modal="true"], .ui-dialog, .modal')];
+      const visible=elements.filter(e=>{
+        const r=e.getBoundingClientRect(),s=getComputedStyle(e);
+        return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';
+      }).length;
+      const errors=window.__vantaPriceSiteErrors;
+      return '추가 확인 분기 표시:'+extra+
+        '; 보이는 대화 레이어:'+visible+
+        '; 사이트 스크립트 예외:'+(errors?.script??'미측정')+
+        '; 비동기 예외:'+(errors?.promise??'미측정')+
+        '; 프리미엄 처리 함수:'+(typeof window.premiumLayerOpen==='function'?'있음':'없음');
+    })()
+    """;
+
     // Read-only result of the ONE native browser-input trial; does not inspect
     // field values, credentials or request contents and never invokes submit.
     public const string SubmitProbeScript = """

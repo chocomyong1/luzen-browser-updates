@@ -130,6 +130,7 @@ internal sealed partial class AutomationForm
             MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
     }
     private string _sitePriceReadbackNote = "";
+    private SitePriceReadback? _sitePriceLastReadback;
     // An in-flight site price target is deferred until its readback completes.
     // Other listings may replace their local reservation without site access.
     private ListingJob? _activeSitePriceJob;
@@ -890,6 +891,7 @@ internal sealed partial class AutomationForm
         _state.Text = "사이트 가격 수정 대상 확인 중";
         var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         var token = cancellation.Token;
+        _sitePriceLastReadback = null;
         bool submitted = false;
         bool previousReview = job.RequiresReview;
         bool previousEnabled = job.Enabled;
@@ -1154,6 +1156,9 @@ internal sealed partial class AutomationForm
             // No automatic fallback or duplicate POST is ever attempted.
             using var submissionObserver = new SitePriceSubmitObserver(_web.CoreWebView2);
             await submissionObserver.StartAsync();
+            // Observe actual site-side JavaScript failures without changing
+            // its original validators, network requests or confirmation UI.
+            await _web.CoreWebView2.ExecuteScriptAsync(SitePriceEdit.InstallSiteSubmitErrorProbeScript);
 
             // Verify quota and scheduler state before touching the site.
             // Input/DOM checks may fail; only a genuine submit click needs
@@ -1164,6 +1169,7 @@ internal sealed partial class AutomationForm
             _armedSitePriceEditNumber = job.ListingNumber;
             _sitePriceEditDialogWarning = "";
             string submitScriptNote = "제출 버튼 클릭 전 입력 검증 중";
+            string blockerNote = "";
             try
             {
                 var result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
@@ -1323,6 +1329,14 @@ internal sealed partial class AutomationForm
                         submitScriptNote += " · " + probe;
                         AppendLog("구매글 사이트 기본 제출 진단 (조회만): " + probe);
                     }
+                    var barrierJson = await _web.CoreWebView2.ExecuteScriptAsync(
+                        SitePriceEdit.PostContactBlockerProbeScript);
+                    string? barrier = System.Text.Json.JsonSerializer.Deserialize<string>(barrierJson);
+                    if (!string.IsNullOrWhiteSpace(barrier))
+                    {
+                        blockerNote = barrier;
+                        AppendLog("구매글 공식 수정폼 후속 분기 진단 (조회만): " + barrier);
+                    }
                 }
                 catch (Exception ex) { AppendLog("사이트 제출 이벤트 조회 실패: " + ex.GetType().Name); }
             }
@@ -1334,16 +1348,45 @@ internal sealed partial class AutomationForm
 
             _state.Text = "구매글 가격 변경 결과 확인 중";
             if (!await ConfirmChangedSitePriceAsync(job, desired, token, siteTitleSnapshot))
+            {
+                // Unlike a missing CDP event, an actual non-S response from
+                // the site's mandatory contact check proves the first-party
+                // submit chain was rejected. Clear a NEW uncertainty hold
+                // ONLY after a full authenticated scan independently proves
+                // the old ID and price unchanged, with no replacement post.
+                // Never retry automatically or mistake HTTP 200 for approval.
+                if (observed.ContactCheckRejected && !observed.RequestObserved &&
+                    string.IsNullOrWhiteSpace(observed.OtherBuyPostPath) &&
+                    _sitePriceLastReadback?.OriginalUnchangedNoReplacement == true && !previousReview)
+                {
+                    job.RequiresReview = false;
+                    job.Enabled = false;
+                    job.NextDueUtc = DateTime.MaxValue;
+                    job.PendingSitePriceTarget = previousPendingPrice;
+                    job.PriceEditSiteTitleSnapshot = "";
+                    job.LastStatus = "사이트 연락처 검사 거절 · 기존 등록번호·가격 유지 (자동 OFF)";
+                    _config.Jobs = _jobs.ToList();
+                    _config.Save();
+                    _lastSitePriceEditFailure = "연락처 검사에서 사이트가 변경을 승인하지 않았습니다. " +
+                        "기존 등록번호·가격 유지 확인 · 재시도 없음 · " + observed.Detail;
+                    AppendLog("사이트 연락처 검사 거절 확인 · 원래 글 유지 · 가격 미적용: " +
+                        job.ListingNumber + " · " + observed.Detail);
+                    if (!bulkApproval) MessageBox.Show(this, _lastSitePriceEditFailure,
+                        "사이트가 가격 수정을 거절함", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return false;
+                }
                 throw new InvalidOperationException((observed.RequestObserved ?
                     "구매글 재등록 후 변경된 사이트 단가를 확인하지 못했습니다. " :
                     "수정 POST 요청을 감지하지 못했고 관리목록에서도 변경된 단가를 확인하지 못했습니다. ") +
                     "새 등록번호가 생겼거나 사이트가 제출을 막았을 수 있어 확인 대기 상태를 유지하며 재제출하지 않습니다." +
                     "\n사이트 단계별 검증: " + observed.Detail[..Math.Min(420, observed.Detail.Length)] +
                     "\n사이트 폼 실행: " + submitScriptNote[..Math.Min(420, submitScriptNote.Length)] +
+                    (string.IsNullOrWhiteSpace(blockerNote) ? "" : "\n사이트 후속 분기: " + blockerNote) +
                     (string.IsNullOrWhiteSpace(_sitePriceReadbackNote) ? "" :
                         "\n읽기 전용 목록 검사: " + _sitePriceReadbackNote) +
                     (string.IsNullOrWhiteSpace(_sitePriceEditDialogWarning) ? "" :
                         " 사이트 메시지: " + _sitePriceEditDialogWarning));
+            }
             if (!observed.RequestObserved)
                 AppendLog("요청 감지 누락: 본인 관리목록의 등록번호·가격·제목이 일치하여 변경을 확인했습니다 (재제출 없음).");
 
@@ -1493,6 +1536,7 @@ internal sealed partial class AutomationForm
         string siteTitleSnapshot)
     {
         var readback = await ReadSitePriceAfterRepostAsync(job, target, token, siteTitleSnapshot);
+        _sitePriceLastReadback = readback;
         _sitePriceReadbackNote = readback.Message;
         AppendLog("구매글 재등록 후 사이트 가격 읽기: " + readback.Message);
         return readback.ExactIdVerified;
