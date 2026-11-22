@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.33",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.33/LuzenBrowser_22.3.33_BinaryUpdate.zip",
-  "sha256": "80eb946d2e3c77bedd65fa923b0d2fb28c264a1eeab645da424d7511b5722bed",
+  "version": "22.3.34",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.34/LuzenBrowser_22.3.34_BinaryUpdate.zip",
+  "sha256": "4b49ae4a2f1b5405fd3d05d806be973edcde045a3ea88ef087445ded88fb1f3e",
   "format": "binary",
-  "releaseNotes": "v22.3.33 예약 현황에서 미제출 요청을 취소하고 확인 대기 요청의 기존 등록번호와 사이트 가격을 재조회해 여러 건을 정리할 수 있습니다. 사이트에 가격을 다시 제출하지 않습니다."
+  "releaseNotes": "v22.3.34 관리 메뉴에서 내 등록글 조회, 가격 반영, 요청 현황, 업데이트를 바로 열고 물품 관리·설정·진단은 하위 메뉴에서 찾을 수 있습니다."
 }
