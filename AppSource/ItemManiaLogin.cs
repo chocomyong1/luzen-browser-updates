@@ -352,11 +352,24 @@ internal static class ItemManiaPopupHandler
     // creating a Form. Same-domain links can be handled inside the existing
     // background WebView2. External domains and unsupported auth popups are
     // blocked: never bypass verification or silently open a visible browser.
-    public static void InstallSilent(WebView2 view, Action<string>? notify)
+    public static void InstallSilent(WebView2 view, Action<string>? notify,
+        Func<bool>? approvedPriceEditInProgress = null)
     {
         if (view.CoreWebView2 is null) return;
-        view.CoreWebView2.NewWindowRequested += (_, args) =>
+        view.CoreWebView2.NewWindowRequested += async (_, args) =>
         {
+            // NewWindowRequested is NOT a navigation. Redirecting a window.open()
+            // into the opener destroys window.opener and any completion callback
+            // installed by the official site. Retain an authentic child browsing
+            // context for an explicitly approved, exact-ID price edit instead.
+            // Ordinary login/navigation popups retain the previous policy.
+            if (approvedPriceEditInProgress?.Invoke() == true &&
+                view.Source?.AbsolutePath.Equals("/myroom/buy/buy_re_reg.html",
+                    StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await OpenApprovedSitePopupAsync(view, args, notify);
+                return;
+            }
             args.Handled = true;
             if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) ||
                 !ItemManiaAccountStore.IsOfficialSite(uri))
@@ -367,6 +380,86 @@ internal static class ItemManiaPopupHandler
             notify?.Invoke("사이트의 새 창 요청을 백그라운드 페이지에서 처리합니다.");
             view.CoreWebView2?.Navigate(uri.AbsoluteUri);
         };
+    }
+
+    private static async Task OpenApprovedSitePopupAsync(WebView2 opener,
+        CoreWebView2NewWindowRequestedEventArgs args, Action<string>? notify)
+    {
+        // A site may first open about:blank and then set its location. Only
+        // this initial blank target or an HTTPS ItemMania URL is acceptable.
+        var requested = args.Uri ?? "";
+        var blank = requested.Length == 0 ||
+            string.Equals(requested, "about:blank", StringComparison.OrdinalIgnoreCase);
+        if (!blank && (!Uri.TryCreate(requested, UriKind.Absolute, out var requestedUri) ||
+            !ItemManiaAccountStore.IsOfficialSite(requestedUri)))
+        {
+            args.Handled = true;
+            notify?.Invoke("구매글 가격 수정 중 외부 사이트 새 창 요청 차단");
+            return;
+        }
+
+        var deferral = args.GetDeferral();
+        Form? host = null;
+        try
+        {
+            if (opener.CoreWebView2 is null) throw new InvalidOperationException("원본 브라우저 연결 없음");
+            host = new OfficialSitePopupWindow();
+            var ownedHost = host;
+            var child = new WebView2 { Dock = DockStyle.Fill };
+            host.Controls.Add(child);
+            host.Show(); // A real native HWND is required for the child WebView.
+            await child.EnsureCoreWebView2Async(opener.CoreWebView2.Environment);
+            if (child.CoreWebView2 is null) throw new InvalidOperationException("새 창 브라우저 연결 없음");
+
+            child.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = false;
+            child.CoreWebView2.NavigationStarting += (_, navigation) =>
+            {
+                if (string.Equals(navigation.Uri, "about:blank", StringComparison.OrdinalIgnoreCase)) return;
+                if (Uri.TryCreate(navigation.Uri, UriKind.Absolute, out var target) &&
+                    ItemManiaAccountStore.IsOfficialSite(target)) return;
+                navigation.Cancel = true;
+                notify?.Invoke("가격 수정 새 창의 외부 이동을 차단했습니다");
+            };
+            child.CoreWebView2.WindowCloseRequested += (_, _) =>
+            {
+                if (!ownedHost.IsDisposed) ownedHost.Close();
+            };
+            // Never automatically accept a payment, security challenge or
+            // registration confirmation from the child browsing context.
+            // Its own first-party JavaScript is responsible for any callback
+            // to the original edit page; the automator never sends a POST.
+            args.NewWindow = child.CoreWebView2;
+            args.Handled = true;
+            notify?.Invoke("사이트 가격 수정 새 창을 원본 창과 연결된 별도 브라우저로 처리합니다");
+            host = null; // The site closes the child via window.close().
+        }
+        catch (Exception ex)
+        {
+            args.Handled = true;
+            notify?.Invoke("사이트 가격 수정 새 창 생성 실패: " + ex.GetType().Name);
+        }
+        finally
+        {
+            if (host is not null && !host.IsDisposed) host.Close();
+            deferral.Complete();
+        }
+    }
+
+    // Retains the site opener relationship without a new foreground modal.
+    // Site payment and account verification dialogs remain disabled; a flow
+    // that requires explicit consent must fail closed rather than be accepted.
+    private sealed class OfficialSitePopupWindow : Form
+    {
+        protected override bool ShowWithoutActivation => true;
+
+        public OfficialSitePopupWindow()
+        {
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            Location = new Point(-20000, -20000);
+            Size = new Size(960, 720);
+            FormBorderStyle = FormBorderStyle.None;
+        }
     }
 
 }
