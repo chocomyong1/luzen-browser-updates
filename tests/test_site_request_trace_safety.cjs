@@ -10,7 +10,7 @@ const price = read('AutomationForm.SitePriceEdit.cs');
 const observer = read('SitePriceSubmitObserver.cs');
 
 assert.match(main, /traceMenuItem\.Click \+= async .*ToggleSiteTraceFromHeaderAsync\(traceMenuItem\)/);
-assert.match(main, /moreMenu\.Items\.Add\(traceMenuItem\)/);
+assert.match(main, /diagnosticsMenu\.DropDownItems\.Add\(traceMenuItem\)/);
 assert.match(ui, /ToggleSiteTraceFromHeaderAsync\(ToolStripItem menuItem\) => ToggleSiteRequestTraceAsync\(menuItem\)/);
 assert.match(trace, /ToggleSiteRequestTraceAsync\(ToolStripItem button\)/);
 assert.match(trace, /GetDevToolsProtocolEventReceiver\("Network\.requestWillBeSent"\)/);

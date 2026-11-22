@@ -26,7 +26,7 @@ assert.match(program, /if \(!first\)/);
 
 // Startup checks for verified automatic updates before starting site work.
 assert.match(main, /_ = InitializeWindowsBootAsync\(\)/);
-assert.match(main, /moreMenu\.Items\.Add\(BuildWindowsStartupMenu\(\)\)/);
+assert.match(main, /settingsMenu\.DropDownItems\.Add\(BuildWindowsStartupMenu\(\)\)/);
 assert.match(boot, /await CheckForUpdateAsync\(automatic: true\)/);
 assert(boot.indexOf('await CheckForUpdateAsync(automatic: true)') <
        boot.indexOf('await StartSelectedSystemsAsync(silentStartup: true)'));

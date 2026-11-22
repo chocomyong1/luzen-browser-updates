@@ -70,7 +70,7 @@ async function inspect({host='www.itemmania.com',number=listing,hasButton=true}=
   assert.match(flow,/BuildSubmitValidatorSourceScript\(job\.ListingNumber\)/);
   // The real top toolbar's 관리 menu must expose the diagnostic. A prior
   // release only wired it to the hidden edit-only extra-actions menu.
-  assert.match(main,/moreMenu\.Items\.Add\("사이트 가격 수정폼 분석·복사 \(제출 없음\)"/);
+  assert.match(main,/diagnosticsMenu\.DropDownItems\.Add\("사이트 가격 수정폼 분석·복사 \(제출 없음\)"/);
   assert.match(main,/_module\.InspectSelectedPriceSubmitFromHeaderAsync\(\)/);
   assert.match(automation,/public Task InspectSelectedPriceSubmitFromHeaderAsync\(\) => InspectSelectedPriceSubmitBindingsAsync\(\);/);
   assert.match(flow,/SitePriceEdit\.SubmitValidatorSourceStatusScript/);

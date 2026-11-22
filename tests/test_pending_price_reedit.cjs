@@ -41,5 +41,5 @@ assert.match(scheduler, /if \(!_submissionVerificationPending\) _currentRun\?\.C
 assert.match(scheduler, /!_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport/);
 assert.match(main, /if \(!CanInstallUpdateAcrossSystems\)/);
 assert.match(main, /_moduleA\.SaveListings\(\); _moduleB\.SaveListings\(\); _moduleC\.SaveListings\(\)/);
-assert.match(updater, /public const string CurrentVersion = "22\.3\.33"/);
+assert.match(updater, /public const string CurrentVersion = "22\.3\.34"/);
 console.log('PASS re-edit queued prices, defer active submission edits, preserve latest request across stop/update');

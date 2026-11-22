@@ -262,9 +262,6 @@ internal sealed partial class MainForm : Form
         _integratedButton = AddToolButton(bar, "통합 편집", ToggleIntegratedEditor, 105);
         _marketButton = AddToolButton(bar, "시세 분석", ToggleMarketView, 96);
         var moreMenu = new ContextMenuStrip();
-        moreMenu.Items.Add(BuildWindowsStartupMenu());
-        moreMenu.Items.Add(BuildAutoStartTargetsMenu());
-        moreMenu.Items.Add(new ToolStripSeparator());
         moreMenu.Items.Add("내 등록글 불러오기", null, async (_, _) =>
         {
             try { await _module.ImportMyRegisteredListingsFromHeaderAsync(); }
@@ -274,51 +271,57 @@ internal sealed partial class MainForm : Form
                     MyListingsImportPhase.Failed);
             }
         });
-        moreMenu.Items.Add(new ToolStripSeparator());
-        var addSubmenu = new ToolStripMenuItem("새 물품 추가");
-        addSubmenu.DropDownItems.Add("판매글 추가", null, (_, _) => AddNewListing("판매등록"));
-        addSubmenu.DropDownItems.Add("구매글 추가", null, (_, _) => AddNewListing("구매등록"));
-        addSubmenu.DropDownItems.Add("재등록 추가", null, (_, _) => AddNewListing("재등록"));
-        moreMenu.Items.Add(addSubmenu);
-        moreMenu.Items.Add("물품 복제", null, (_, _) => _module.DuplicateListing());
-        moreMenu.Items.Add("선택 물품 삭제", null, (_, _) => _module.RemoveListing());
-        moreMenu.Items.Add("설정 저장", null, (_, _) => _module.SaveListings());
-        moreMenu.Items.Add("로컬 목록 새로고침", null, (_, _) => _module.RefreshListings());
-        moreMenu.Items.Add("가격 수정 예약 현황", null, (_, _) => ShowPriceReservationsDialog());
-        moreMenu.Items.Add(new ToolStripSeparator());
-        moreMenu.Items.Add("아이템매니아 계정", null, (_, _) => _module.OpenAccountSettings());
-        moreMenu.Items.Add("시간당 등록 횟수 설정", null, (_, _) => _module.OpenHourlyLimitSettings());
-        moreMenu.Items.Add("고급 설정", null, (_, _) => _module.ShowWorkflowSettings());
-        moreMenu.Items.Add("텔레그램 알림 설정", null, (_, _) => _module.OpenTelegramSettings());
-        moreMenu.Items.Add("B VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("B"));
-        moreMenu.Items.Add("C VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("C"));
-        moreMenu.Items.Add(new ToolStripSeparator());
-        moreMenu.Items.Add("선택 1건 조회시험", null, async (_, _) => await _module.ProbeSelectedRepostFromHeaderAsync());
-        moreMenu.Items.Add("선택 1건 가격 즉시 수정 (사이트 자동 클릭)", null,
-            async (_, _) => await _module.ApplySelectedSitePriceFromHeaderAsync());
         moreMenu.Items.Add("체크한 구매글 가격 일괄 반영", null,
             async (_, _) => await _module.ApplyCheckedSitePricesFromHeaderAsync());
-        moreMenu.Items.Add("신규글 입력시험 (미제출)", null,
+        moreMenu.Items.Add("선택 1건 가격 즉시 수정", null,
+            async (_, _) => await _module.ApplySelectedSitePriceFromHeaderAsync());
+        moreMenu.Items.Add("가격 수정 예약 현황", null, (_, _) => ShowPriceReservationsDialog());
+        moreMenu.Items.Add(new ToolStripSeparator());
+        var listingMenu = new ToolStripMenuItem("물품 관리");
+        listingMenu.DropDownItems.Add("판매글 추가", null, (_, _) => AddNewListing("판매등록"));
+        listingMenu.DropDownItems.Add("구매글 추가", null, (_, _) => AddNewListing("구매등록"));
+        listingMenu.DropDownItems.Add("재등록 추가", null, (_, _) => AddNewListing("재등록"));
+        listingMenu.DropDownItems.Add(new ToolStripSeparator());
+        listingMenu.DropDownItems.Add("물품 복제", null, (_, _) => _module.DuplicateListing());
+        listingMenu.DropDownItems.Add("선택 물품 삭제", null, (_, _) => _module.RemoveListing());
+        listingMenu.DropDownItems.Add("설정 저장", null, (_, _) => _module.SaveListings());
+        listingMenu.DropDownItems.Add("로컬 목록 새로고침", null, (_, _) => _module.RefreshListings());
+        moreMenu.Items.Add(listingMenu);
+
+        var settingsMenu = new ToolStripMenuItem("설정");
+        settingsMenu.DropDownItems.Add("아이템매니아 계정", null, (_, _) => _module.OpenAccountSettings());
+        settingsMenu.DropDownItems.Add("시간당 등록 횟수 설정", null, (_, _) => _module.OpenHourlyLimitSettings());
+        settingsMenu.DropDownItems.Add("고급 설정", null, (_, _) => _module.ShowWorkflowSettings());
+        settingsMenu.DropDownItems.Add("텔레그램 알림 설정", null, (_, _) => _module.OpenTelegramSettings());
+        settingsMenu.DropDownItems.Add("B VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("B"));
+        settingsMenu.DropDownItems.Add("C VPN 연결 설정", null, (_, _) => OpenSystemNetworkSettings("C"));
+        settingsMenu.DropDownItems.Add(new ToolStripSeparator());
+        settingsMenu.DropDownItems.Add(BuildWindowsStartupMenu());
+        settingsMenu.DropDownItems.Add(BuildAutoStartTargetsMenu());
+        settingsMenu.DropDownItems.Add("업데이트 주소 · 자동설치 설정", null, (_, _) => OpenUpdateSettingsDialog());
+        settingsMenu.DropDownItems.Add("설정 백업·복원", null, (_, _) => OpenSettingsBackupDialog());
+        moreMenu.Items.Add(settingsMenu);
+
+        var diagnosticsMenu = new ToolStripMenuItem("진단·도움말");
+        diagnosticsMenu.DropDownItems.Add("선택 1건 조회시험", null,
+            async (_, _) => await _module.ProbeSelectedRepostFromHeaderAsync());
+        diagnosticsMenu.DropDownItems.Add("신규글 입력시험 (미제출)", null,
             async (_, _) => await _module.TestSelectedNewRegistrationFromHeaderAsync());
-        moreMenu.Items.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,
+        diagnosticsMenu.DropDownItems.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,
             async (_, _) => await _module.InspectSelectedPriceSubmitFromHeaderAsync());
         var traceMenuItem = new ToolStripMenuItem("수정 요청 기록");
         traceMenuItem.Click += async (_, _) => await _module.ToggleSiteTraceFromHeaderAsync(traceMenuItem);
-        moreMenu.Items.Add(traceMenuItem);
+        diagnosticsMenu.DropDownItems.Add(traceMenuItem);
         moreMenu.Opening += (_, _) => traceMenuItem.Text = _module.SiteTraceIsActive ? "기록 종료·복사" : "수정 요청 기록";
-        moreMenu.Items.Add(new ToolStripSeparator());
-        moreMenu.Items.Add("업데이트 확인 · 설치", null,
-            (_, _) => _ = CheckForUpdateAsync(automatic: false, installImmediately: true));
-        moreMenu.Items.Add("업데이트 주소 · 자동설치 설정", null, (_, _) => OpenUpdateSettingsDialog());
-        moreMenu.Items.Add("설정 백업·복원", null, (_, _) => OpenSettingsBackupDialog());
-        moreMenu.Items.Add(new ToolStripSeparator());
-        moreMenu.Items.Add("도움말", null, (_, _) => MessageBox.Show(this,
+        diagnosticsMenu.DropDownItems.Add("도움말", null, (_, _) => MessageBox.Show(this,
             "모서리·테두리를 끌어서 크기를 자유롭게 바꿀 수 있습니다.\n" +
             "사이트 화면은 표시하지 않으며 내부 브라우저에서만 작업합니다.\n" +
             "자동등록 목록, 물품등록 편집, 일괄 CSV 관리, 고급 작업 설정을 사용할 수 있습니다.\n" +
             "보안 확인이나 추가 인증이 필요한 경우 자동 작업은 완료되지 않을 수 있습니다.\n" +
             "실제 사이트 등록 성공 여부는 Windows에서 별도 검증이 필요합니다.", "사용 안내"));
-        moreMenu.Items.Add("프로그램 닫기", null, (_, _) => Close());
+        moreMenu.Items.Add(diagnosticsMenu);
+        moreMenu.Items.Add("업데이트 확인 · 설치", null,
+            (_, _) => _ = CheckForUpdateAsync(automatic: false, installImmediately: true));
         Button? moreButton = null;
         moreButton = AddToolButton(bar, "관리 ▾", () => moreMenu.Show(moreButton!, 0, moreButton!.Height), 85);
         RefreshSystemLabel();

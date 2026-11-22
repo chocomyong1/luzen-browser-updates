@@ -30,7 +30,7 @@ assert.doesNotMatch(audit, /MarkAttempt|ExecuteJobAsync|SubmitAsync|\.click\(|Ap
 // deferred until old WinForms forms have closed, and never auto-submits.
 assert.match(main, /UserSettingsSnapshots\.CreateSnapshot\("daily", daily: true\)/);
 assert.match(main, /UserSettingsSnapshots\.CreateSnapshot\("pre-update"\);\s*AppUpdateService\.StartExternalInstaller/);
-assert.match(main, /moreMenu\.Items\.Add\("설정 백업·복원"/);
+assert.match(main, /settingsMenu\.DropDownItems\.Add\("설정 백업·복원"/);
 assert.match(ui, /CanInstallUpdateAcrossSystems/);
 assert.match(ui, /UserSettingsSnapshots\.RequestRestore\(filename\)/);
 assert.match(boot, /UserSettingsSnapshots\.ApplyPendingRestoreOnStartup\(\)/);
