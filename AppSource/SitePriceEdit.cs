@@ -411,8 +411,17 @@ internal static class SitePriceEdit
         !p.titleChanged()&&p.others.every(o=>String(o.element.value??'')===o.value||safePriceField(o))&&
         (document.elementFromPoint(x,y)===button||button.contains?.(document.elementFromPoint(x,y)));
       button.addEventListener('click',e=>{
+        const otherFieldsUnchanged=p.others.every(o=>
+          String(o.element.value??'')===o.value||safePriceField(o));
+        if(!p.canType()||p.money(p.priceInput.value)!==p.desired||
+          p.titleChanged()||!otherFieldsUnchanged){
+          p.guardBlocked=true;
+          e.preventDefault();e.stopImmediatePropagation();
+          window.alert('가격 외 다른 입력값이 변경되었거나 등록번호·가격을 확인할 수 없습니다. 사이트 재등록을 중단했습니다.');
+          return;
+        }
         p.clickSeen=true;p.clickTrusted=e.isTrusted===true;
-      },{capture:true,once:true});
+      },{capture:true});
       // The site attaches an anonymous DOM0 onsubmit handler. Its native
       // event functions MUST NOT be replaced, proxied or wrapped: that can
       // interfere with the form's own JavaScript submit validation. Observe
@@ -428,7 +437,8 @@ internal static class SitePriceEdit
       const protectTitleAtSubmit=e=>{
         if(e.target!==p.form)return;
         p.submitSeen=true;p.submitEvent=e;
-        if(p.titleChanged()){
+        if(p.titleChanged()||p.money(p.priceInput.value)!==p.desired||
+          p.others.some(o=>String(o.element.value??'')!==o.value&&!safePriceField(o))){
           p.guardBlocked=true;e.preventDefault();e.stopImmediatePropagation();
         }
       };
@@ -439,6 +449,11 @@ internal static class SitePriceEdit
       return result('armed','사이트 가격칸의 실제 키보드 입력 및 원본 제목 확인 · 재등록 단건 클릭 준비',x,y);
     })()
     """;
+
+    // Read-only signal used when closing the visible official editor. A
+    // canceled click does not count as a price submission attempt.
+    public const string NativePriceButtonClickedScript =
+        "(()=>window.__luzenPriceNativeProbe?.clickSeen===true)()";
 
     // Read-only result of the ONE native browser-input trial; does not inspect
     // field values, credentials or request contents and never invokes submit.

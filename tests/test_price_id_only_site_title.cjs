@@ -35,7 +35,7 @@ assert.match(readback,/matchingOld\.Count == 1 && TrySitePrice\(matchingOld\[0\]
 assert.match(readback,/bool titleDifferent = expectedTitle\.Length > 0/);
 assert.doesNotMatch(readback,/legacyTitleFallback && MyListingsImport\.HasSuspiciousDuplicatedLevel/);
 assert.match(script,/AutomaticPriceSubmissionEnabled\s*=>\s*false/);
-assert.match(script,/if\(p\.titleChanged\(\)\)\{/);
+assert.match(script,/if\(p\.titleChanged\(\)\|\|p\.money\(p\.priceInput\.value\)!==p\.desired/);
 const submissionScripts=script.slice(script.indexOf('public const string VerifyNativePriceInputScript'));
 assert.doesNotMatch(submissionScripts.replace(/\/\/[^\n]*/g,''),/\bfetch\s*\(|\bnew\s+FormData\s*\(/);
 console.log('PASS exact listing ID and target price verify changes regardless of historical title differences');

@@ -3530,6 +3530,11 @@ internal sealed partial class AutomationForm : Form
     // generic confirmation, payments, deletion, account checks or other pages.
     private void OnItemManiaScriptDialog(object? sender, CoreWebView2ScriptDialogOpeningEventArgs e)
     {
+        if (_visibleSitePriceEditWindow is not null)
+        {
+            HandleVisibleSitePriceDialog(e);
+            return;
+        }
         if (!string.IsNullOrWhiteSpace(_armedSitePriceEditNumber))
         {
             HandleSitePriceEditScriptDialog(e);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -11,8 +12,106 @@ namespace LuzenBrowserReplica;
 internal sealed partial class AutomationForm
 {
     private string _armedSitePriceEditNumber = "";
+    private Form? _visibleSitePriceEditWindow;
     private string _sitePriceEditDialogWarning = "";
     private string _lastSitePriceEditFailure = "";
+
+    // The official BUY editor's FormChecker can reject a submit before any
+    // network request. Keep the actual site visible for this single manual
+    // operation so its native validation messages can be corrected in place.
+    private DialogResult ShowVisibleSinglePriceEditor(ListingJob job, long current, long desired,
+        SitePriceSubmitObserver observer)
+    {
+        var originalParent = _web.Parent ?? throw new InvalidOperationException("사이트 브라우저의 원래 창을 찾지 못했습니다.");
+        var originalBounds = _web.Bounds;
+        var originalDock = _web.Dock;
+        using var window = new Form
+        {
+            Text = "등록번호 " + job.ListingNumber + " · 사이트 가격 수정",
+            Width = 1250, Height = 880, MinimumSize = new Size(800, 600),
+            StartPosition = FormStartPosition.CenterParent
+        };
+        var instructions = new Label
+        {
+            Dock = DockStyle.Top, Height = 65, Padding = new Padding(15, 10, 15, 4),
+            Text = $"등록번호 {job.ListingNumber}  |  {current:N0}원 → {desired:N0}원\n" +
+                "사이트의 [재등록]을 직접 누르세요. 사이트 안내가 뜨면 확인한 뒤 아래 [결과 확인]을 누르세요."
+        };
+        var controls = new Panel { Dock = DockStyle.Bottom, Height = 57, Padding = new Padding(8) };
+        var verify = new Button { Text = "사이트 제출 후 결과 확인", Width = 220, Height = 36,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right, Left = 770, Top = 9 };
+        var close = new Button { Text = "창 닫기", Width = 112, Height = 36,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right, Left = 1000, Top = 9 };
+        controls.Resize += (_, _) =>
+        {
+            close.Left = controls.ClientSize.Width - close.Width - 12;
+            verify.Left = close.Left - verify.Width - 10;
+        };
+        verify.Click += async (_, _) =>
+        {
+            verify.Enabled = false;
+            try
+            {
+                // Contact/category AJAX is asynchronous. A canceled DOM0
+                // submit is not itself proof that the site has finished.
+                if (!observer.FinalPostStarted) await Task.Delay(1600);
+                if (!observer.FinalPostStarted)
+                {
+                    MessageBox.Show(window,
+                        "사이트의 최종 가격 수정 요청이 아직 확인되지 않았습니다.\n\n" +
+                        "수정 화면에 오류나 확인 안내가 있는지 살펴보고 사이트 [재등록] 버튼을 눌러 주세요.\n" +
+                        "이 창에서는 제출 버튼을 대신 누르지 않습니다.",
+                        "사이트 제출 대기", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                window.DialogResult = DialogResult.OK;
+                window.Close();
+            }
+            finally { if (!window.IsDisposed) verify.Enabled = true; }
+        };
+        close.Click += (_, _) => { window.DialogResult = DialogResult.Cancel; window.Close(); };
+        controls.Controls.AddRange(new Control[] { verify, close });
+        var browserHost = new Panel { Dock = DockStyle.Fill };
+        window.Controls.Add(browserHost);
+        window.Controls.Add(controls);
+        window.Controls.Add(instructions);
+        try
+        {
+            originalParent.Controls.Remove(_web);
+            _web.Dock = DockStyle.Fill;
+            browserHost.Controls.Add(_web);
+            _visibleSitePriceEditWindow = window;
+            return window.ShowDialog(this);
+        }
+        finally
+        {
+            _visibleSitePriceEditWindow = null;
+            browserHost.Controls.Remove(_web);
+            _web.Dock = originalDock;
+            originalParent.Controls.Add(_web);
+            _web.Bounds = originalBounds;
+            _web.Visible = true;
+        }
+    }
+
+    private void HandleVisibleSitePriceDialog(Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogOpeningEventArgs e)
+    {
+        if (_visibleSitePriceEditWindow is not Form window) return;
+        if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps || !ItemManiaAccountStore.IsOfficialSite(uri)) return;
+        var message = (e.Message ?? "").Trim();
+        if (message.Length > 1000) message = message[..1000] + "…";
+        if (e.Kind == Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogKind.Alert)
+        {
+            MessageBox.Show(window, message, "아이템매니아 안내", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            e.Accept();
+        }
+        else if (e.Kind == Microsoft.Web.WebView2.Core.CoreWebView2ScriptDialogKind.Confirm)
+        {
+            if (MessageBox.Show(window, message, "아이템매니아 확인", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes) e.Accept();
+        }
+    }
     private string _sitePriceReadbackNote = "";
     // An in-flight site price target is deferred until its readback completes.
     // Other listings may replace their local reservation without site access.
@@ -266,7 +365,7 @@ internal sealed partial class AutomationForm
         };
         var description = new Label
         {
-            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n자동시작 없이 이 글 한 건만 실제 사이트에 제출합니다.",
+            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n자동시작 없이 이 글의 사이트 가격 수정 창을 엽니다.",
             AutoSize = true, Left = 18, Top = 17
         };
         var amount = new NumericUpDown
@@ -278,7 +377,7 @@ internal sealed partial class AutomationForm
             ? job.Price : job.PendingSitePriceTarget;
         if (TrySitePrice(preset, out var currentAmount))
             amount.Value = Math.Clamp((decimal)currentAmount, amount.Minimum, amount.Maximum);
-        var apply = new Button { Text = "이 1건 즉시 수정", DialogResult = DialogResult.OK,
+        var apply = new Button { Text = "가격 수정 창 열기", DialogResult = DialogResult.OK,
             Left = 192, Top = 132, Width = 135, Height = 32 };
         var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel,
             Left = 338, Top = 132, Width = 94, Height = 32 };
@@ -663,6 +762,7 @@ internal sealed partial class AutomationForm
         bool previousEnabled = job.Enabled;
         DateTime previousDue = job.NextDueUtc;
         string previousStatus = job.LastStatus;
+        string previousPendingPrice = job.PendingSitePriceTarget;
         try
         {
             await _web.EnsureCoreWebView2Async(await ItemManiaWebViewProfile.GetAsync(_system));
@@ -716,9 +816,10 @@ internal sealed partial class AutomationForm
                 $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n사이트 현재 제목: {siteTitleSnapshot}\n\n" +
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
                 (nativeSingleApproval ?
-                    "자동 시작과 관계없이 선택한 이 1건만 즉시 제출합니다.\n" +
+                    "자동 시작과 관계없이 선택한 이 1건의 사이트 수정 창을 엽니다.\n" +
+                    "가격 입력 후 공식 사이트의 '재등록' 버튼은 직접 눌러야 합니다.\n" +
                     "사이트가 최종 제출을 거부하거나 결과가 불확실하면 자동 재시도하지 않습니다.\n\n" : "") +
-                "사이트의 구매 재등록 화면(frmBuy)에서 단가를 바꾼 뒤 사이트 기본 '재등록' 버튼을 사용합니다.\n" +
+                "사이트 구매 수정 화면(frmBuy)의 단가만 입력하고 다른 내용은 유지합니다.\n" +
                 "등록번호가 바뀔 수 있어 결과가 불확실하면 자동 실행을 보류합니다.\n" +
                 "재등록 횟수·서버 간격 제한에 포함되며 중복 제출하지 않습니다.";
             if (!bulkApproval && !diagnosticOnly && MessageBox.Show(this, ask, "실제 사이트 구매글 가격 변경", MessageBoxButtons.YesNo,
@@ -979,15 +1080,14 @@ internal sealed partial class AutomationForm
                 if (final.Status != "armed")
                     throw new InvalidOperationException("사이트 키보드 입력 후 폼 검증 실패: " + final.Message);
                 AppendLog("사이트 키보드 입력 후 제출폼 검증: " + final.Message);
-                // The callback runs only after the browser has validated
-                // the exact button and its coordinates for the last time.
-                // Save BEFORE mousePressed, never after a possibly accepted POST.
-                await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token, () =>
+                if (nativeSingleApproval)
                 {
-                    if (fromScheduler && !_schedulerRunning)
-                        throw new OperationCanceledException("자동등록 중지로 사이트 제출 전 취소됐습니다.");
-                    if (!CanRunNow(job, out var clickQuotaReason))
-                        throw new InvalidOperationException(clickQuotaReason);
+                    // User-driven price editing is a separate, visible path.
+                    // The site's FormChecker can cancel its initial submit
+                    // with an alert, without ever issuing a POST. The user
+                    // must see that native form and its validation messages.
+                    // Save the uncertain-outcome checkpoint BEFORE exposing
+                    // the actual site submit button, not after a possible POST.
                     var submittedAt = DateTime.UtcNow;
                     HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
                     _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
@@ -1001,9 +1101,51 @@ internal sealed partial class AutomationForm
                     _config.Save();
                     _submissionVerificationPending = true;
                     submitted = true;
-                    AppendLog("구매글 선택 1건 실제 클릭 직전 결과 확인 대기 저장 (중복 제출 방지)");
-                });
-                submitScriptNote = "가격칸 실제 키보드 입력 후 검증된 재등록 버튼 브라우저 클릭 1회 (서버 반영은 별도 확인)";
+                    AppendLog("구매글 가격만 입력 완료 · 공식 사이트 수정 화면 표시 (재등록 버튼은 사용자가 직접 누름)");
+                    var windowResult = ShowVisibleSinglePriceEditor(job, current, desired, submissionObserver);
+                    if (!submissionObserver.FinalPostStarted)
+                        await Task.Delay(1600, token);
+                    bool siteButtonClicked = submissionObserver.FinalPostStarted ||
+                        string.Equals(await _web.CoreWebView2.ExecuteScriptAsync(
+                            SitePriceEdit.NativePriceButtonClickedScript), "true", StringComparison.OrdinalIgnoreCase);
+                    if (!siteButtonClicked && !submissionObserver.FinalPostStarted)
+                    {
+                        // Neither an official POST nor a site submit click
+                        // occurred. Restore the previous listing state.
+                        submitted = false;
+                        job.PendingSitePriceTarget = previousPendingPrice;
+                        AppendLog("가격 수정 창을 닫았습니다. 사이트 제출이 없어 이 등록번호는 변경하지 않았습니다.");
+                        return false;
+                    }
+                    submitScriptNote = windowResult == DialogResult.OK
+                        ? "사용자가 공식 사이트 재등록 버튼을 눌러 제출 후 결과 확인을 요청함"
+                        : "사용자가 수정 창을 닫았으나 사이트 재등록 클릭/POST 흔적이 있어 결과 확인 중";
+                }
+                else
+                {
+                    // This fallback is never enabled for unattended price
+                    // batches. It remains available for audited testing.
+                    await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token, () =>
+                    {
+                        if (fromScheduler && !_schedulerRunning)
+                            throw new OperationCanceledException("자동등록 중지로 사이트 제출 전 취소됐습니다.");
+                        if (!CanRunNow(job, out var clickQuotaReason))
+                            throw new InvalidOperationException(clickQuotaReason);
+                        var submittedAt = DateTime.UtcNow;
+                        HourlyServerQuota.MarkAttempt(HourlyServerQuota.Current(_config.ServerHourlyCounters, job, submittedAt));
+                        _config.LastServerAttemptUtc[HourlyServerQuota.Key(job)] = submittedAt;
+                        job.RequiresReview = true;
+                        job.Enabled = false;
+                        job.LastStatus = "구매글 가격 재등록 제출 중: 결과 확인 필요";
+                        job.NextDueUtc = DateTime.MaxValue;
+                        job.PriceEditSiteTitleSnapshot = siteTitleSnapshot;
+                        _config.Jobs = _jobs.ToList();
+                        _config.Save();
+                        _submissionVerificationPending = true;
+                        submitted = true;
+                    });
+                    submitScriptNote = "가격칸 실제 키보드 입력 후 재등록 버튼 브라우저 클릭 1회";
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -1111,6 +1253,7 @@ internal sealed partial class AutomationForm
                 job.Enabled = previousEnabled;
                 job.NextDueUtc = previousDue;
                 job.LastStatus = previousStatus;
+                job.PendingSitePriceTarget = previousPendingPrice;
                 _config.Jobs = _jobs.ToList();
                 _config.Save();
             }

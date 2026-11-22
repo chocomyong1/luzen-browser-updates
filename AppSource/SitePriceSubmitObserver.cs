@@ -48,6 +48,10 @@ internal sealed class SitePriceSubmitObserver : IDisposable
     private int? _httpStatus;
     private bool _disposed;
 
+    // Used by the visible one-listing price editor to keep the official page
+    // open when FormChecker has not sent its final request yet.
+    public bool FinalPostStarted => _requestId.Length > 0;
+
     public SitePriceSubmitObserver(CoreWebView2 core) => _core = core;
 
     public async Task StartAsync()
