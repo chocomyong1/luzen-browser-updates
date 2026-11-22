@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.31",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.31/LuzenBrowser_22.3.31_BinaryUpdate.zip",
-  "sha256": "5b58a279699c65839d91df9e7eb73918f33b73be1c23feb34a7d1cbeb934a228",
+  "version": "22.3.32",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.32/LuzenBrowser_22.3.32_BinaryUpdate.zip",
+  "sha256": "9208e486a8dd05fd779e06dedffd76ce3da2c6de1116a2cd09361d60e691d8a5",
   "format": "binary",
-  "releaseNotes": "v22.3.31 구매글 일괄 가격 수정을 백그라운드에서 실행합니다. 동일한 16자리 등록번호의 관리목록 제목을 복원하고, 0원·프리미엄 0시간인 사이트 확인은 일괄 승인 범위에서 진행합니다."
+  "releaseNotes": "v22.3.32 일괄 가격 수정이 진행되는 동안 현재 단계와 확인 건수를 표시합니다. 남은 건 중지와 미제출 가격 요청 일괄 취소 기능을 추가했습니다. 아이템매니아에서 동일한 등록번호의 구매글 2건 가격 변경을 확인했습니다."
 }
