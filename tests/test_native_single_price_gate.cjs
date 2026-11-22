@@ -66,6 +66,9 @@ assert.match(app, /private async Task RecheckSelectedPriceWithoutSubmitAsync\(\)
 assert.match(app, /await InspectPendingSitePriceOnlyAsync\(job, \(long\)amount.Value, confirmLocalOnExact: true\)/);
 assert.match(app, /job\.RequiresReview = true;\s*job\.Enabled = false;\s*job\.NextDueUtc = DateTime\.MaxValue;\s*job\.LastStatus = "사이트 단가 재조회 확인/);
 assert.match(app, /form\.Status == "restore-needed" && nativeSingleApproval/);
+assert.match(app, /result\.Status == "restore-needed" && nativeSingleApproval && !titleRestoreApproved/);
+assert.match(app, /if \(!ConfirmExactSitePriceTitleRestore\(result\)\) return false;/);
+assert.match(app, /result = SitePriceEdit\.Decode\(await _web\.CoreWebView2\.ExecuteScriptAsync\(/);
 assert.match(app, /MessageBoxDefaultButton\.Button2/);
 assert.match(app, /records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
 assert.match(app, /job\.Price = desired\.ToString\("N0"\)/);

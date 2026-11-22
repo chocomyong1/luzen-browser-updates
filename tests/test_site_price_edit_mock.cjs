@@ -447,6 +447,22 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(secondary.evaluate(true,number,'10000',true,'1','9995',true).status,'input-ready');
   assert.equal(secondary.titleInput.value,'9 9 레벨 겁화 삽니다');
 
+  // Reproduces the screenshot: the first inspection saw the original
+  // title, but the site's delayed template conversion replaced its first
+  // level before input preparation. The host must ask for approval at this
+  // second checkpoint and retry the exact same safe input preparation.
+  const late = editFormCase({approvedSubmit:true,
+    savedTitle:'9 9 9 레벨 겁화 작열 구매합니다',
+    formTitle:'9 9 9 레벨 겁화 작열 구매합니다'});
+  assert.equal(late.evaluate(false,number,'10000',true,'1','999').status,'ready');
+  late.titleInput.value='1 ~ 999 9 9 레벨 겁화 작열 구매합니다';
+  assert.equal(late.evaluate(true,number,'10000',true,'1','999').status,'restore-needed');
+  assert.equal(late.evaluate(true,number,'10000',true,'1','999',true).status,'input-ready');
+  assert.equal(late.titleInput.value,'9 9 9 레벨 겁화 작열 구매합니다');
+  late.simulateTyping();
+  assert.equal(late.finalize().status,'armed');
+  assert.equal(late.clicked,0,'Late restoration must not silently submit the listing');
+
   // A wrong range, a changed level token, or a changed suffix can never be
   // repaired solely because the registration ID matches.
   for (const [formTitle, min, max] of [

@@ -112,6 +112,22 @@ internal sealed partial class AutomationForm
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes) e.Accept();
         }
     }
+
+    private bool ConfirmExactSitePriceTitleRestore(SitePriceEditResult form)
+    {
+        // Re-registration submits the site's entire BUY form. The site may
+        // asynchronously replace the FIRST level with the split range, even
+        // after an earlier read-only inspection returned "ready". This
+        // approval is only for the independently checked ID + OWN-list title
+        // and the verified quantity range; it is not a title search.
+        return MessageBox.Show(this,
+            "사이트 수정 화면의 제목이 원본과 다르게 만들어졌습니다.\n\n" + form.Message +
+            "\n\n승인하면 이 한 건의 수정폼 제목만 관리목록에서 확인한 원래 제목으로 복구합니다." +
+            "\n가격 외 다른 내용을 의도적으로 수정하지 않습니다." +
+            "\n\n원래 제목을 복구하고 계속할까요?",
+            "등록번호 확인 · 원래 제목 복구", MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    }
     private string _sitePriceReadbackNote = "";
     // An in-flight site price target is deferred until its readback completes.
     // Other listings may replace their local reservation without site access.
@@ -983,17 +999,7 @@ internal sealed partial class AutomationForm
             bool titleRestoreApproved = false;
             if (form.Status == "restore-needed" && nativeSingleApproval)
             {
-                // The official edit page turned the first 8/9/10-level token
-                // into the exact, independently verified OWN-list split range.
-                // Never silently submit that corrupted title or overwrite it:
-                // make the one-item title-restoration risk explicit to the user.
-                if (MessageBox.Show(this,
-                    "사이트 수정 화면의 제목이 원본과 다르게 만들어졌습니다.\n\n" + form.Message +
-                    "\n\n승인하면 단 한 건의 수정폼 제목을 관리목록에서 확인한 제목으로 되돌리고 가격을 변경합니다." +
-                    "\n사이트가 제출 중 제목을 다시 바꿀 위험은 아직 실사이트에서 검증되지 않았습니다." +
-                    "\n\n이 구매글 한 건만 시험할까요?",
-                    "원본 제목 복구 후 선택 1건 즉시 수정", MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
+                if (!ConfirmExactSitePriceTitleRestore(form)) return false;
                 titleRestoreApproved = true;
             }
             if (form.Status != "ready" && !titleRestoreApproved)
@@ -1046,6 +1052,19 @@ internal sealed partial class AutomationForm
                     SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
                         siteTitleSnapshot, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity,
                         titleRestoreApproved, trustedOneClick: true, nativeKeyboardPrice: true)));
+                if (result.Status == "restore-needed" && nativeSingleApproval && !titleRestoreApproved)
+                {
+                    // The site's delayed reRegSet()/template code may rewrite
+                    // the title AFTER the initial read-only check. Ask once
+                    // at the final input-preparation point, then re-run the
+                    // same exact-ID/range/old-price guard with approval.
+                    if (!ConfirmExactSitePriceTitleRestore(result)) return false;
+                    titleRestoreApproved = true;
+                    result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
+                        SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
+                            siteTitleSnapshot, nativeSingleApproval, records[0].MinQuantity, records[0].MaxQuantity,
+                            titleRestoreApproved, trustedOneClick: true, nativeKeyboardPrice: true)));
+                }
                 submitScriptNote = result.Message;
                 if (result.Status != "input-ready")
                     throw new InvalidOperationException("사이트 가격 입력칸 검증 실패: " + result.Message);
