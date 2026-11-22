@@ -19,7 +19,7 @@ const target = '35100';
 const url = 'https://www.itemmania.com/myroom/buy/buy_re_reg.html';
 
 async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit=false,
-  dom0Cancels=false, multiLevel=false) {
+  dom0Cancels=false, multiLevel=false, otherFieldChanged=false) {
   const recordTitle=multiLevel?'10 10 10 레벨 작열 구매합니다':title;
   const editTitle=multiLevel?'1 ~ 999 10 10 레벨 작열 구매합니다':siteTitle;
   const context = await browser.newContext({viewport:{width:1100,height:750}});
@@ -31,6 +31,7 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
     <form id="frmBuy" action="/myroom/buy/buy_re_reg_ok.php" method="post">
       <input type="hidden" name="registration_id" value="${listingId}">
       <label>제목<input name="user_title" value="${editTitle}"></label>
+      <label>캐릭터명<input name="user_character" value="original-character"></label>
       <table><tr><th>구매금액</th><td><input name="user_division_price" value="10,000"></td></tr></table>
       <button type="submit" id="ok_btn" class="buy_re_reg">재등록</button>
     </form>
@@ -127,6 +128,17 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
       'The submit button must settle before one native click');
     refreshed=second;
   }
+  if(otherFieldChanged){
+    await page.locator('[name=user_character]').fill('unexpected-change');
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('#ok_btn').click();
+    assert.equal(await page.evaluate(script('NativePriceButtonClickedScript')),false,
+      'A manual click must not count when another listing field changed');
+    assert.equal(await page.evaluate(()=>window.siteAttempted),false,
+      'An unrelated field change must prevent the actual site submission');
+    await context.close();
+    return;
+  }
   assert.equal(await page.evaluate(script('VerifyNativeClickScript')),true);
   await move('mousePressed','left',1,1,refreshed.x,refreshed.y);
   await move('mouseReleased','left',0,1,refreshed.x,refreshed.y);
@@ -166,7 +178,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   try{await oneTrial(browser,false);await oneTrial(browser,true);
     await oneTrial(browser,false,true);await oneTrial(browser,false,false,true);
     await oneTrial(browser,false,false,false,true);
-    await oneTrial(browser,false,false,false,false,true);}
+    await oneTrial(browser,false,false,false,false,true);
+    await oneTrial(browser,false,false,false,false,false,true);}
   finally{await browser.close();}
   console.log('PASS real Chromium key input triggers site validators; only one native click; late title mutation blocked');
 })().catch(error=>{console.error(error);process.exitCode=1;});

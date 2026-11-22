@@ -1234,10 +1234,10 @@ internal sealed partial class AutomationForm : Form
             return b;
         }
         FooterButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
-        FooterButton("1건 즉시 가격 수정", 156,
+        FooterButton("1건 가격 수정 창", 156,
             () => _ = ApplySelectedSitePriceAsync(_selected), true);
         var extraActions = new ContextMenuStrip();
-        extraActions.Items.Add("선택 1건 즉시 가격 수정 (실제 제출)", null,
+        extraActions.Items.Add("선택 1건 가격 수정 (사이트 창)", null,
             async (_, _) => await ApplySelectedSitePriceAsync());
         extraActions.Items.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,
             async (_, _) => await InspectSelectedPriceSubmitBindingsAsync());
@@ -3530,6 +3530,11 @@ internal sealed partial class AutomationForm : Form
     // generic confirmation, payments, deletion, account checks or other pages.
     private void OnItemManiaScriptDialog(object? sender, CoreWebView2ScriptDialogOpeningEventArgs e)
     {
+        if (_visibleSitePriceEditWindow is not null)
+        {
+            HandleVisibleSitePriceDialog(e);
+            return;
+        }
         if (!string.IsNullOrWhiteSpace(_armedSitePriceEditNumber))
         {
             HandleSitePriceEditScriptDialog(e);
