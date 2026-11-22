@@ -184,7 +184,7 @@ async function asynchronousFirstPartySubmitTrial(browser) {
       finalPosts.push(request);
   });
   await page.route(url,route=>route.fulfill({status:200,contentType:'text/html',body:`
-    <html><body>
+    <!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
     <form id="frmBuy" method="post" action="/myroom/buy/buy_re_reg_ok.php">
       <input type="hidden" name="registration_id" value="${listingId}">
       <input name="user_title" value="${title}">
