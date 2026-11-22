@@ -386,7 +386,8 @@ internal sealed partial class AutomationForm : Form
             _web.CoreWebView2.WebMessageReceived += OnWebMessage;
             _web.CoreWebView2.ScriptDialogOpening += OnItemManiaScriptDialog;
             _autoLogin = new ItemManiaAutoLogin(_web, message => AppendLog(message), _system);
-            ItemManiaPopupHandler.InstallSilent(_web, message => AppendLog(message));
+            ItemManiaPopupHandler.InstallSilent(_web, message => AppendLog(message),
+                () => !string.IsNullOrWhiteSpace(_armedSitePriceEditNumber));
         };
         Shown += async (_, _) =>
         {
