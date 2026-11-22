@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.28",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.28/LuzenBrowser_22.3.28_BinaryUpdate.zip",
-  "sha256": "e6bc5e23bd1c5c8c1e28ea6253d82fa5ed4f6a45f71022c2b498d039b84f67ba",
+  "version": "22.3.29",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.29/LuzenBrowser_22.3.29_BinaryUpdate.zip",
+  "sha256": "dc0a532fefa4bf7336760ab4e94907b4b6d64b4b520c76eef491a9ef41ed1628",
   "format": "binary",
-  "releaseNotes": "v22.3.28 사이트 연락처 검사 승인(S) 뒤 후속 프리미엄 레이어가 나타나면 공식 무료·일반 등록 버튼 하나만 브라우저 입력으로 진행합니다. 유료 결제·보안 승인·불명확한 선택지는 차단하고 재등록 버튼/POST를 재시도하지 않습니다. 기존 등록번호·가격을 다시 확인해야 성공 처리하며 실제 계정 환경에서는 검증이 필요합니다."
+  "releaseNotes": "v22.3.29 가격 수정 중 사이트가 새 창을 요청하면 기존 페이지를 다른 곳으로 보내지 않고 같은 로그인 세션의 독립된 브라우저 창과 원본 창 연결을 보존합니다. 외부 URL·결제·보안 확인 자동 승인은 차단합니다. 기존 등록번호·가격 재조회로만 성공 판정하며 실제 계정에서는 검증이 필요합니다."
 }
