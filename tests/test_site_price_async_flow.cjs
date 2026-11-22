@@ -54,7 +54,9 @@ for(const endpoint of [
 assert.match(observer,/ValidationStage\(uri\.AbsolutePath\)/);
 assert.match(observer,/StageSummary\(\)/);
 assert.match(observer,/사이트 최종 재등록 POST 요청 미감지/);
-assert.doesNotMatch(observer,/GetRequestPostData|postData|GetResponseBody|request\.headers/i);
+assert.match(observer,/Network\.getResponseBody/);
+assert.match(observer,/"S" => new ContactDecision\(true/);
+assert.doesNotMatch(observer,/GetRequestPostData|postData|request\.headers/i);
 
 const dialog=flow.slice(flow.indexOf('private void HandleSitePriceEditScriptDialog('));
 assert.match(dialog,/CoreWebView2ScriptDialogKind\.Alert\)[\s\S]*?e\.Accept\(\)/);

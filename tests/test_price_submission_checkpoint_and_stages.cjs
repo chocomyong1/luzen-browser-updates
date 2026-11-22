@@ -1,6 +1,6 @@
 'use strict';
 // Offline safety contract only: neither a website request nor a price edit
-// is executed. The first-party AJAX response content is never inspected.
+// is executed. Only the first-party contact result token may be inspected.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -42,7 +42,12 @@ assert.match(observer, /_contactFinished = true/);
 assert.match(observer, /_categoryStarted = true/);
 assert.match(observer, /_categoryFinished = true/);
 assert.match(observer, /StalledBeforeFinalPost\(\)/);
-assert.doesNotMatch(observer, /GetRequestPostData|GetResponseBody|\.postData|\.headers|\.body|Fetch\.enable/);
+assert.match(observer, /Network\.getResponseBody/);
+assert.match(observer, /string token = body\.Split\('\|', 2\)\[0\]/);
+assert.match(observer, /"S" => new ContactDecision\(true/);
+assert.match(observer, /_ => new ContactDecision\(false/);
+assert.match(observer, /first == _contactDecision\.Task/);
+assert.doesNotMatch(observer, /GetRequestPostData|\.postData|\.headers|Fetch\.enable|AppendLog|Console\.Write/);
 assert.doesNotMatch(flow.slice(flowStart, observed), /Network\.getRequestPostData|form\.submit\(|fetch\(/);
 
 console.log('PASS precise pre-click checkpoint, user-visible first-party stages and non-retry safety');
