@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.39",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.39/LuzenBrowser_22.3.39_BinaryUpdate.zip",
-  "sha256": "85a517946bc7de61d8af57358c13f3ba2941d058b91d2909d49b2d1552ae67c2",
+  "version": "22.3.40",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.40/LuzenBrowser_22.3.40_BinaryUpdate.zip",
+  "sha256": "60bc3df2c48491e67373e4db06fc09b29579ec4ffd614bc603c260c3d5e77d33",
   "format": "binary",
-  "releaseNotes": "v22.3.39 물품 관리에서 VANTA 목록만 삭제하거나, 같은 16자리 등록번호를 확인한 뒤 아이템매니아 등록글을 공식 화면에서 삭제할 수 있습니다."
+  "releaseNotes": "v22.3.40 가격 수정 예약 현황에서 한 줄 또는 여러 줄을 선택하고 Delete 키로 요청을 정리할 수 있습니다. 사이트 가격과 등록글은 변경하지 않습니다."
 }
