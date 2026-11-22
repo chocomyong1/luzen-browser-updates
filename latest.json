@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.25",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.25/LuzenBrowser_22.3.25_BinaryUpdate.zip",
-  "sha256": "1d5a14c6700e2036868374780cadc1f45c52be2c6a5c43d6952f65293844f846",
+  "version": "22.3.26",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.26/LuzenBrowser_22.3.26_BinaryUpdate.zip",
+  "sha256": "9410f761fe7baf1eab7092a0283c478faf9ea1723268dd4c946241dc2a45b751",
   "format": "binary",
-  "releaseNotes": "v22.3.25 구매글 단건 가격 수정 시 사이트가 제목의 첫 레벨을 분할 수량 범위로 늦게 바꿔도 즉시 실패하지 않고 등록번호·수량 범위를 다시 검증합니다. 본인 관리목록의 원래 제목 복구를 별도로 승인한 경우에만 가격 입력을 계속합니다. 제목으로 수정 대상을 검색하지 않으며 사이트 최종 재등록은 사용자가 공식 창에서 직접 클릭합니다."
+  "releaseNotes": "v22.3.26 본인 구매글 등록번호를 확인해 가격을 수정하고 공식 재등록 버튼을 브라우저 입력으로 자동 클릭합니다. 체크한 여러 구매글도 각 행에 저장된 가격으로 한 번만 승인하여 순차 반영합니다. 사이트 폼의 제목·수량을 보호하고 실제 관리목록 가격을 재조회하며 실패 또는 결과 불확실 시 즉시 중단합니다. 백그라운드 자동등록 스케줄러의 무인 가격 제출은 계속 비활성화됩니다."
 }
