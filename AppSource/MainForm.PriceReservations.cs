@@ -65,8 +65,8 @@ internal sealed partial class MainForm
         var explanation = new Label
         {
             Text = SitePriceEdit.AutomaticPriceSubmissionEnabled
-                ? "승인한 예약만 다음 자동등록 차례에 반영됩니다."
-                : "현재 사이트 가격 자동 수정은 중지되어 있습니다. 표시된 금액은 미적용 요청이며 사이트 가격이 아닙니다.",
+                ? "승인한 예약만 다음 자동등록 차례에 반영됩니다. 선택한 요청은 Delete로 정리할 수 있습니다."
+                : "미적용 가격 요청은 줄을 선택하고 Delete를 눌러 정리할 수 있습니다.",
             Dock = DockStyle.Fill, ForeColor = UiTheme.Muted, TextAlign = ContentAlignment.MiddleLeft
         };
         layout.Controls.Add(explanation, 0, 1);
@@ -178,6 +178,13 @@ internal sealed partial class MainForm
                 $"미적용 요청 가격   {selected.TargetPrice}     예상 반영   {selected.Estimated} ({selected.State})";
         }
         grid.SelectionChanged += (_, _) => ShowSelected();
+        grid.KeyDown += (_, e) =>
+        {
+            if (e.KeyData != Keys.Delete || reconciling || !cancelRequest.Enabled) return;
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            cancelRequest.PerformClick();
+        };
         void Reload()
         {
             var selectedKeys = SelectedRequests().Select(row => (row.System, row.Job.Id)).ToHashSet();

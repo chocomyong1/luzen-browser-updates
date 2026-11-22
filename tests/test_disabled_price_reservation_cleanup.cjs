@@ -32,6 +32,7 @@ assert.match(cancel, /job\.PendingSitePriceTarget = beforeTarget/);
 assert.doesNotMatch(cancel, /ExecuteScriptAsync|ApplySitePriceAsync|SubmitAsync|\.click\(|Fetch\.|Network\.|HttpClient|\.Price\s*=/);
 
 assert.match(ui, /"선택 요청 정리"/);
+assert.match(ui, /grid\.KeyDown \+=.*[\s\S]*?e\.KeyData != Keys\.Delete[\s\S]*?cancelRequest\.PerformClick\(\)/);
 assert.match(ui, /MultiSelect = true/);
 assert.match(ui, /CanCancelUnsubmittedPriceReservation\(row\.Job, out _\)/);
 assert.match(ui, /await owner\.ReconcilePriceReservationAsync\(selected\.Job\)/);
