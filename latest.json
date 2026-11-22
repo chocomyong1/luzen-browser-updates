@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.27",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.27/LuzenBrowser_22.3.27_BinaryUpdate.zip",
-  "sha256": "08d8ac1535e7ae2b2a52a222a86d713a59af4ac72de4497a1186e869972d1ce2",
+  "version": "22.3.28",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.28/LuzenBrowser_22.3.28_BinaryUpdate.zip",
+  "sha256": "e6bc5e23bd1c5c8c1e28ea6253d82fa5ed4f6a45f71022c2b498d039b84f67ba",
   "format": "binary",
-  "releaseNotes": "v22.3.27 사이트 연락처 검사 HTTP 200과 실제 승인(S)을 분리하여 확인합니다. 서버 거절이 확실하면 중복 제출 없이 즉시 중지하며 기존 등록번호·가격이 그대로인지 목록 재검증 후 불필요한 확인 대기를 해제합니다. 승인 후 정체 시 프리미엄 추가 절차 및 사이트 스크립트 오류 여부만 개인정보 없이 진단합니다. 실제 사이트 가격 변경 성공은 별도 확인이 필요하며 자동 스케줄러 무인 제출은 비활성화됩니다."
+  "releaseNotes": "v22.3.28 사이트 연락처 검사 승인(S) 뒤 후속 프리미엄 레이어가 나타나면 공식 무료·일반 등록 버튼 하나만 브라우저 입력으로 진행합니다. 유료 결제·보안 승인·불명확한 선택지는 차단하고 재등록 버튼/POST를 재시도하지 않습니다. 기존 등록번호·가격을 다시 확인해야 성공 처리하며 실제 계정 환경에서는 검증이 필요합니다."
 }
