@@ -42,6 +42,6 @@ assert.match(app, /if \(_unattendedSitePriceEdit\)[\s\S]*?카테고리 변경 �
 assert.match(app, /job\.RequiresReview = true/);
 assert.match(app, /using var submissionObserver = new SitePriceSubmitObserver/);
 assert.match(app, /ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
-assert.match(site, /AutomaticPriceSubmissionEnabled => false/,
-  'The autonomous scheduler must remain locked; only explicit batch authorization is in scope');
+assert.match(site, /AutomaticPriceSubmissionEnabled => true/,
+  'Automatic scheduling is available for explicitly authorized price reservations');
 console.log('PASS exact-ID headless batch price action, one approval, pacing, site confirmation and stop-on-uncertainty');

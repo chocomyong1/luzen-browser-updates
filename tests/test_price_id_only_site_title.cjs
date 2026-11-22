@@ -34,7 +34,7 @@ assert.match(readback,/job\.PriceEditSiteTitleSnapshot/);
 assert.match(readback,/matchingOld\.Count == 1 && TrySitePrice\(matchingOld\[0\]\.Price, out var current\) && current == target/);
 assert.match(readback,/bool titleDifferent = expectedTitle\.Length > 0/);
 assert.doesNotMatch(readback,/legacyTitleFallback && MyListingsImport\.HasSuspiciousDuplicatedLevel/);
-assert.match(script,/AutomaticPriceSubmissionEnabled\s*=>\s*false/);
+assert.match(script,/AutomaticPriceSubmissionEnabled\s*=>\s*true/);
 assert.match(script,/if\(p\.titleChanged\(\)\|\|p\.money\(p\.priceInput\.value\)!==p\.desired/);
 const submissionScripts=script.slice(script.indexOf('public const string VerifyNativePriceInputScript'));
 assert.doesNotMatch(submissionScripts.replace(/\/\/[^\n]*/g,''),/\bfetch\s*\(|\bnew\s+FormData\s*\(/);

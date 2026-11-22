@@ -25,7 +25,7 @@ assert.match(reservation, /MyListingsImport\.IsOwnedListUrl\(OwnedListUrlFor\(j\
 assert.match(reservation, /duplicateIds/);
 assert.match(reservation, /accountMismatch \|\| mixedAccounts/);
 assert.match(reservation, /MessageBoxButtons\.YesNo/);
-assert.match(reservation, /job\.PendingSitePriceTarget = job\.Price/);
+assert.match(reservation, /job\.SchedulerApprovedSitePriceTarget = job\.PendingSitePriceTarget =\s*job\.Price/);
 assert.match(reservation, /_config\.Save\(\)/);
 assert.doesNotMatch(reservation, /PauseScheduler\(\)|ApplySitePriceAsync\(job|_sitePriceBatchRunning = true|NavigateOwnedListAsync|ExecuteScriptAsync|WaitForSitePriceBatchSpacingAsync/,
   'Queuing prices must never pause, consume a slot, or submit to the site');
@@ -35,6 +35,7 @@ const tick = form.slice(form.indexOf('private async Task SchedulerTickAsync()'),
 assert.match(tick, /if \(!CanRunNow\(job, out _\)\) continue;/);
 assert.match(tick, /if \(!string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)\)/);
 assert.match(tick, /reserved != local/);
+assert.match(tick, /if \(!job\.HasSchedulerApprovedSitePrice\) continue/);
 assert.match(tick, /ApplySitePriceAsync\(job, bulkApproval: true, fromScheduler: true\)/);
 assert.match(tick, /job\.PendingSitePriceTarget = ""/);
 assert.match(tick, /job\.RequiresReview = true;[\s\S]*?job\.Enabled = false/);
@@ -47,7 +48,7 @@ assert.match(submit, /using var submissionObserver = new SitePriceSubmitObserver
 assert.match(submit, /HourlyServerQuota\.MarkAttempt/);
 assert.match(submit, /job\.RequiresReview = true/);
 
-assert.match(models, /public string PendingSitePriceTarget \{ get; set; \} = "";/);
+assert.match(models, /public string PendingSitePriceTarget/);
 assert.match(editor, /TryPlanAutomaticPriceApply\(activePriceTargets, price\.ToString\(\)/);
 assert.match(editor, /pendingForJob: job => pendingByJob\[job\]/);
 assert.match(editor, /Action afterSubmission = \(\) => ApplyBatchUndoChange\(change\)/);

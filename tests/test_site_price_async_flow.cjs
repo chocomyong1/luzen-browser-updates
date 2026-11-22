@@ -45,7 +45,7 @@ assert(flow.indexOf('await submissionObserver.WaitForFormLoadAsync(token)')<
   flow.indexOf('await TypeVerifiedSitePriceAsync('));
 assert.match(flow,/DispatchVerifiedSitePriceClickAsync\(final\.X, final\.Y, token, \(\) =>/);
 assert.match(flow,/ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
-assert.match(site,/AutomaticPriceSubmissionEnabled => false/);
+assert.match(site,/AutomaticPriceSubmissionEnabled => true/);
 assert.match(site,/초기 취소 해석:FormChecker 비동기 검증에서는 정상 가능/);
 
 for(const endpoint of [

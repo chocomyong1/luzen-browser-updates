@@ -45,6 +45,7 @@ internal sealed partial class AutomationForm
     {
         if (!CanCancelUnsubmittedPriceReservation(job, out problem)) return false;
         string beforeTarget = job.PendingSitePriceTarget;
+        string beforeApproval = job.SchedulerApprovedSitePriceTarget;
         string beforeStatus = job.LastStatus;
         bool beforeReview = job.RequiresReview;
         bool beforeEnabled = job.Enabled;
@@ -70,6 +71,7 @@ internal sealed partial class AutomationForm
         catch (Exception ex)
         {
             job.PendingSitePriceTarget = beforeTarget;
+            job.SchedulerApprovedSitePriceTarget = beforeApproval;
             job.LastStatus = beforeStatus;
             job.RequiresReview = beforeReview;
             job.Enabled = beforeEnabled;
@@ -138,7 +140,7 @@ internal sealed partial class AutomationForm
                 return result.Message;
 
             var previous = (job.Price, job.VerifiedSitePrice, job.VerifiedSitePriceUtc,
-                job.PendingSitePriceTarget, job.PriceEditSiteTitleSnapshot,
+                job.PendingSitePriceTarget, job.PriceEditSiteTitleSnapshot, job.SchedulerApprovedSitePriceTarget,
                 job.RequiresReview, job.Enabled, job.NextDueUtc, job.LastStatus);
             try
             {
@@ -158,7 +160,7 @@ internal sealed partial class AutomationForm
             catch
             {
                 (job.Price, job.VerifiedSitePrice, job.VerifiedSitePriceUtc,
-                    job.PendingSitePriceTarget, job.PriceEditSiteTitleSnapshot,
+                    job.PendingSitePriceTarget, job.PriceEditSiteTitleSnapshot, job.SchedulerApprovedSitePriceTarget,
                     job.RequiresReview, job.Enabled, job.NextDueUtc, job.LastStatus) = previous;
                 throw;
             }
@@ -199,6 +201,10 @@ internal sealed partial class AutomationForm
             if (!SitePriceEdit.AutomaticPriceSubmissionEnabled)
             {
                 snapshots.Add(new(job, "저장됨 · 사이트 제출 대기", null, 0)); continue;
+            }
+            if (!job.HasSchedulerApprovedSitePrice)
+            {
+                snapshots.Add(new(job, "미제출 · 예약 승인 필요", null, 0)); continue;
             }
             if (!job.Enabled)
             {

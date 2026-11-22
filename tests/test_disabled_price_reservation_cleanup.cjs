@@ -50,7 +50,7 @@ assert.match(reconcile, /job\.Enabled = false/);
 assert.doesNotMatch(reconcile, /ApplySitePriceAsync|SubmitAsync|\.click\(/);
 assert.match(ui, /TryCancelUnsubmittedPriceReservation\(selected\.Job, out var cancelProblem\)/);
 assert.match(ui, /MessageBoxButtons\.YesNo/);
-assert.match(ui, /요청 정리는 사이트 가격을 변경하지 않습니다/);
+assert.match(ui, /사이트에는 가격을 제출하지 않습니다/);
 assert.match(ui, /edit\.Enabled = selection\.Count == 1 && SitePriceEdit\.AutomaticPriceSubmissionEnabled/);
 assert.doesNotMatch(ui, /ExecuteScriptAsync|ApplySitePriceAsync|\.submit\(/);
 console.log('PASS safe stale-price holds, explicit local-only cancellation and per-system empty-state explanation');

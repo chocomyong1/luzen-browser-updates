@@ -2680,6 +2680,7 @@ internal sealed partial class AutomationForm : Form
             if (!CanRunNow(job, out _)) continue;
             if (!string.IsNullOrWhiteSpace(job.PendingSitePriceTarget))
             {
+                if (!job.HasSchedulerApprovedSitePrice) continue;
                 // A requested price change replaces THIS job's regular repost
                 // turn; it is never an extra batch and shares CanRunNow/quota.
                 // Local-only edits after the reservation invalidate the old
@@ -2688,6 +2689,7 @@ internal sealed partial class AutomationForm : Form
                     !TrySitePrice(job.Price, out long local) || reserved != local)
                 {
                     job.PendingSitePriceTarget = "";
+                    job.SchedulerApprovedSitePriceTarget = "";
                     _config.Save();
                     AppendLog($"가격 예약 취소: {job.Server} · {job.ListingNumber} · 예약 후 로컬 금액 변경");
                 }
@@ -2701,7 +2703,10 @@ internal sealed partial class AutomationForm : Form
                         // queued a NEW local target for the same listing.
                         // Never erase that later reservation on readback.
                         if (string.Equals(job.PendingSitePriceTarget, submittedTarget, StringComparison.Ordinal))
+                        {
                             job.PendingSitePriceTarget = "";
+                            job.SchedulerApprovedSitePriceTarget = "";
+                        }
                         else
                             AppendLog($"새 가격 예약 유지: {job.Server} · {job.ListingNumber} · 다음 정상 순번에 반영");
                         // If the actual site price was already identical, no

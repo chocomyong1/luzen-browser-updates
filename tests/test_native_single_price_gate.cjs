@@ -9,7 +9,7 @@ const script = read('SitePriceEdit.cs');
 const app = read('AutomationForm.SitePriceEdit.cs');
 const editor = read('AutomationForm.cs');
 
-assert.match(script, /AutomaticPriceSubmissionEnabled\s*=>\s*false/);
+assert.match(script, /AutomaticPriceSubmissionEnabled\s*=>\s*true/);
 assert.match(script, /a\.nativeSingleApproval===true/);
 assert.doesNotMatch(script, /siteSubmit\[0\]\.click\(\)/);
 assert.match(script, /a\.trustedOneClick!==true/);
@@ -39,7 +39,7 @@ assert.match(script, /titleSignature\(siteTitle\)===titleSignature\(originalTitl
 assert.match(script, /사이트 수정폼: .*displayTitle\(siteTitle\)/);
 const submissionScripts = script.slice(script.indexOf('public const string VerifyNativePriceInputScript'));
 assert.doesNotMatch(submissionScripts.replace(/\/\/[^\n]*/g,''), /\bfetch\s*\(|\bnew\s+FormData\s*\(/);
-assert.match(app, /nativeSingleApproval && \(fromScheduler \|\| manuallyApprovedPrice is null \|\|/);
+assert.match(app, /nativeSingleApproval && \(manuallyApprovedPrice is null \|\|/);
 assert.match(app, /\(bulkApproval && !backgroundApproved\)/);
 assert.match(app, /!SitePriceEdit\.AutomaticPriceSubmissionEnabled && !nativeSingleApproval/);
 assert.match(app, /_jobs\.Any\(other => !ReferenceEquals\(other, job\)/);
@@ -70,4 +70,4 @@ assert.match(editor, /async \(_, _\) => await ApplySelectedSitePriceAsync\(\)/);
 assert.match(editor, /가격 변경 결과 재조회 \(제출 없음\)/);
 assert.doesNotMatch(editor, /ApplySitePriceAsync\(job, bulkApproval: true, fromScheduler: true, nativeSingleApproval:/);
 
-console.log('PASS native single-price pilot requires direct consent, verified ID, unchanged title, native click and readback; schedule locked');
+console.log('PASS native single-price pilot requires direct consent, verified ID, unchanged title, native click and readback; scheduled edits require separately approved prices');

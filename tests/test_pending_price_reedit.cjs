@@ -31,7 +31,7 @@ assert.match(site, /_config\.Save\(\);[\s\S]*?_activeSitePriceJob = null;/);
 
 // An old successful request cannot erase a freshly queued replacement.
 assert.match(scheduler, /string submittedTarget = job\.PendingSitePriceTarget;/);
-assert.match(scheduler, /if \(string\.Equals\(job\.PendingSitePriceTarget, submittedTarget, StringComparison\.Ordinal\)\)\s*job\.PendingSitePriceTarget = "";/);
+assert.match(scheduler, /if \(string\.Equals\(job\.PendingSitePriceTarget, submittedTarget, StringComparison\.Ordinal\)\)\s*\{\s*job\.PendingSitePriceTarget = "";/);
 assert.match(scheduler, /reserved != local/);
 assert.match(panel, /기존 구매글은 가격만 저장하고 사이트에는 아직 제출하지 않습니다/);
 
@@ -41,5 +41,5 @@ assert.match(scheduler, /if \(!_submissionVerificationPending\) _currentRun\?\.C
 assert.match(scheduler, /!_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport/);
 assert.match(main, /if \(!CanInstallUpdateAcrossSystems\)/);
 assert.match(main, /_moduleA\.SaveListings\(\); _moduleB\.SaveListings\(\); _moduleC\.SaveListings\(\)/);
-assert.match(updater, /public const string CurrentVersion = "22\.3\.36"/);
+assert.match(updater, /public const string CurrentVersion = "22\.3\.37"/);
 console.log('PASS re-edit queued prices, defer active submission edits, preserve latest request across stop/update');

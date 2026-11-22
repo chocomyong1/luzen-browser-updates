@@ -714,6 +714,9 @@ internal sealed partial class AutomationForm
 
     // Reservation only: no WebView navigation, no POST, no forced scheduler
     // pause and no additional hourly quota usage at the time of this click.
+    internal Task ReserveSitePricesAsync(IReadOnlyList<ListingJob> targets) =>
+        ApplySelectedSitePricesAsync(targets);
+
     private async Task ApplySelectedSitePricesAsync(IReadOnlyList<ListingJob>? explicitTargets = null,
         bool sitePriceConsentConfirmed = false)
     {
@@ -768,15 +771,17 @@ internal sealed partial class AutomationForm
             $"{targets.Count}개 글의 가격 변경을 예약할까요?\n\n{preview}\n\n" +
             "지금은 사이트에 제출하지 않습니다. 각 글의 기존 자동등록 차례가 오면 가격을 수정합니다.\n" +
             "자동등록은 멈추지 않으며 시간당 횟수·서버 간격 제한을 그대로 공유합니다.\n" +
+            "총 결제금액 0원·프리미엄 0시간인 사이트 확인도 이 예약 승인에 포함됩니다.\n" +
             "자동 OFF인 물품은 다시 ON할 때까지 대기합니다.",
             "다음 자동등록 순번에 가격 변경", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
 
         // Every reservation is tied to the exact saved listing object. There
         // is intentionally no independent background batch or timer.
-        var before = targets.Select(j => (Job: j, j.PendingSitePriceTarget)).ToArray();
+        var before = targets.Select(j => (Job: j, j.PendingSitePriceTarget, j.SchedulerApprovedSitePriceTarget)).ToArray();
         foreach (var job in targets)
-            job.PendingSitePriceTarget = job.Price.Replace(",", "", StringComparison.Ordinal).Trim();
+            job.SchedulerApprovedSitePriceTarget = job.PendingSitePriceTarget =
+                job.Price.Replace(",", "", StringComparison.Ordinal).Trim();
         try
         {
             _config.Jobs = _jobs.ToList();
@@ -784,7 +789,8 @@ internal sealed partial class AutomationForm
         }
         catch (Exception ex)
         {
-            foreach (var (job, pending) in before) job.PendingSitePriceTarget = pending;
+            foreach (var (job, pending, approved) in before)
+                (job.PendingSitePriceTarget, job.SchedulerApprovedSitePriceTarget) = (pending, approved);
             MessageBox.Show(this, "예약 저장에 실패했습니다. 변경을 취소했습니다.\n" + ex.Message,
                 "가격 변경 예약 실패", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
@@ -937,6 +943,15 @@ internal sealed partial class AutomationForm
         bool diagnosticOnly = false, bool backgroundApproved = false)
     {
         _lastSitePriceEditFailure = "";
+        if (fromScheduler)
+        {
+            if (!_schedulerRunning || explicitJob is null || !explicitJob.HasSchedulerApprovedSitePrice ||
+                !TrySitePrice(explicitJob.PendingSitePriceTarget, out var reservedPrice))
+                return false;
+            nativeSingleApproval = true;
+            manuallyApprovedPrice = reservedPrice;
+            backgroundApproved = true;
+        }
         if (diagnosticOnly && (bulkApproval || fromScheduler || nativeSingleApproval || manuallyApprovedPrice.HasValue))
             throw new InvalidOperationException("읽기 전용 분석은 가격 제출 작업과 동시에 사용할 수 없습니다");
         if (!SitePriceEdit.AutomaticPriceSubmissionEnabled && !nativeSingleApproval && !diagnosticOnly)
@@ -946,7 +961,7 @@ internal sealed partial class AutomationForm
                 "제목 보호 모드", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
-        if (nativeSingleApproval && (fromScheduler || manuallyApprovedPrice is null ||
+        if (nativeSingleApproval && (manuallyApprovedPrice is null ||
             (bulkApproval && !backgroundApproved)))
         {
             _lastSitePriceEditFailure = "단건 사이트 가격 변경은 사용자가 직접 실행해야 합니다";
@@ -1551,7 +1566,7 @@ internal sealed partial class AutomationForm
             job.LastStatus = "사이트 구매글 단가 변경 확인: " + desired.ToString("N0") + "원";
             job.VerifiedSitePrice = desired.ToString();
             job.VerifiedSitePriceUtc = DateTime.UtcNow;
-            if (nativeSingleApproval)
+            if (nativeSingleApproval && !fromScheduler)
             {
                 job.Price = desired.ToString("N0");
                 job.PendingSitePriceTarget = "";

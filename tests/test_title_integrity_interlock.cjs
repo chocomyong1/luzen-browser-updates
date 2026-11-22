@@ -29,7 +29,7 @@ assert.match(form, /oldJob\.LastStatus == "제목 보호 모드: 가격 예약 �
 assert.match(form, /!oldJob\.PendingRepostAttemptUtc\.HasValue/);
 assert.match(form, /oldJob\.LastStatus = "제목 보호 모드: 가격 예약 자동 제출 중지"/);
 
-assert.match(sitePriceScript, /AutomaticPriceSubmissionEnabled\s*=>\s*false/);
+assert.match(sitePriceScript, /AutomaticPriceSubmissionEnabled\s*=>\s*true/);
 assert.doesNotMatch(priceExecutable, /\bfetch\s*\(/,
   'never run a synthetic full-form price repost (including dead branches)');
 assert.doesNotMatch(priceExecutable, /\bnew\s+FormData\s*\(/);

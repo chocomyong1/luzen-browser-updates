@@ -18,9 +18,7 @@ internal sealed class SitePriceEditResult
 
 internal static class SitePriceEdit
 {
-    // Deliberately hard-locked until a safe price-only endpoint or native
-    // submit contract is proven on the actual service. See EditFormScript.
-    public static bool AutomaticPriceSubmissionEnabled => false;
+    public static bool AutomaticPriceSubmissionEnabled => true;
     public static SitePriceEditResult Decode(string? raw)
     {
         try

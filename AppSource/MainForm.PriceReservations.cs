@@ -65,7 +65,7 @@ internal sealed partial class MainForm
         var explanation = new Label
         {
             Text = SitePriceEdit.AutomaticPriceSubmissionEnabled
-                ? "실제 확인된 사이트 가격과 새 예약 가격을 구분합니다. 다음 자동등록 차례에 반영됩니다."
+                ? "승인한 예약만 다음 자동등록 차례에 반영됩니다."
                 : "현재 사이트 가격 자동 수정은 중지되어 있습니다. 표시된 금액은 미적용 요청이며 사이트 가격이 아닙니다.",
             Dock = DockStyle.Fill, ForeColor = UiTheme.Muted, TextAlign = ContentAlignment.MiddleLeft
         };
@@ -125,19 +125,17 @@ internal sealed partial class MainForm
         close.Click += (_, _) => dialog.Close();
         var edit = new Button { Text = "예약 가격 다시 수정", Width = 165, Height = 34 };
         UiTheme.StyleButton(edit, UiTheme.ButtonTone.Primary);
+        var reserve = new Button { Text = "다음 순번에 예약", Width = 144, Height = 34 };
+        UiTheme.StyleButton(reserve);
         var cancelRequest = new Button { Text = "선택 요청 정리", Width = 158, Height = 34 };
         UiTheme.StyleButton(cancelRequest);
         var refresh = new Button { Text = "새로고침", Width = 108, Height = 34 };
         UiTheme.StyleButton(refresh);
         bottom.Controls.Add(close);
         bottom.Controls.Add(cancelRequest);
+        bottom.Controls.Add(reserve);
         bottom.Controls.Add(edit);
         bottom.Controls.Add(refresh);
-        bottom.Controls.Add(new Label
-        {
-            Text = "※ 요청 정리는 사이트 가격을 변경하지 않습니다.",
-            AutoSize = true, Padding = new Padding(0, 10, 14, 0), ForeColor = UiTheme.Muted
-        });
         layout.Controls.Add(bottom, 0, 4);
 
         var rows = new List<PriceReservationRow>();
@@ -158,6 +156,8 @@ internal sealed partial class MainForm
             var selected = Selected();
             var selection = SelectedRequests();
             edit.Enabled = selection.Count == 1 && SitePriceEdit.AutomaticPriceSubmissionEnabled;
+            reserve.Enabled = selection.Count > 0 && selection.All(row => !row.Job.RequiresReview) &&
+                SitePriceEdit.AutomaticPriceSubmissionEnabled;
             var canCancel = selection.Count(CanClear);
             cancelRequest.Enabled = canCancel > 0;
             if (selection.Count > 1)
@@ -201,6 +201,12 @@ internal sealed partial class MainForm
             ShowSelected();
         }
         refresh.Click += (_, _) => Reload();
+        reserve.Click += async (_, _) =>
+        {
+            foreach (var group in SelectedRequests().GroupBy(row => row.System))
+                await IntegratedOwner(group.Key).ReserveSitePricesAsync(group.Select(row => row.Job).ToList());
+            Reload();
+        };
         cancelRequest.Click += async (_, _) =>
         {
             var selection = SelectedRequests();
@@ -215,7 +221,7 @@ internal sealed partial class MainForm
             var failures = new List<string>();
             int dismissed = 0;
             reconciling = true;
-            close.Enabled = refresh.Enabled = edit.Enabled = cancelRequest.Enabled = grid.Enabled = false;
+            close.Enabled = refresh.Enabled = edit.Enabled = cancelRequest.Enabled = reserve.Enabled = grid.Enabled = false;
             try
             {
                 for (var i = 0; i < cancellable.Count; i++)

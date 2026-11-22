@@ -554,7 +554,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.doesNotMatch(audited.evaluate(false).message, /private value/);
   assert.equal(audited.evaluate(true, number, '35100').status, 'error');
   assert.equal(audited.fetchCalls.length, 0);
-  assert.match(source, /AutomaticPriceSubmissionEnabled\s*=>\s*false/);
+  assert.match(source, /AutomaticPriceSubmissionEnabled\s*=>\s*true/);
   assert.match(automation, /!SitePriceEdit\.AutomaticPriceSubmissionEnabled/);
   console.log('PASS approved frmBuy cannot send even one multipart POST while title safety is active');
 }

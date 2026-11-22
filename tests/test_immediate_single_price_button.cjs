@@ -29,7 +29,7 @@ assert.match(immediate,/backgroundApproved: true/);
 assert.doesNotMatch(immediate,/StartScheduler\(|StartSelectedSystems|ExecuteJobAsync\(/);
 assert.match(app,/!nativeSingleApproval\) SaveSelectedJob\(false\)/);
 assert.match(app,/ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
-assert.match(site,/AutomaticPriceSubmissionEnabled => false/);
+assert.match(site,/AutomaticPriceSubmissionEnabled => true/);
 
 // The real site's FormChecker checks user_text BEFORE its AJAX chain, while
 // its Quill editor syncs user_text on text-change. Ensure the one-off path

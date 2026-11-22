@@ -44,7 +44,23 @@ internal sealed class ListingJob
     // job's NEXT normal turn (never an immediate extra POST). New drafts leave
     // this empty and use their new amount on first registration.
     // Keep the exact planned amount for mismatch detection before submission.
-    public string PendingSitePriceTarget { get; set; } = "";
+    private string _pendingSitePriceTarget = "";
+    public string PendingSitePriceTarget
+    {
+        get => _pendingSitePriceTarget;
+        set
+        {
+            string target = value ?? "";
+            if (!string.Equals(_pendingSitePriceTarget, target, StringComparison.Ordinal))
+                SchedulerApprovedSitePriceTarget = "";
+            _pendingSitePriceTarget = target;
+        }
+    }
+    public string SchedulerApprovedSitePriceTarget { get; set; } = "";
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasSchedulerApprovedSitePrice =>
+        !string.IsNullOrWhiteSpace(PendingSitePriceTarget) &&
+        string.Equals(PendingSitePriceTarget, SchedulerApprovedSitePriceTarget, StringComparison.Ordinal);
     public string DismissedSitePriceRequestTarget { get; set; } = "";
     [System.Text.Json.Serialization.JsonIgnore]
     public bool HasVisibleSitePriceRequest =>
