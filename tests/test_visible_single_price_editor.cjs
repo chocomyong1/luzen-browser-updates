@@ -43,6 +43,8 @@ assert.match(site, /NativePriceButtonClickedScript/);
 assert.match(site, /p\.money\(p\.priceInput\.value\)!==p\.desired\|\|/);
 assert.match(site, /p\.titleChanged\(\)\|\|!otherFieldsUnchanged/);
 assert.match(site, /e\.preventDefault\(\);e\.stopImmediatePropagation\(\)/);
+assert.match(site, /p\.form\.addEventListener\('submit',protectTitleAtSubmit,\{capture:true\}\)/);
+assert.match(site, /p\.form\.addEventListener\('submit',protectTitleAtSubmit,\{capture:false\}\)/);
 assert.match(app, /page\.Listings\.Where\(x => x\.ListingNumber == job\.ListingNumber/);
 assert.doesNotMatch(singleBranch, /BuildOwnedTitleScript/);
 console.log('PASS visible single-listing official price editor, exact-ID selection, and result observation');

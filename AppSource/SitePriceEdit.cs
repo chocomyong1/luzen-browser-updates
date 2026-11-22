@@ -444,8 +444,11 @@ internal static class SitePriceEdit
       };
       // Capture guards site click normalization; a second, late bubble
       // guard catches a site's own form-submit handler rewriting the title.
-      p.form.addEventListener('submit',protectTitleAtSubmit,{capture:true,once:true});
-      p.form.addEventListener('submit',protectTitleAtSubmit,{capture:false,once:true});
+      // The official FormChecker cancels its first submit on purpose. A
+      // visible editor may be retried after correcting a site alert, so
+      // preserve the title/price guard for every later submit event too.
+      p.form.addEventListener('submit',protectTitleAtSubmit,{capture:true});
+      p.form.addEventListener('submit',protectTitleAtSubmit,{capture:false});
       return result('armed','사이트 가격칸의 실제 키보드 입력 및 원본 제목 확인 · 재등록 단건 클릭 준비',x,y);
     })()
     """;
