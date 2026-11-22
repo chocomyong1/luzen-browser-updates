@@ -14,8 +14,8 @@ const site=read('SitePriceEdit.cs');
 // editor row. Header and editor actions share the same explicit one-shot path.
 assert.match(grid,/Name = "ImmediatePriceEdit", HeaderText = "즉시 가격 수정"/);
 assert.match(grid,/Name != "ImmediatePriceEdit"\) return;[\s\S]*?DataBoundItem is ListingJob target\)[\s\S]*?ApplySelectedSitePriceAsync\(target\)/);
-assert.match(grid,/FooterButton\("1건 가격 수정 창"/);
-assert.match(main,/선택 1건 가격 수정 \(사이트 창\)/);
+assert.match(grid,/FooterButton\("1건 즉시 가격 수정"/);
+assert.match(main,/선택 1건 가격 즉시 수정 \(사이트 자동 클릭\)/);
 assert.match(main,/ApplySelectedSitePriceFromHeaderAsync\(\)/);
 const immediate=app.slice(app.indexOf('private async Task ApplySelectedSitePriceAsync('),
   app.indexOf('// Never edits a field or submits a listing.'));
@@ -25,6 +25,7 @@ assert.match(immediate,/if \(job\.RequiresReview\)/);
 assert.match(immediate,/job\.PendingSitePriceTarget/);
 assert.match(immediate,/if \(_schedulerRunning\) PauseScheduler\(\);/);
 assert.match(immediate,/ApplySitePriceAsync\(job, bulkApproval: false, nativeSingleApproval: true/);
+assert.match(immediate,/backgroundApproved: true/);
 assert.doesNotMatch(immediate,/StartScheduler\(|StartSelectedSystems|ExecuteJobAsync\(/);
 assert.match(app,/!nativeSingleApproval\) SaveSelectedJob\(false\)/);
 assert.match(app,/ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);

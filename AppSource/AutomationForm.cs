@@ -832,7 +832,7 @@ internal sealed partial class AutomationForm : Form
         AppendLog($"같은 가격 선택: {reference.SiteId} · {amount:N0}원 · {matched.Count}건 (본인 구매글만)");
         MessageBox.Show(this,
             $"{reference.SiteId} · {amount:N0}원인 본인 구매글 {matched.Count}건을 체크했습니다.\n\n" +
-            "[일괄수정]에서 새 금액을 적용하고 [예]를 누르면 다음 자동등록 순번에 예약됩니다.\n" +
+            "[일괄수정]에서 새 금액을 저장한 뒤 [선택 가격 일괄 반영]을 눌러 사이트에 수정합니다.\n" +
             "확인 대기·판매글·다른 계정 물품은 제외됩니다.\n",
             "같은 가격 선택 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
@@ -1234,11 +1234,15 @@ internal sealed partial class AutomationForm : Form
             return b;
         }
         FooterButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
-        FooterButton("1건 가격 수정 창", 156,
+        FooterButton("1건 즉시 가격 수정", 156,
             () => _ = ApplySelectedSitePriceAsync(_selected), true);
+        FooterButton("선택 가격 일괄 반영", 170,
+            () => _ = ApplyCheckedSitePricesNowAsync());
         var extraActions = new ContextMenuStrip();
-        extraActions.Items.Add("선택 1건 가격 수정 (사이트 창)", null,
+        extraActions.Items.Add("선택 1건 가격 즉시 수정 (사이트 자동 클릭)", null,
             async (_, _) => await ApplySelectedSitePriceAsync());
+        extraActions.Items.Add("체크한 구매글 가격 일괄 반영 (사이트 자동 클릭)", null,
+            async (_, _) => await ApplyCheckedSitePricesNowAsync());
         extraActions.Items.Add("사이트 가격 수정폼 분석·복사 (제출 없음)", null,
             async (_, _) => await InspectSelectedPriceSubmitBindingsAsync());
         extraActions.Items.Add("가격 변경 결과 재조회 (제출 없음)", null,
@@ -1879,14 +1883,14 @@ internal sealed partial class AutomationForm : Form
                         item.PendingSitePriceTarget = pending;
                     });
                     _price.Text = item.Price;
-                    if (notify) AppendLog($"가격 수정: {item.Server} · 진행 중 작업 종료 후 저장 및 다음 순번 반영");
+                    if (notify) AppendLog($"가격 수정: {item.Server} · 진행 중 작업 종료 후 로컬 저장 (사이트 반영 별도 승인)");
                 }
                 else
                 {
                     item.Price = proposedPrice;
                     item.PendingSitePriceTarget = pending;
                     if (notify) AppendLog($"가격 수정: {item.Server} · " +
-                        (IsUnsubmittedNewListing(item) ? "신규글 첫 등록 금액으로 저장" : "다음 자동등록 순번 사이트 반영"));
+                        (IsUnsubmittedNewListing(item) ? "신규글 첫 등록 금액으로 저장" : "기존글 금액 로컬 저장 · 사이트 반영 별도 승인"));
                 }
             }
         }

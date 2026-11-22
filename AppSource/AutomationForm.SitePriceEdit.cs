@@ -12,6 +12,7 @@ namespace LuzenBrowserReplica;
 internal sealed partial class AutomationForm
 {
     private string _armedSitePriceEditNumber = "";
+    private bool _unattendedSitePriceEdit;
     private Form? _visibleSitePriceEditWindow;
     private string _sitePriceEditDialogWarning = "";
     private string _lastSitePriceEditFailure = "";
@@ -301,11 +302,9 @@ internal sealed partial class AutomationForm
         var changed = selected.Where(job =>
             !TrySitePrice(job.Price, out long oldPrice) || oldPrice != amountValue).ToList();
         var existing = changed.Where(job => !IsUnsubmittedNewListing(job)).ToList();
-        if (existing.Count > 0 && !SitePriceEdit.AutomaticPriceSubmissionEnabled)
-        {
-            problem = "제목 보호 모드에서는 기존 등록글의 가격 자동 재등록이 중지됩니다. 사이트에서 직접 수정해 주세요.";
-            return false;
-        }
+        // Updating the saved target is local-only. It never authorizes a
+        // site POST: the scheduler is locked, and only a later explicit
+        // one-item or checked-list batch confirmation may use this price.
         if (existing.Any(job =>
             !IsRegisteredOwnedBuyPriceTarget(job) || job.RequiresReview ||
             (job.LastStatus.Contains("가격", StringComparison.Ordinal) &&
@@ -326,7 +325,7 @@ internal sealed partial class AutomationForm
                 string.Equals(other.SiteId, job.SiteId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(other.ListingNumber, job.ListingNumber, StringComparison.Ordinal))))
         {
-            problem = "기존글의 사이트 계정이 다르거나 등록번호가 중복되어 가격 반영을 예약하지 않았습니다.";
+            problem = "기존글의 사이트 계정이 다르거나 등록번호가 중복되어 가격 변경을 저장하지 않았습니다.";
             return false;
         }
         foreach (var job in selected)
@@ -381,7 +380,7 @@ internal sealed partial class AutomationForm
         };
         var description = new Label
         {
-            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n자동시작 없이 이 글의 사이트 가격 수정 창을 엽니다.",
+            Text = $"{job.Server} · 등록번호 {job.ListingNumber}\n사이트 창 없이 이 등록번호의 가격을 실제로 수정합니다.",
             AutoSize = true, Left = 18, Top = 17
         };
         var amount = new NumericUpDown
@@ -393,7 +392,7 @@ internal sealed partial class AutomationForm
             ? job.Price : job.PendingSitePriceTarget;
         if (TrySitePrice(preset, out var currentAmount))
             amount.Value = Math.Clamp((decimal)currentAmount, amount.Minimum, amount.Maximum);
-        var apply = new Button { Text = "가격 수정 창 열기", DialogResult = DialogResult.OK,
+        var apply = new Button { Text = "이 1건 가격 수정", DialogResult = DialogResult.OK,
             Left = 192, Top = 132, Width = 135, Height = 32 };
         var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel,
             Left = 338, Top = 132, Width = 94, Height = 32 };
@@ -408,7 +407,7 @@ internal sealed partial class AutomationForm
         }
         if (_schedulerRunning) PauseScheduler();
         await ApplySitePriceAsync(job, bulkApproval: false, nativeSingleApproval: true,
-            manuallyApprovedPrice: (long)amount.Value);
+            manuallyApprovedPrice: (long)amount.Value, backgroundApproved: true);
     }
 
     // The same per-row action first reconciles an old uncertain submission.
@@ -668,9 +667,126 @@ internal sealed partial class AutomationForm
         AppendLog($"가격 변경 예약: {targets.Count}개 · 기존 자동등록 순번에 처리 (추가 제출 없음)");
     }
 
+    public Task ApplyCheckedSitePricesFromHeaderAsync() => ApplyCheckedSitePricesNowAsync();
+
+    // Deliberate, one-time user approval for ALL checked BUY listings. Unlike
+    // the old reservation path, this executes now, without opening the site
+    // window or asking the user to approve each native site submit. Stop on
+    // the first uncertain result; never issue a second POST for that ID.
+    private async Task ApplyCheckedSitePricesNowAsync()
+    {
+        if (_myListingsImportRunning && !await CancelImportForManualRunAsync("선택 구매글 가격 일괄 수정")) return;
+        if (_busy || _myListingsImportRunning || _sitePriceBatchRunning || _siteRequestTraceActive)
+        {
+            MessageBox.Show(this, "다른 사이트 작업이 끝나면 일괄 가격 수정을 시작할 수 있습니다.",
+                "가격 일괄 수정 대기");
+            return;
+        }
+        _jobsGrid.EndEdit();
+        _autoGrid.EndEdit();
+        var targets = _filteredJobs.Where(j => j.SelectedForBulk).ToList();
+        if (targets.Count == 0)
+        {
+            MessageBox.Show(this, "가격을 수정할 구매글의 왼쪽 체크박스를 선택해 주세요.", "선택한 물품 없음");
+            return;
+        }
+        string currentAccount = ItemManiaAccountStore.Load(_system).UserId;
+        bool invalid = string.IsNullOrWhiteSpace(currentAccount) ||
+            targets.Any(j => !_jobs.Contains(j) || !IsRegisteredOwnedBuyPriceTarget(j) ||
+                j.RequiresReview || !string.Equals(j.SiteId, currentAccount, StringComparison.OrdinalIgnoreCase) ||
+                !TrySitePrice(j.Price, out var price) || price % 10 != 0 ||
+                j.LastStatus.Contains("결과 확인 필요", StringComparison.Ordinal));
+        bool duplicateIds = targets.GroupBy(j => ((j.SiteId ?? "").Trim().ToLowerInvariant(), j.ListingNumber))
+            .Any(g => g.Count() > 1) ||
+            targets.Any(j => _jobs.Any(other => !ReferenceEquals(other, j) &&
+                string.Equals(other.SiteId, j.SiteId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(other.ListingNumber, j.ListingNumber, StringComparison.Ordinal)));
+        if (invalid || duplicateIds || ((_system is "B" or "C") &&
+            !DualSystemNetwork.IsRouteVerified(_system)))
+        {
+            MessageBox.Show(this,
+                "본인 구매글·등록번호·현재 계정·가격(1,000원 이상/10원 단위) 또는 독립 연결을 확인할 수 없습니다.\n" +
+                "확인 대기나 중복 등록번호가 있는 경우에도 일괄 수정하지 않습니다.",
+                "가격 일괄 수정 대상 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        string preview = string.Join("\n", targets.Take(12).Select(j =>
+            $"{j.Server} · {j.ListingNumber} → {j.Price}원"));
+        if (targets.Count > 12) preview += $"\n외 {targets.Count - 12}건";
+        if (MessageBox.Show(this,
+            $"{targets.Count}개 본인 구매글의 사이트 가격을 지금 수정할까요?\n\n{preview}\n\n" +
+            "각 행에 저장된 가격을 사용합니다. 대상은 등록번호로 확인합니다.\n" +
+            "사이트 재등록 버튼은 한 건씩 자동으로 누르고, 관리목록에서 실제 가격을 확인한 후 다음 글로 넘어갑니다.\n" +
+            "사이트의 분할수량 표시로 바뀐 제목은 관리목록 원본과 수량범위가 정확히 일치할 때에만 복구합니다.\n" +
+            "오류·결과 불확실·추가 승인 요청 시 남은 건은 제출하지 않습니다.\n" +
+            "서버별 등록 간격과 시간당 제한을 지킵니다.",
+            "선택 구매글 사이트 가격 일괄 수정", MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+
+        if (_schedulerRunning) PauseScheduler();
+        _sitePriceBatchCancellation = new CancellationTokenSource();
+        _sitePriceBatchRunning = true;
+        int verified = 0;
+        string stopReason = "";
+        try
+        {
+            foreach (var job in targets)
+            {
+                var cancel = _sitePriceBatchCancellation.Token;
+                cancel.ThrowIfCancellationRequested();
+                // Only normal server-spacing delays are waited through.
+                // Exhausted hourly quotas require a later explicit batch.
+                while (!CanRunNow(job, out var pacingReason))
+                {
+                    if (pacingReason.Contains("이번 시간 등록 가능 횟수", StringComparison.Ordinal))
+                    {
+                        stopReason = pacingReason;
+                        break;
+                    }
+                    _state.Text = $"가격 일괄 수정 간격 대기 {verified}/{targets.Count} · {pacingReason}";
+                    await Task.Delay(1000, cancel);
+                }
+                if (!string.IsNullOrWhiteSpace(stopReason)) break;
+                if (!TrySitePrice(job.Price, out long desired))
+                {
+                    stopReason = "선택 글의 저장 가격을 다시 확인하지 못했습니다";
+                    break;
+                }
+                _state.Text = $"가격 일괄 수정 {verified + 1}/{targets.Count} · 등록번호 {job.ListingNumber}";
+                if (!await ApplySitePriceAsync(job, bulkApproval: true, nativeSingleApproval: true,
+                        manuallyApprovedPrice: desired, backgroundApproved: true))
+                {
+                    stopReason = job.ListingNumber + " · " + _lastSitePriceEditFailure;
+                    break;
+                }
+                verified++;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            stopReason = "사용자가 중지를 요청했습니다. 이미 제출한 한 건의 결과는 별도 확인이 필요할 수 있습니다.";
+        }
+        finally
+        {
+            _sitePriceBatchRunning = false;
+            _sitePriceBatchCancellation.Dispose();
+            _sitePriceBatchCancellation = null;
+            _state.Text = _schedulerRunning ? "자동 실행 중" : "중지/대기";
+            _jobsGrid.Refresh();
+            _autoGrid.Refresh();
+            RefreshAutoSummary();
+        }
+        AppendLog($"선택 구매글 가격 일괄 수정 종료: {verified}/{targets.Count}건 확인" +
+            (string.IsNullOrWhiteSpace(stopReason) ? "" : " · 중단: " + stopReason));
+        MessageBox.Show(this, $"{targets.Count}건 중 {verified}건의 사이트 가격 확인을 완료했습니다." +
+            (string.IsNullOrWhiteSpace(stopReason) ? "" : "\n\n나머지 글은 제출하지 않았습니다.\n" + stopReason),
+            "가격 일괄 수정 결과", MessageBoxButtons.OK,
+            string.IsNullOrWhiteSpace(stopReason) ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+    }
+
     private async Task<bool> ApplySitePriceAsync(ListingJob? explicitJob, bool bulkApproval,
         bool fromScheduler = false, bool nativeSingleApproval = false, long? manuallyApprovedPrice = null,
-        bool diagnosticOnly = false)
+        bool diagnosticOnly = false, bool backgroundApproved = false)
     {
         _lastSitePriceEditFailure = "";
         if (diagnosticOnly && (bulkApproval || fromScheduler || nativeSingleApproval || manuallyApprovedPrice.HasValue))
@@ -682,7 +798,8 @@ internal sealed partial class AutomationForm
                 "제목 보호 모드", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
-        if (nativeSingleApproval && (fromScheduler || bulkApproval || manuallyApprovedPrice is null))
+        if (nativeSingleApproval && (fromScheduler || manuallyApprovedPrice is null ||
+            (bulkApproval && !backgroundApproved)))
         {
             _lastSitePriceEditFailure = "단건 사이트 가격 변경은 사용자가 직접 실행해야 합니다";
             return false;
@@ -691,7 +808,7 @@ internal sealed partial class AutomationForm
             !DualSystemNetwork.IsRouteVerified(_system))
         {
             _lastSitePriceEditFailure = "B/C 독립 네트워크 연결을 확인할 수 없어 제출하지 않았습니다";
-            MessageBox.Show(this, _lastSitePriceEditFailure, "사이트 가격 변경 중단");
+            if (!bulkApproval) MessageBox.Show(this, _lastSitePriceEditFailure, "사이트 가격 변경 중단");
             return false;
         }
         if (fromScheduler && !_schedulerRunning) return false;
@@ -832,13 +949,14 @@ internal sealed partial class AutomationForm
                 $"서버: {job.Server}\n등록번호: {job.ListingNumber}\n사이트 현재 제목: {siteTitleSnapshot}\n\n" +
                 $"사이트 현재 가격: {current:N0}원\n변경할 가격: {desired:N0}원\n\n" +
                 (nativeSingleApproval ?
-                    "자동 시작과 관계없이 선택한 이 1건의 사이트 수정 창을 엽니다.\n" +
-                    "가격 입력 후 공식 사이트의 '재등록' 버튼은 직접 눌러야 합니다.\n" +
+                    (backgroundApproved
+                        ? "사이트의 공식 재등록 버튼을 검증한 뒤 화면 없이 한 번 클릭합니다.\n"
+                        : "사이트 수정 창에서 '재등록' 버튼을 직접 눌러야 합니다.\n") +
                     "사이트가 최종 제출을 거부하거나 결과가 불확실하면 자동 재시도하지 않습니다.\n\n" : "") +
                 "사이트 구매 수정 화면(frmBuy)의 단가만 입력하고 다른 내용은 유지합니다.\n" +
                 "등록번호가 바뀔 수 있어 결과가 불확실하면 자동 실행을 보류합니다.\n" +
                 "재등록 횟수·서버 간격 제한에 포함되며 중복 제출하지 않습니다.";
-            if (!bulkApproval && !diagnosticOnly && MessageBox.Show(this, ask, "실제 사이트 구매글 가격 변경", MessageBoxButtons.YesNo,
+            if (!bulkApproval && !diagnosticOnly && !backgroundApproved && MessageBox.Show(this, ask, "실제 사이트 구매글 가격 변경", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return false;
 
             var record = records[0];
@@ -999,7 +1117,7 @@ internal sealed partial class AutomationForm
             bool titleRestoreApproved = false;
             if (form.Status == "restore-needed" && nativeSingleApproval)
             {
-                if (!ConfirmExactSitePriceTitleRestore(form)) return false;
+                if (!backgroundApproved && !ConfirmExactSitePriceTitleRestore(form)) return false;
                 titleRestoreApproved = true;
             }
             if (form.Status != "ready" && !titleRestoreApproved)
@@ -1058,7 +1176,7 @@ internal sealed partial class AutomationForm
                     // the title AFTER the initial read-only check. Ask once
                     // at the final input-preparation point, then re-run the
                     // same exact-ID/range/old-price guard with approval.
-                    if (!ConfirmExactSitePriceTitleRestore(result)) return false;
+                    if (!backgroundApproved && !ConfirmExactSitePriceTitleRestore(result)) return false;
                     titleRestoreApproved = true;
                     result = SitePriceEdit.Decode(await _web.CoreWebView2.ExecuteScriptAsync(
                         SitePriceEdit.BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,
@@ -1099,7 +1217,7 @@ internal sealed partial class AutomationForm
                 if (final.Status != "armed")
                     throw new InvalidOperationException("사이트 키보드 입력 후 폼 검증 실패: " + final.Message);
                 AppendLog("사이트 키보드 입력 후 제출폼 검증: " + final.Message);
-                if (nativeSingleApproval)
+                if (nativeSingleApproval && !backgroundApproved)
                 {
                     // User-driven price editing is a separate, visible path.
                     // The site's FormChecker can cancel its initial submit
@@ -1146,8 +1264,10 @@ internal sealed partial class AutomationForm
                 }
                 else
                 {
-                    // This fallback is never enabled for unattended price
-                    // batches. It remains available for audited testing.
+                    // Explicit single-item or user-approved batch only.
+                    // The audited browser pointer triggers the site's own
+                    // FormChecker; no synthetic fetch/form.submit is used.
+                    _unattendedSitePriceEdit = true;
                     await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token, () =>
                     {
                         if (fromScheduler && !_schedulerRunning)
@@ -1161,6 +1281,7 @@ internal sealed partial class AutomationForm
                         job.Enabled = false;
                         job.LastStatus = "구매글 가격 재등록 제출 중: 결과 확인 필요";
                         job.NextDueUtc = DateTime.MaxValue;
+                        if (nativeSingleApproval) job.PendingSitePriceTarget = desired.ToString();
                         job.PriceEditSiteTitleSnapshot = siteTitleSnapshot;
                         _config.Jobs = _jobs.ToList();
                         _config.Save();
@@ -1268,6 +1389,7 @@ internal sealed partial class AutomationForm
         }
         finally
         {
+            _unattendedSitePriceEdit = false;
             _armedSitePriceEditNumber = "";
             _submissionVerificationPending = false;
             if (!submitted)
@@ -1524,6 +1646,12 @@ internal sealed partial class AutomationForm
         if (message.Contains("카테고리", StringComparison.Ordinal) &&
             message.Contains("변경", StringComparison.Ordinal))
         {
+            if (_unattendedSitePriceEdit)
+            {
+                _sitePriceEditDialogWarning = "사이트가 카테고리 변경 추가 승인을 요청하여 무인 가격 수정을 중단했습니다";
+                AppendLog(_sitePriceEditDialogWarning);
+                return;
+            }
             if (MessageBox.Show(this, "아이템매니아에서 카테고리 변경을 요청했습니다.\n\n" + compact +
                     "\n\n이 한 건의 변경을 계속할까요?", "사이트 카테고리 변경 확인",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning,

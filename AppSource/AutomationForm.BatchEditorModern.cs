@@ -231,20 +231,19 @@ internal sealed partial class AutomationForm
             if (activePriceTargets.Count > 8) preview += $"\n외 {activePriceTargets.Count - 8}건";
             if (MessageBox.Show(window,
                 $"선택 {activePriceTargets.Count}건을 {price:N0}원으로 변경합니다.\n\n{preview}\n\n" +
-                "기존 본인 구매글은 다음 자동등록 순번에 사이트 가격을 반영합니다.\n" +
+                "기존 본인 구매글은 가격만 저장되며 사이트에는 아직 반영되지 않습니다.\n" +
                 "신규 판매·구매글은 첫 등록 가격으로 저장합니다.\n" +
-                "지금 사이트에는 제출하지 않으며 원래 시간당 제한과 순번을 사용합니다. " +
-                "각 글의 수정 결과가 불분명하면 그 글만 확인 대기로 전환합니다.",
+                "실제 사이트 수정은 [선택 가격 일괄 반영]을 별도로 눌러 한 번 승인하세요. " +
+                "등록번호로 확인하며 결과가 불분명하면 뒤의 글은 제출하지 않습니다.",
                 "가격 일괄수정", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
             if (ApplyField("가격", x => x.Price, (x, v) => x.Price = v,
                 price.ToString(), confirmLocalSave: false,
                 pendingForJob: job => pendingByJob[job]))
             {
-                int existingCount = activePriceTargets.Count(job =>
-                    !IsUnsubmittedNewListing(job) && pendingByJob[job] == price.ToString());
-                result.Text = $"✓ {activePriceTargets.Count}건 저장 · 기존 구매글 {existingCount}건 다음 순번 반영";
-                AppendLog($"가격 적용: {activePriceTargets.Count}건 · 기존 구매글 다음 자동등록 순번에 반영, 신규글은 첫 등록에 사용");
+                int existingCount = activePriceTargets.Count(job => !IsUnsubmittedNewListing(job));
+                result.Text = $"✓ {activePriceTargets.Count}건 저장 · 기존 구매글 {existingCount}건은 사이트 반영 대기";
+                AppendLog($"가격 저장: {activePriceTargets.Count}건 · 기존 구매글 사이트 제출 없음, 별도 일괄 반영 필요");
             }
         });
         var quantityBox = Input("예: 3");

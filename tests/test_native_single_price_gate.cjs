@@ -43,7 +43,8 @@ assert.match(script, /titleSignature\(siteTitle\)===titleSignature\(originalTitl
 assert.match(script, /사이트 수정폼: .*displayTitle\(siteTitle\)/);
 const submissionScripts = script.slice(script.indexOf('public const string VerifyNativePriceInputScript'));
 assert.doesNotMatch(submissionScripts.replace(/\/\/[^\n]*/g,''), /\bfetch\s*\(|\bnew\s+FormData\s*\(/);
-assert.match(app, /nativeSingleApproval && \(fromScheduler \|\| bulkApproval \|\| manuallyApprovedPrice is null\)/);
+assert.match(app, /nativeSingleApproval && \(fromScheduler \|\| manuallyApprovedPrice is null \|\|/);
+assert.match(app, /\(bulkApproval && !backgroundApproved\)/);
 assert.match(app, /!SitePriceEdit\.AutomaticPriceSubmissionEnabled && !nativeSingleApproval/);
 assert.match(app, /_jobs\.Any\(other => !ReferenceEquals\(other, job\)/);
 assert.match(app, /string\.IsNullOrWhiteSpace\(job\.PendingSitePriceTarget\)[\s\S]*?job\.Price : job\.PendingSitePriceTarget/);
@@ -67,12 +68,12 @@ assert.match(app, /await InspectPendingSitePriceOnlyAsync\(job, \(long\)amount.V
 assert.match(app, /job\.RequiresReview = true;\s*job\.Enabled = false;\s*job\.NextDueUtc = DateTime\.MaxValue;\s*job\.LastStatus = "사이트 단가 재조회 확인/);
 assert.match(app, /form\.Status == "restore-needed" && nativeSingleApproval/);
 assert.match(app, /result\.Status == "restore-needed" && nativeSingleApproval && !titleRestoreApproved/);
-assert.match(app, /if \(!ConfirmExactSitePriceTitleRestore\(result\)\) return false;/);
+assert.match(app, /if \(!backgroundApproved && !ConfirmExactSitePriceTitleRestore\(result\)\) return false;/);
 assert.match(app, /result = SitePriceEdit\.Decode\(await _web\.CoreWebView2\.ExecuteScriptAsync\(/);
 assert.match(app, /MessageBoxDefaultButton\.Button2/);
 assert.match(app, /records\[0\]\.MinQuantity, records\[0\]\.MaxQuantity/);
 assert.match(app, /job\.Price = desired\.ToString\("N0"\)/);
-assert.match(editor, /선택 1건 가격 수정 \(사이트 창\)/);
+assert.match(editor, /선택 1건 가격 즉시 수정 \(사이트 자동 클릭\)/);
 assert.match(editor, /async \(_, _\) => await ApplySelectedSitePriceAsync\(\)/);
 assert.match(editor, /가격 변경 결과 재조회 \(제출 없음\)/);
 assert.doesNotMatch(editor, /ApplySitePriceAsync\(job, bulkApproval: true, fromScheduler: true, nativeSingleApproval:/);

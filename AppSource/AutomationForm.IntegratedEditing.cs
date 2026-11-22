@@ -168,7 +168,7 @@ internal sealed partial class AutomationForm
         RefreshFilteredLists();
         AppendLog($"통합 일괄수정: {_system} {items.Count}건 · {command.Field} · " +
             (command.Field == IntegratedEditField.Price
-                ? "기존 본인 구매글은 다음 자동등록 순번에 가격 반영, 신규글은 첫 등록에 적용"
+                ? "기존 구매글은 로컬 가격 저장(사이트 별도 승인 필요), 신규글은 첫 등록에 적용"
                 : "로컬 설정 저장") +
             (deferred.Count > 0 ? $" · 실행 중 {deferred.Count}건 사이트 작업 종료 후 적용" : ""));
         var receipt = RememberBatchUndo(command.Field.ToString(), undoChanges);

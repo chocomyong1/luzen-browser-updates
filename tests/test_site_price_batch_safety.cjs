@@ -15,7 +15,7 @@ const selection = form.slice(form.indexOf('private void SelectSamePriceListings(
   form.indexOf('private void SetBatchEnabled(', form.indexOf('private void SelectSamePriceListings()')));
 
 const reservation = price.slice(price.indexOf('private async Task ApplySelectedSitePricesAsync('),
-  price.indexOf('private async Task<bool> ApplySitePriceAsync('));
+  price.indexOf('public Task ApplyCheckedSitePricesFromHeaderAsync()'));
 assert.doesNotMatch(reservation, /targets\.Count\s*>\s*20|최대 20개|예약 수량 제한/);
 assert.match(selection, /foreach \(var job in _jobs\) job\.SelectedForBulk = matched\.Contains\(job\)/);
 assert.doesNotMatch(selection, /matched\.Take\(20\)|최대 20개|matched\.Count > 20/);
