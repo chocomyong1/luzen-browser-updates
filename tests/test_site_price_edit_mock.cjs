@@ -312,17 +312,13 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
 {
   const savedTitle = '10 레벨 겁화 삽니다 24 시';
   const siteFormTitle = '1 ~ 9,995 레벨 겁화 삽니다 24 시';
-  const restored = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
-  assert.equal(restored.evaluate(false, number, '10000', true, '1', '9995').status,
-    'restore-needed', 'A proven exact split-range level substitution needs separate user consent');
-  assert.equal(restored.evaluate(true, number, '10000', true, '1', '9995').status,
-    'restore-needed', 'Native click is forbidden until a separate restore approval');
-  assert.equal(restored.clicked, 0);
-  assert.equal(restored.titleInput.value, siteFormTitle);
-  assert.equal(restored.prices[0].value, '10,000');
-  assert.equal(restored.evaluate(true, number, '10000', true, '1', '9995', true).status,
-    'input-ready', 'The old title is restored before real browser keyboard input');
-  assert.equal(restored.titleInput.value, savedTitle);
+  const titleMismatch = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
+  assert.equal(titleMismatch.evaluate(false, number, '10000', true).status, 'error');
+  assert.equal(titleMismatch.evaluate(true, number, '10000', true).status, 'error');
+  assert.equal(titleMismatch.titleInput.value, siteFormTitle);
+  assert.equal(titleMismatch.clicked, 0);
+  const restored = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle});
+  assert.equal(restored.evaluate(true, number, '10000', true).status, 'input-ready');
   assert.equal(restored.prices[0].value, '10,000', 'Preparation must not change the price');
   assert.equal(restored.verifyNativePriceInput(),true);
   assert.equal(restored.verifyNativePriceFocus(),false,'No blind Ctrl+A when the price input is unfocused');
@@ -339,7 +335,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.match(restored.probe(), /제출 이벤트:감지/);
   assert.match(restored.probe(), /사이트 제출 취소:아니오/);
   assert.equal(restored.fetchCalls.length, 0);
-  const lateMutation = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
+  const lateMutation = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle,
     clickMutatesTitle: true});
   assert.equal(lateMutation.evaluate(true, number, '10000', true, '1', '9995', true).status,
     'input-ready', 'The site must be protected even when a native click rewrites the title');
@@ -350,7 +346,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.equal(lateMutation.acceptedNativeSubmits, 0,
     'A site click handler rewriting the title must be vetoed before POST');
   assert.match(lateMutation.probe(), /제목 보호 차단:예; 현재 제목 변형:예/);
-  const noSubmitEvent = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
+  const noSubmitEvent = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle,
     clickSkipsSubmitEvent: true});
   const noSubmitResult = noSubmitEvent.evaluate(true, number, '10000', true, '1', '9995', true);
   assert.equal(noSubmitResult.status, 'input-ready');
@@ -359,7 +355,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   noSubmitEvent.simulateOneBrowserClick();
   assert.match(noSubmitEvent.probe(), /제출 이벤트:미감지/);
   assert.equal(noSubmitEvent.acceptedNativeSubmits, 0);
-  const siteCancelled = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle,
+  const siteCancelled = editFormCase({approvedSubmit:true,savedTitle,formTitle:savedTitle,
     siteCancelsSubmit:true});
   assert.equal(siteCancelled.evaluate(true,number,'10000',true,'1','9995',true).status,'input-ready');
   siteCancelled.simulateTyping();
@@ -368,18 +364,18 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   assert.match(siteCancelled.probe(), /사이트 제출 취소:예/);
   assert.match(siteCancelled.probe(), /제목 보호 차단:아니오/);
   assert.equal(siteCancelled.acceptedNativeSubmits,0);
-  const obscured = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle,
+  const obscured = editFormCase({approvedSubmit:true,savedTitle,formTitle:savedTitle,
     buttonObscured:true});
   assert.equal(obscured.evaluate(true,number,'10000',true,'1','9995',true).status,'error');
   assert.equal(obscured.clicked,0);
   assert.equal(obscured.prices[0].value,'10,000');
-  const shifted = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
+  const shifted = editFormCase({approvedSubmit:true,savedTitle,formTitle:savedTitle});
   assert.equal(shifted.evaluate(true,number,'10000',true,'1','9995',true).status,'input-ready');
   shifted.simulateTyping();
   assert.equal(shifted.finalize().status,'armed');
   shifted.titleInput.value='9 9 레벨 겁화 구매합니다';
   assert.equal(shifted.verifyNativeClick(),false,'Changing the title after arm must block native mouse input');
-  const masked = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
+  const masked = editFormCase({approvedSubmit:true,savedTitle,formTitle:savedTitle});
   assert.equal(masked.evaluate(true,number,'10000',true,'1','9995',true).status,'input-ready');
   masked.simulateTyping('1000035100');
   const mismatch = masked.finalize();
@@ -395,28 +391,28 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const missingEvidence = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
   assert.equal(missingEvidence.evaluate(true, number, '10000', true, '', '', true).status, 'error');
   assert.equal(missingEvidence.clicked, 0);
-  const lockedTitle = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
+  const lockedTitle = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle,
     titleReadOnly: true});
-  assert.equal(lockedTitle.evaluate(true, number, '10000', true, '1', '9995', true).status, 'error');
+  assert.equal(lockedTitle.evaluate(true, number, '10000', true, '1', '9995', true).status, 'input-ready');
   assert.equal(lockedTitle.clicked, 0);
-  const hiddenTitle = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
+  const hiddenTitle = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle,
     titleType: 'hidden'});
-  assert.equal(hiddenTitle.evaluate(true, number, '10000', true, '1', '9995', true).status, 'error');
+  assert.equal(hiddenTitle.evaluate(true, number, '10000', true, '1', '9995', true).status, 'input-ready');
   assert.equal(hiddenTitle.clicked, 0);
   const alteredSuffix = editFormCase({approvedSubmit: true, savedTitle,
     formTitle: '1 ~ 9,995 레벨 작열 삽니다 24 시'});
   assert.equal(alteredSuffix.evaluate(true, number, '10000', true, '1', '9995', true).status, 'error');
   assert.equal(alteredSuffix.clicked, 0);
-  const noNativeConsent = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle});
-  assert.equal(noNativeConsent.evaluate(true, number, '10000', false, '1', '9995', true).status, 'error');
+  const noNativeConsent = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle});
+  assert.equal(noNativeConsent.evaluate(true, number, '10000', false, '1', '9995', true).status, 'blocked');
   assert.equal(noNativeConsent.clicked, 0);
-  const eventMutation = editFormCase({approvedSubmit: true, savedTitle, formTitle: siteFormTitle,
+  const eventMutation = editFormCase({approvedSubmit: true, savedTitle, formTitle: savedTitle,
     eventMutatesTitle: true});
   assert.equal(eventMutation.evaluate(true, number, '10000', true, '1', '9995', true).status, 'input-ready');
   eventMutation.simulateTyping();
   assert.equal(eventMutation.finalize().status, 'error');
   assert.equal(eventMutation.clicked, 0);
-  console.log('PASS split-range replacing a verified 10-level title requires second approval and native exact-title restoration');
+  console.log('PASS split-range title mismatch blocks price submission and preserves the form');
 }
 
 {
@@ -424,45 +420,14 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   // in a multi-level OWN-list title. Older code supported "10 레벨" only.
   const savedTitle = '10 10 10 레벨 작열 구매합니다';
   const siteFormTitle = '1 ~ 999 10 10 레벨 작열 구매합니다';
-  const restored = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
-  const beforeApproval = restored.evaluate(false,number,'10000',true,'1','999');
-  assert.equal(beforeApproval.status,'restore-needed',beforeApproval.message);
-  assert.equal(restored.titleInput.value,siteFormTitle,'Inspection must not edit the site title');
-  assert.equal(restored.clicked,0);
-  assert.equal(restored.evaluate(true,number,'10000',true,'1','999').status,'restore-needed');
-  assert.equal(restored.prices[0].value,'10,000');
-  const prepared = restored.evaluate(true,number,'10000',true,'1','999',true);
-  assert.equal(prepared.status,'input-ready',prepared.message);
-  assert.equal(restored.titleInput.value,savedTitle,'Restore every level token, not just the last one');
-  restored.simulateTyping();
-  assert.equal(restored.finalize().status,'armed');
-  assert.equal(restored.verifyNativeClick(),true);
-  restored.simulateOneBrowserClick();
-  assert.equal(restored.acceptedNativeSubmits,1);
-  assert.equal(restored.titleInput.value,savedTitle,'Submission must retain the exact OWN-list title');
-
-  const secondary = editFormCase({approvedSubmit:true,
-    savedTitle:'9 9 레벨 겁화 삽니다',formTitle:'1 ~ 9,995 9 레벨 겁화 삽니다'});
-  assert.equal(secondary.evaluate(false,number,'10000',true,'1','9995').status,'restore-needed');
-  assert.equal(secondary.evaluate(true,number,'10000',true,'1','9995',true).status,'input-ready');
-  assert.equal(secondary.titleInput.value,'9 9 레벨 겁화 삽니다');
-
-  // Reproduces the screenshot: the first inspection saw the original
-  // title, but the site's delayed template conversion replaced its first
-  // level before input preparation. The host must ask for approval at this
-  // second checkpoint and retry the exact same safe input preparation.
   const late = editFormCase({approvedSubmit:true,
     savedTitle:'9 9 9 레벨 겁화 작열 구매합니다',
     formTitle:'9 9 9 레벨 겁화 작열 구매합니다'});
   assert.equal(late.evaluate(false,number,'10000',true,'1','999').status,'ready');
   late.titleInput.value='1 ~ 999 9 9 레벨 겁화 작열 구매합니다';
-  assert.equal(late.evaluate(true,number,'10000',true,'1','999').status,'restore-needed');
-  assert.equal(late.evaluate(true,number,'10000',true,'1','999',true).status,'input-ready');
-  assert.equal(late.titleInput.value,'9 9 9 레벨 겁화 작열 구매합니다');
-  late.simulateTyping();
-  assert.equal(late.finalize().status,'armed');
-  assert.equal(late.clicked,0,'Late restoration must not silently submit the listing');
-
+  assert.equal(late.evaluate(true,number,'10000',true).status,'error');
+  assert.equal(late.titleInput.value,'1 ~ 999 9 9 레벨 겁화 작열 구매합니다');
+  assert.equal(late.clicked,0);
   // A wrong range, a changed level token, or a changed suffix can never be
   // repaired solely because the registration ID matches.
   for (const [formTitle, min, max] of [
@@ -481,7 +446,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   const wrongId = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle});
   assert.equal(wrongId.evaluate(true,'2026070508129999','10000',true,'1','999',true).status,'error');
   assert.equal(wrongId.clicked,0);
-  const modifiedOnClick = editFormCase({approvedSubmit:true,savedTitle,formTitle:siteFormTitle,
+  const modifiedOnClick = editFormCase({approvedSubmit:true,savedTitle,formTitle:savedTitle,
     clickMutatesTitle:true});
   assert.equal(modifiedOnClick.evaluate(true,number,'10000',true,'1','999',true).status,'input-ready');
   modifiedOnClick.simulateTyping();
@@ -489,7 +454,7 @@ function editFormCase({ id = number, old = '10,000', priceFields = 1,
   modifiedOnClick.simulateOneBrowserClick();
   assert.equal(modifiedOnClick.acceptedNativeSubmits,0,
     'Changing the restored title again must cancel the form submission');
-  console.log('PASS multi-level split-range title restoration and unsafe mismatch rejections');
+  console.log('PASS multi-level split-range title mismatches stop price submission');
 }
 
 {

@@ -128,8 +128,11 @@ internal sealed partial class AutomationForm
     private void ResizeSiteTraceBrowser(object? sender, EventArgs e)
     {
         if (!_siteRequestTraceActive || _web.IsDisposed) return;
-        // The ordinary automation browser is deliberately hidden offscreen.
-        // Show it temporarily only while the user records a manual action.
+        ShowSiteBrowserInWorkspace();
+    }
+
+    private void ShowSiteBrowserInWorkspace()
+    {
         _web.Dock = DockStyle.None;
         _web.Bounds = new Rectangle(12, 49,
             Math.Max(640, ClientSize.Width - 24), Math.Max(370, ClientSize.Height - 61));

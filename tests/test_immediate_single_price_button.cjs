@@ -58,8 +58,8 @@ function inspect({text='',html='<p>Existing details</p>',minimum='1',maximum='10
   return {result,fields};
 }
 const synced=inspect();
-assert.equal(synced.result.status,'ready');
-assert.equal(synced.fields.user_text.value,'<p>Existing details</p>');
+assert.equal(synced.result.status,'error');
+assert.equal(synced.fields.user_text.value,'');
 assert.equal(synced.fields.user_title.value,'9레벨 겁화 구매합니다');
 const already=inspect({text:'ORIGINAL'});
 assert.equal(already.fields.user_text.value,'ORIGINAL');
@@ -67,6 +67,6 @@ assert.equal(inspect({html:'<p><br></p>'}).result.status,'error');
 assert.equal(inspect({minimum:'0'}).result.status,'error');
 assert.equal(inspect({unit:'0'}).result.status,'error');
 assert.match(app,/SitePriceEdit\.OfficialPricePreflightScript/);
-assert(app.indexOf('SitePriceEdit.OfficialPricePreflightScript')<
-  app.indexOf('using var submissionObserver = new SitePriceSubmitObserver'));
+assert(app.indexOf('await submissionObserver.WaitForFormLoadAsync(token)')<
+  app.indexOf('SitePriceEdit.OfficialPricePreflightScript'));
 console.log('PASS: immediate single listing row action, scheduler isolation and official-form preflight');

@@ -78,6 +78,6 @@ async function inspect({host='www.itemmania.com',number=listing,hasButton=true}=
   assert.match(flow,/브라우저 스크립트가 결과를 반환하지 않았습니다/);
   assert.match(flow,/Clipboard\.SetText\(inspection\.Message \+ "\\n\\n" \+ sourceNote\)/);
   assert(flow.indexOf('BuildSubmitValidatorSourceScript(job.ListingNumber)')<
-    flow.indexOf('using var submissionObserver = new SitePriceSubmitObserver'));
+    flow.indexOf('await submissionObserver.WaitForFormLoadAsync(token)'));
   console.log('PASS read-only site validator source inspection protects form, IDs and private values');
 })().catch(e=>{console.error(e);process.exitCode=1});

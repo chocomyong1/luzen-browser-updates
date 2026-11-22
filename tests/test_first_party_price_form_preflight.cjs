@@ -55,8 +55,8 @@ assert.match(check({user_goods_type: 'general'}).result.message, /분할 구매�
 assert.match(check({}, {marketBlocked: true}).result.message, /시세 제한/);
 assert.match(check({}, {checker: false}).result.message, /FormChecker 초기화/);
 const emptyText = check({user_text: ''});
-assert.equal(emptyText.result.status, 'ready', 'only the editor mirror may be synchronized');
-assert.equal(emptyText.fields.user_text.value, '<p>기존 설명</p>');
+assert.equal(emptyText.result.status, 'error', 'preflight must not write the description');
+assert.equal(emptyText.fields.user_text.value, '');
 
 const typed = flow.indexOf('await TypeVerifiedSitePriceAsync(');
 const afterType = flow.indexOf('SitePriceEdit.OfficialPricePreflightScript', typed);

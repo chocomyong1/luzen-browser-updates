@@ -49,6 +49,6 @@ assert.match(observer, /_ => new ContactDecision\(false/);
 assert.match(observer, /first == _contactDecision\.Task/);
 assert.doesNotMatch(observer, /GetRequestPostData|\.postData|\.headers|Fetch\.enable|AppendLog|Console\.Write/);
 assert.doesNotMatch(flow.slice(flowStart, observed), /Network\.getRequestPostData|form\.submit\(|fetch\(/);
-assert.match(flow.slice(submitted, observed), /var observing = submissionObserver\.WaitAsync\(token\)/);
+assert.match(flow.slice(submitted, observed), /submissionObserver\.WaitAsync\(token\)/);
 
 console.log('PASS precise pre-click checkpoint, user-visible first-party stages and non-retry safety');

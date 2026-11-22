@@ -199,7 +199,7 @@ internal sealed partial class AutomationForm : Form
         MinimumSize = new Size(960, 600);
         Size = new Size(1500, 890);
         Font = new Font("Segoe UI", 9.5F);
-        Icon = new Icon(Settings.Asset("iBook1.ico"));
+        Icon = new Icon(Settings.Asset("VANTA.ico"));
         _hourLimit.Value = Math.Clamp(_config.MaxSubmissionsPerHour, 1, 1000);
         _editMode.Items.AddRange(new object[] { "판매등록", "구매등록", "재등록" });
         // Only these four categories are shown in the user's original ItemMania/Luzen registration screenshots.

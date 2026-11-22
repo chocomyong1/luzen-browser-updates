@@ -46,12 +46,11 @@ internal static class SitePriceEdit
 
     public static string BuildEditFormScript(string number, string oldPrice, string newPrice, bool submit,
         string expectedTitle = "", bool nativeSingleApproval = false,
-        string verifiedMinQuantity = "", string verifiedMaxQuantity = "",
-        bool allowVerifiedTitleRestore = false, bool trustedOneClick = false,
+        bool trustedOneClick = false,
         bool nativeKeyboardPrice = false) =>
         EditFormScript.Replace("__ARG__", JsonSerializer.Serialize(new
         { number, oldPrice, newPrice, submit, expectedTitle, nativeSingleApproval,
-            verifiedMinQuantity, verifiedMaxQuantity, allowVerifiedTitleRestore, trustedOneClick,
+            trustedOneClick,
             nativeKeyboardPrice }), StringComparison.Ordinal);
 
     // Read-only inspection of the authentic signed-in edit form. Never
@@ -120,13 +119,10 @@ internal static class SitePriceEdit
         return result('error','사이트 상세설명 에디터를 확인할 수 없습니다');
       const html=String(root.innerHTML||'');
       const normalized=html==='<p><br></p>'?'':String(sanitize(html));
-      if(!String(text.value||'').trim()&&normalized.trim()){
-        // Official buy_re_reg.js does this same synchronization on each
-        // Quill text-change; the original title and other form fields stay.
-        text.value=normalized;
-      }
       if(!String(text.value||'').trim())
-        return result('error','사이트 상세설명 필드가 비어 있습니다. 이 상태면 FormChecker가 제출을 취소합니다');
+        return result('error',normalized.trim()
+          ?'사이트 편집기가 상세설명을 제출 필드에 반영하지 않았습니다'
+          :'사이트 상세설명 필드가 비어 있습니다');
       if(val('user_goods_type')!=='division')
         return result('error','현재 사이트 글이 분할 구매글이 아니어서 단가 입력 경로가 일치하지 않습니다');
       if(val('user_goods_type')==='division'){
@@ -213,6 +209,23 @@ internal static class SitePriceEdit
         .replace(/https?:\/\/[^\s'"<>]+/gi,'[URL]')
         .replace(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,'[이메일]')
         .replace(/\b\d{8,}\b/g,'[숫자가림]').replace(/[\x00-\x1f]/g,' ');
+      if(typeof window.premiumLayerOpen==='function'){
+        const premiumSource=Function.prototype.toString.call(window.premiumLayerOpen);
+        lines.push('추가 확인 함수: '+sanitize(premiumSource).slice(0,3200));
+        const selectors=[...premiumSource.matchAll(/['"]([#.][a-zA-Z][\w-]{0,60})['"]/g)]
+          .map(match=>match[1]);
+        if(selectors.length)lines.push('정적 선택자: '+[...new Set(selectors)].join(', '));
+        const fields=[...premiumSource.matchAll(/getElementById\(['"]([\w-]+)['"]\)/g)]
+          .map(match=>match[1]);
+        const layer=fields.length===3?document.getElementById(fields[2]):null;
+        lines.push('정적 선택자: '+fields.join(', '));
+        if(layer){
+          const controls=[...layer.querySelectorAll('a,button,input[type="button"],input[type="submit"]')]
+            .slice(0,16).map(e=>[e.id,e.getAttribute('class'),e.innerText||e.value||'']
+              .map(x=>String(x||'').replace(/[^\w\s가-힣-]/g,'').trim().slice(0,50)).join('/'));
+          lines.push('정적 선택자: 프리미엄 레이어 제어 '+controls.join(' | '));
+        }
+      }
       window.__vantaPriceValidatorInspection=result('loading','사이트 정적 JS를 읽고 있습니다');
       // Return a plain object to WebView2 immediately. The asynchronous GETs
       // update a separate, polled result after the browser completes them.
@@ -398,6 +411,8 @@ internal static class SitePriceEdit
         return result('error','사이트가 가격 외 다른 폼 값을 변경하여 제출하지 않았습니다. 영향받은 필드: '+
           changed.filter(o=>!safePriceField(o)).slice(0,4).map(o=>
             String(o.element.name||o.element.id||'이름 없음').slice(0,40)).join(','));
+      p.fieldsBeforeSubmit=p.others.map(({element})=>({element,value:String(element.value??''),
+        checked:element.checked}));
       const button=p.button;
       button.scrollIntoView?.({block:'center',inline:'center'});
       const rect=button.getBoundingClientRect?.();
@@ -496,6 +511,34 @@ internal static class SitePriceEdit
         '; 사이트 스크립트 예외:'+(errors?.script??'미측정')+
         '; 비동기 예외:'+(errors?.promise??'미측정')+
         '; 프리미엄 처리 함수:'+(typeof window.premiumLayerOpen==='function'?'있음':'없음');
+    })()
+    """;
+
+    public const string OfficialPremiumConfirmationScript = """
+    (()=>{
+      const p=window.__luzenPriceNativeProbe;
+      const layer=document.getElementById('dvPremium');
+      const buttons=layer?.querySelectorAll('#premium_btn');
+      const button=buttons?.length===1?buttons[0]:null;
+      if(!p?.clickSeen||!p.submitSeen||p.guardBlocked||!p.canType?.()||
+         p.money(p.priceInput.value)!==p.desired||
+         document.getElementById('user_premium_penalty')?.value!=='1'||
+         !button||button.disabled||button.innerText.trim()!=='확인'||
+         !button.getClientRects().length||getComputedStyle(button).visibility!=='visible')
+        return false;
+      // The site's confirmation may apply premium settings. Keep the
+      // existing settings and let the user make the site's own decision.
+      const layerFields=[...layer.querySelectorAll('input,select')]
+        .map(element=>({element,value:String(element.value??''),checked:element.checked}));
+      button.addEventListener('click',e=>{
+        if(p.canType()&&p.money(p.priceInput.value)===p.desired&&
+           [...p.fieldsBeforeSubmit,...layerFields].every(({element,value,checked})=>
+             String(element.value??'')===value&&element.checked===checked))return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        window.alert('가격 외 입력값이 변경되었습니다. 사이트의 기존 설정을 유지해 주세요.');
+      },{capture:true});
+      return true;
     })()
     """;
 
@@ -902,24 +945,6 @@ internal static class SitePriceEdit
       const siteTitle=titleInputs.length===1?cleanTitle(titleInputs[0].value):'';
       const titlePreserved=originalTitle.length>=3&&titleInputs.length===1&&
         titleSignature(siteTitle)===titleSignature(originalTitle);
-      // The site's BUY edit form sometimes REPLACES the FIRST level token
-      // with the split-quantity range. This also happens with multi-token
-      // titles: "10 10 10 레벨 ..." -> "1 ~ 999 10 10 레벨 ...".
-      // Validate the entire remaining level sequence and suffix against the
-      // independent OWN-list title. Never infer how many level digits belong
-      // in a title or normalize away any of its numbers/punctuation.
-      const savedLevel=originalTitle.match(/^(8|9|10)((?:\s+(?:8|9|10))*\s*레벨[\s\S]*)$/);
-      const rangeTitle=siteTitle.match(/^\[?\s*([\d,]+)\s*(?:개)?\s*[~〜～–-]\s*([\d,]+)\s*(?:개)?\s*\]?\s*([\s\S]*)$/);
-      const quantity=s=>String(s||'').replace(/,/g,'').trim();
-      const verifiedMin=quantity(a.verifiedMinQuantity),verifiedMax=quantity(a.verifiedMaxQuantity);
-      const verifiedRange=/^[1-9]\d{0,6}$/.test(verifiedMin)&&/^[1-9]\d{0,6}$/.test(verifiedMax)&&
-        Number(verifiedMax)>=Number(verifiedMin);
-      const mayRestoreTitle=!titlePreserved&&a.nativeSingleApproval===true&&
-        titleInputs.length===1&&visible(titleInputs[0])&&!titleInputs[0].readOnly&&
-        String(titleInputs[0].type||'').toLowerCase()!=='hidden'&&
-        !!savedLevel&&!!rangeTitle&&verifiedRange&&
-        quantity(rangeTitle[1])===verifiedMin&&quantity(rangeTitle[2])===verifiedMax&&
-        titleSignature(rangeTitle[3])===titleSignature(savedLevel[2]);
       const displayTitle=s=>String(s||'').replace(/[\r\n\t]/g,' ').trim().slice(0,90);
       const siteSubmit=isAuditedBuyForm?[...form.querySelectorAll('button[type="submit"]')].filter(e=>
         visible(e)&&attr(e,'id')==='ok_btn'&&attr(e,'class').split(/\s+/).includes('buy_re_reg')&&
@@ -927,17 +952,12 @@ internal static class SitePriceEdit
       // All of path, form, old site price, hidden listing ID, and the EXACT
       // native submit control must agree. A character-name save cannot pass.
       if(formOwnedId&&siteSubmit.length===1){
-        if(!titlePreserved&&!mayRestoreTitle)return result('error',titleInputs.length!==1?
+        if(!titlePreserved)return result('error',titleInputs.length!==1?
           '가격 수정은 제목까지 재등록하므로 제목 입력칸을 유일하게 확인할 때까지 제출을 차단합니다':
           '실제 제목 내용이 달라 가격 제출을 막았습니다.\n'+
           '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
           '내 등록목록 제목: '+displayTitle(originalTitle)+'\n'+
           '원래 제목과 다를 때는 자동으로 제목을 고치거나 가격을 제출하지 않습니다.');
-        if(mayRestoreTitle&&!a.allowVerifiedTitleRestore)return result('restore-needed',
-          '사이트가 제목의 첫 레벨 숫자를 검증된 분할 수량 범위로 바꾼 것을 확인했습니다.\n'+
-          '사이트 수정폼: '+displayTitle(siteTitle)+'\n'+
-          '내 등록목록 제목: '+displayTitle(originalTitle)+'\n'+
-          '원래 제목으로 폼을 복구하는 별도 승인이 있어야만 1건 제출할 수 있습니다.',old,1);
         // The scheduler and batch paths never get this explicit one-item
         // approval. Never synthesize fetch(FormData(form)) or form.submit():
         // those bypass the site's own validation/normalization handlers.
@@ -953,14 +973,8 @@ internal static class SitePriceEdit
           // may update during real typing; identity/title/quantity changes
           // will still prevent the submit.
           const others=[...form.querySelectorAll('input,textarea,select')]
-            .filter(e=>e!==priceInput&&(!mayRestoreTitle||e!==titleInputs[0]))
+            .filter(e=>e!==priceInput)
             .map(e=>({element:e,value:String(e.value??'')}));
-          const beforeTitle=titleInputs[0].value;
-          if(mayRestoreTitle)titleInputs[0].value=a.expectedTitle;
-          if(titleSignature(titleInputs[0].value)!==titleSignature(originalTitle)){
-            if(mayRestoreTitle)titleInputs[0].value=beforeTitle;
-            return result('error','사이트 원본 제목을 유지할 수 없어 제출하지 않았습니다',old,1);
-          }
           const button=siteSubmit[0];
           priceInput.scrollIntoView?.({block:'center',inline:'center'});
           const rect=priceInput.getBoundingClientRect?.();
@@ -969,7 +983,6 @@ internal static class SitePriceEdit
           const point=Number.isFinite(x)&&Number.isFinite(y)&&x>0&&y>0&&
             x<window.innerWidth&&y<window.innerHeight?document.elementFromPoint?.(x,y):null;
           if(!point||!(point===priceInput||priceInput.contains?.(point))){
-            if(mayRestoreTitle)titleInputs[0].value=beforeTitle;
             return result('error','사이트 가격 입력칸의 화면 위치를 검증하지 못해 제출하지 않았습니다',old,1);
           }
           const probe={clickSeen:false,clickTrusted:false,submitSeen:false,

@@ -39,8 +39,10 @@ for(const value of [
 // The entire original first-party chain must be allowed to finish, while
 // preserving the existing one-click and independently verified final price.
 assert.match(flow,/SitePriceEdit\.OfficialPriceSubmitReadinessScript/);
-assert(flow.indexOf('SitePriceEdit.OfficialPriceSubmitReadinessScript')<
-  flow.indexOf('using var submissionObserver = new SitePriceSubmitObserver'));
+assert(flow.indexOf('await submissionObserver.StartAsync()')<
+  flow.indexOf('var record = records[0]'));
+assert(flow.indexOf('await submissionObserver.WaitForFormLoadAsync(token)')<
+  flow.indexOf('await TypeVerifiedSitePriceAsync('));
 assert.match(flow,/DispatchVerifiedSitePriceClickAsync\(final\.X, final\.Y, token, \(\) =>/);
 assert.match(flow,/ConfirmChangedSitePriceAsync\(job, desired, token, siteTitleSnapshot\)/);
 assert.match(site,/AutomaticPriceSubmissionEnabled => false/);

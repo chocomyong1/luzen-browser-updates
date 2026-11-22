@@ -14,6 +14,37 @@ function script(name) {
   return match[1];
 }
 
+{
+  let listener;
+  let clicks = 0;
+  const premiumHours = {value: '0'};
+  const button = {
+    innerText: '확인',
+    getClientRects: () => [{}],
+    addEventListener: (type, callback) => { listener = callback; },
+    click: () => { clicks++; }
+  };
+  const layer = {querySelectorAll: selector => selector === '#premium_btn' ? [button] : [premiumHours]};
+  const probe = {
+    clickSeen: true, submitSeen: true, canType: () => true,
+    priceInput: {value: '71990'}, desired: '71990', money: String, fieldsBeforeSubmit: []
+  };
+  const page = {
+    window: {__luzenPriceNativeProbe: probe, alert() {}},
+    document: {getElementById: id => id === 'dvPremium' ? layer : {value: '1'}},
+    getComputedStyle: () => ({visibility: 'visible'})
+  };
+  assert.equal(vm.runInNewContext(script('OfficialPremiumConfirmationScript'), page), true);
+  assert.equal(clicks, 0, 'The official confirmation must wait for the user');
+  let blocked = false;
+  const event = {preventDefault: () => { blocked = true; }, stopImmediatePropagation() {}};
+  listener(event);
+  assert.equal(blocked, false);
+  premiumHours.value = '24';
+  listener(event);
+  assert.equal(blocked, true, 'Changing premium options must block a price-only edit');
+}
+
 function page({name='무료 등록', count=1, amount='0', penalty='1',
   pathname='/myroom/buy/buy_re_reg.html', contactApproved=true}={}) {
   const layer={
@@ -81,7 +112,7 @@ assert.equal(find(page({pathname:'/myroom/buy/buy_regist.html'})).status,'blocke
   const site=page();site.p.canType=()=>false;
   assert.equal(find(site).status,'blocked', 'Exact ID/title safety must remain');
 }
-assert.match(flow,/if \(_unattendedSitePriceEdit\)\s*await TryAdvanceOfficialFreeRegistrationAsync/);
+assert.match(flow,/if \(_unattendedSitePriceEdit && !requiresSiteConfirmation &&\s*string\.IsNullOrEmpty\(_sitePriceEditDialogWarning\)\)\s*await TryAdvanceOfficialFreeRegistrationAsync/);
 assert.match(flow,/var observed = await observing/);
 assert.match(flow,/VerifyOfficialFreeContinuationScript/);
 assert.match(flow,/observer\.ContactApproved/);

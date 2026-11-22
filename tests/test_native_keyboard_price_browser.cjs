@@ -14,14 +14,12 @@ const script = name => {
 };
 const listingId = '2026112100145715';
 const title = '10 레벨 겁화 삽니다 24 시';
-const siteTitle = '1 ~ 9,995 레벨 겁화 삽니다 24 시';
 const target = '35100';
 const url = 'https://www.itemmania.com/myroom/buy/buy_re_reg.html';
 
 async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit=false,
   dom0Cancels=false, multiLevel=false, otherFieldChanged=false) {
   const recordTitle=multiLevel?'10 10 10 레벨 작열 구매합니다':title;
-  const editTitle=multiLevel?'1 ~ 999 10 10 레벨 작열 구매합니다':siteTitle;
   const context = await browser.newContext({viewport:{width:1100,height:750}});
   const page = await context.newPage();
   const requests = [];
@@ -30,7 +28,7 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
     <!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
     <form id="frmBuy" action="/myroom/buy/buy_re_reg_ok.php" method="post">
       <input type="hidden" name="registration_id" value="${listingId}">
-      <label>제목<input name="user_title" value="${editTitle}"></label>
+      <label>제목<input name="user_title" value="${recordTitle}"></label>
       <label>캐릭터명<input name="user_character" value="original-character"></label>
       <table><tr><th>구매금액</th><td><input name="user_division_price" value="10,000"></td></tr></table>
       <button type="submit" id="ok_btn" class="buy_re_reg">재등록</button>
@@ -87,8 +85,8 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   await move('mousePressed','left',1,1,prepared.x,prepared.y);
   await move('mouseReleased','left',0,1,prepared.x,prepared.y);
   assert.equal(await page.evaluate(script('VerifyNativePriceFocusScript')),true);
-  await key('keyDown','a','KeyA',65,2);
-  await key('keyUp','a','KeyA',65,2);
+  const selection=await page.evaluate(script('SelectNativePriceForReplacementScript'));
+  assert.equal(selection.status,'retry-ready',selection.message);
   for(const digit of target){
     await key('keyDown',digit,'Digit'+digit,48+Number(digit),0,digit);
     await key('keyUp',digit,'Digit'+digit,48+Number(digit));
@@ -171,17 +169,16 @@ async function oneTrial(browser, mutateTitle, maskPerKey=false, hoverMovesSubmit
   await context.close();
 }
 
-async function asynchronousFirstPartySubmitTrial(browser) {
+async function asynchronousFirstPartySubmitTrial(browser, contactApproved) {
   // The live site's FormChecker intentionally cancels the first DOM0
   // submit, then calls native form.submit() after asynchronous validation.
   // Exercise that sequence with a real Chromium mouse click and a local
   // intercepted fake endpoint. No real ItemMania request is made.
   const context=await browser.newContext({viewport:{width:1100,height:750}});
   const page=await context.newPage();
-  const finalPosts=[];
+  const submissionStages=[];
   page.on('request',request=>{
-    if(request.method()==='POST'&&request.url().endsWith('/myroom/buy/buy_re_reg_ok.php'))
-      finalPosts.push(request);
+    if(request.method()==='POST') submissionStages.push(new URL(request.url()).pathname);
   });
   await page.route(url,route=>route.fulfill({status:200,contentType:'text/html',body:`
     <!doctype html><html lang="ko"><head><meta charset="utf-8"></head><body>
@@ -196,16 +193,24 @@ async function asynchronousFirstPartySubmitTrial(browser) {
       document.querySelector('#frmBuy').onsubmit=function(){
         if(window.validationStarted)return false;
         window.validationStarted=true;
-        setTimeout(()=>{
+        void (async()=>{
+          const contact=await fetch('/_include/_user_contact_restrict.php',{method:'POST'});
+          if((await contact.text()).split('|')[0]!=='S')return;
+          const classification=await fetch('/_include/_AJAX_trade_auto_class_check.php',{method:'POST'});
+          if(!classification.ok)return;
           const form=document.querySelector('#frmBuy');
           form.onsubmit=null;
           form.submit();
-        },80);
+        })().finally(()=>window.validationFinished=true);
         return false;
       };
     </script></body></html>`}));
   await page.route('**/myroom/buy/buy_re_reg_ok.php',route=>
     route.fulfill({status:200,contentType:'text/html',body:'site received one POST'}));
+  await page.route('**/_include/_user_contact_restrict.php',route=>
+    route.fulfill({status:200,body:contactApproved?'S|':'N|'}));
+  await page.route('**/_include/_AJAX_trade_auto_class_check.php',route=>
+    route.fulfill({status:200,body:'category approved'}));
   await page.goto(url);
   const prepared=await page.evaluate(script('EditFormScript').replace('__ARG__',JSON.stringify({
     number:listingId,oldPrice:'10000',newPrice:target,submit:true,expectedTitle:title,
@@ -217,13 +222,19 @@ async function asynchronousFirstPartySubmitTrial(browser) {
   await page.locator('[name=user_division_price]').press('Tab');
   const final=await page.evaluate(script('FinalizeNativePriceScript'));
   assert.equal(final.status,'armed',final.message);
-  const posted=page.waitForRequest(r=>r.method()==='POST'&&
-    r.url().endsWith('/myroom/buy/buy_re_reg_ok.php'));
   await page.mouse.click(final.x,final.y);
-  await posted;
-  await page.waitForURL('**/myroom/buy/buy_re_reg_ok.php');
-  assert.equal(finalPosts.length,1,'One genuine user-like click must yield exactly one official async POST');
-  assert.equal(await page.evaluate(()=>document.body.textContent.trim()),'site received one POST');
+  if(contactApproved){
+    await page.waitForURL('**/myroom/buy/buy_re_reg_ok.php');
+    assert.deepEqual(submissionStages,[
+      '/_include/_user_contact_restrict.php',
+      '/_include/_AJAX_trade_auto_class_check.php',
+      '/myroom/buy/buy_re_reg_ok.php'
+    ]);
+    assert.equal(await page.evaluate(()=>document.body.textContent.trim()),'site received one POST');
+  }else{
+    await page.waitForFunction(()=>window.validationFinished===true);
+    assert.deepEqual(submissionStages,['/_include/_user_contact_restrict.php']);
+  }
   await context.close();
 }
 
@@ -236,7 +247,8 @@ async function asynchronousFirstPartySubmitTrial(browser) {
     await oneTrial(browser,false,false,false,true);
     await oneTrial(browser,false,false,false,false,true);
     await oneTrial(browser,false,false,false,false,false,true);
-    await asynchronousFirstPartySubmitTrial(browser);}
+    await asynchronousFirstPartySubmitTrial(browser,true);
+    await asynchronousFirstPartySubmitTrial(browser,false);}
   finally{await browser.close();}
   console.log('PASS real Chromium keyboard/mouse, original title guards, and asynchronous first-party final POST');
 })().catch(error=>{console.error(error);process.exitCode=1;});

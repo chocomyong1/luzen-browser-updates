@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -47,6 +48,10 @@ internal sealed class SitePriceSubmitObserver : IDisposable
     // token; the actual text, contact details, and request data are not logged.
     private readonly Dictionary<string, string> _validationRequests = new();
     private readonly List<string> _validationStages = new();
+    private static readonly string[] FormLoadStages = ["안심번호", "파워 등록권", "무료 이용권"];
+    private readonly Dictionary<string, string> _formLoadRequests = new();
+    private readonly Dictionary<string, int> _formLoadResponses = new();
+    private readonly HashSet<string> _completedFormLoadStages = new();
     private bool _contactStarted;
     private bool _contactFinished;
     private bool _categoryStarted;
@@ -68,6 +73,19 @@ internal sealed class SitePriceSubmitObserver : IDisposable
     public bool CategoryCheckStarted => _categoryStarted;
 
     public SitePriceSubmitObserver(CoreWebView2 core) => _core = core;
+
+    public async Task WaitForFormLoadAsync(CancellationToken token)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(12);
+        while (_completedFormLoadStages.Count < FormLoadStages.Length)
+        {
+            token.ThrowIfCancellationRequested();
+            if (DateTime.UtcNow >= deadline)
+                throw new InvalidOperationException("사이트 수정폼 초기 조회가 완료되지 않았습니다: " +
+                    string.Join(", ", FormLoadStages.Where(stage => !_completedFormLoadStages.Contains(stage))));
+            await Task.Delay(150, token);
+        }
+    }
 
     public async Task StartAsync()
     {
@@ -182,6 +200,18 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             if (Str(req, "method") != "POST" || requestId.Length == 0 ||
                 !Uri.TryCreate(Str(req, "url"), UriKind.Absolute, out var uri) ||
                 !ItemManiaAccountStore.IsOfficialSite(uri)) return;
+            var formLoad = uri.AbsolutePath.ToLowerInvariant() switch
+            {
+                "/_include/_safetynumber_category_check_ajax.html" => FormLoadStages[0],
+                "/power/_ajax_power_check.php" => FormLoadStages[1],
+                "/_include/_get_free_use.php" => FormLoadStages[2],
+                _ => null
+            };
+            if (formLoad is not null)
+            {
+                _formLoadRequests[requestId] = formLoad;
+                return;
+            }
             var validation = ValidationStage(uri.AbsolutePath);
             if (validation is not null)
             {
@@ -216,6 +246,11 @@ internal sealed class SitePriceSubmitObserver : IDisposable
             string requestId = Str(root, "requestId");
             if (!root.TryGetProperty("response", out var response) ||
                 !response.TryGetProperty("status", out var status) || !status.TryGetInt32(out var code)) return;
+            if (_formLoadRequests.ContainsKey(requestId))
+            {
+                _formLoadResponses[requestId] = code;
+                return;
+            }
             if (_validationRequests.TryGetValue(requestId, out var stage))
             {
                 if (stage == "연락처 검사") _contactStatus = code;
@@ -236,6 +271,12 @@ internal sealed class SitePriceSubmitObserver : IDisposable
         {
             using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
             var requestId = Str(doc.RootElement, "requestId");
+            if (_formLoadRequests.Remove(requestId, out var formLoad))
+            {
+                if (_formLoadResponses.Remove(requestId, out int status) && status is >= 200 and < 300)
+                    _completedFormLoadStages.Add(formLoad);
+                return;
+            }
             if (_validationRequests.Remove(requestId, out var stage))
             {
                 if (stage == "연락처 검사")
@@ -265,6 +306,11 @@ internal sealed class SitePriceSubmitObserver : IDisposable
         {
             using var doc = JsonDocument.Parse(e.ParameterObjectAsJson);
             var requestId = Str(doc.RootElement, "requestId");
+            if (_formLoadRequests.Remove(requestId))
+            {
+                _formLoadResponses.Remove(requestId);
+                return;
+            }
             if (_validationRequests.Remove(requestId, out var stage))
             {
                 AppendStage(stage + " 전송 실패");
@@ -281,12 +327,13 @@ internal sealed class SitePriceSubmitObserver : IDisposable
         catch (Exception) { /* Preserve an uncertain result. */ }
     }
 
-    public async Task<SitePriceSubmitObservation> WaitAsync(CancellationToken token)
+    public async Task<SitePriceSubmitObservation> WaitAsync(CancellationToken token,
+        TimeSpan? confirmationTimeout = null)
     {
         // A conclusive contact-check rejection cannot lead to the official
         // category/final POST chain. Stop waiting early, then perform the
         // existing read-only, exact-ID price check; NEVER resubmit.
-        var timeout = Task.Delay(TimeSpan.FromSeconds(35), token);
+        var timeout = Task.Delay(confirmationTimeout ?? TimeSpan.FromSeconds(35), token);
         Task first = await Task.WhenAny(_done.Task, _contactDecision.Task, timeout);
         token.ThrowIfCancellationRequested();
         if (first == _contactDecision.Task)
