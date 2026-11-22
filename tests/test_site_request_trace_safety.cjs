@@ -44,7 +44,7 @@ assert.match(price, /observed\.OtherBuyPostPath/);
 assert.doesNotMatch(observer, /getRequestPostData|\.postData|\.headers|\.response\.body|Fetch\.enable/);
 const safetyStart = price.indexOf('using var submissionObserver = new SitePriceSubmitObserver(');
 const siteSubmit = price.indexOf('BuildEditFormScript(job.ListingNumber, current.ToString(), desired.ToString(), true,');
-const finish = price.indexOf('await submissionObserver.WaitAsync(token)', siteSubmit);
+const finish = price.indexOf('var observed = await observing;', siteSubmit);
 const readback = price.indexOf('await ConfirmChangedSitePriceAsync(job, desired, token, siteTitleSnapshot)', siteSubmit);
 const finalVerify = price.indexOf('SitePriceEdit.FinalizeNativePriceScript', siteSubmit);
 const preClick = price.indexOf('await DispatchVerifiedSitePriceClickAsync(final.X, final.Y, token, () =>', finalVerify);
