@@ -94,4 +94,27 @@ assert.ok(items[0].listingUrl.includes('buy_regist_view.html'), 'An exact View l
 assert.ok(items[0].editUrl.includes('buy_regist_edit.html'), 'Keep the exact own-row Edit URL for read-only detail enrichment');
 assert.ok(items[0].editUrl.includes('id=2026070701992028'), 'Edit link must point to the same verified listing');
 assert.equal(items[0].quantity, '', 'The per-unit label must NOT be mistaken for total stock');
-console.log('PASS ItemMania imported rows: headerless first row, two ranges, price, category, links');
+// The site may render only the first ten numbers plus an icon-only
+// 'next group' anchor. Its accessible title must count as a real, same-site
+// pagination link. JavaScript-only pagers must be reported as unresolved.
+const nextAnchor = {
+  className:'paging-next', innerText:'', textContent:'',
+  getAttribute: name => name==='href' ? '/myroom/buy/buy_regist.html?page=11'
+    : name==='aria-label' ? '다음 페이지' : null,
+  closest: selector => selector.includes('paging') ? {} : null,
+};
+const nextJs = {
+  className:'paging-next', innerText:'', textContent:'',
+  getAttribute: name => name==='href' ? 'javascript:void(0)'
+    : name==='onclick' ? 'goPage(21)' : name==='title' ? '다음 페이지' : null,
+  closest: selector => selector.includes('paging') ? {} : null,
+};
+doc.querySelectorAll = selector => selector==='table' ? [table]
+  : selector==='a[href],area[href]' ? [nextAnchor,nextJs]
+  : selector==='a[onclick],button[onclick],a[href]' ? [nextAnchor,nextJs] : [];
+const pagination = vm.runInNewContext(match[1],{document:doc,location,URL},{timeout:5000});
+assert.deepEqual(Array.from(pagination.nextPageUrls),
+  [url+'?page=11'], 'The accessible next-page anchor must expose page 11');
+assert.equal(pagination.hasUnresolvedPagination,true,
+  'A JavaScript-only next group must not be silently considered a complete scan');
+console.log('PASS ItemMania imported rows + accessible pagination link and unresolved JS next group');

@@ -2987,6 +2987,9 @@ internal sealed partial class AutomationForm : Form
                         {
                             var ownRow = await LocateOwnedListRepostAsync(job, token);
                             missingOwnedListing = ownRow.MissingAfterCompleteScan;
+                            if (ownRow.Status == "not-found")
+                                throw new OwnedListCoveragePendingException(
+                                    ownRow.Message + " · 사이트에서 해당 등록번호를 확인할 수 없으므로 재등록하지 않았습니다.");
                             if (ownRow.Status != "ready")
                                 throw new InvalidOperationException("내 등록목록 재등록 차단: " + ownRow.Message +
                                     ". 등록번호에 직접 연결된 물품 행의 버튼을 찾지 못했습니다. 제출하지 않았습니다.");
@@ -2999,6 +3002,9 @@ internal sealed partial class AutomationForm : Form
                             // A detail-page button may resubmit an unrelated
                             // form. Use the exact-ID OWN-list native reInsert.
                             var fallback = await LocateOwnedListFallbackAsync(job, token);
+                            if (fallback.Status == "not-found")
+                                throw new OwnedListCoveragePendingException(
+                                    fallback.Message + " · 검색하지 못한 등록번호에는 제출하지 않았습니다.");
                             if (fallback.Status != "ready")
                                 throw new InvalidOperationException(
                                     "재등록 차단: 본인 관리목록에서 등록번호·재등록 버튼을 검증하지 못했습니다: " +
@@ -3167,6 +3173,17 @@ internal sealed partial class AutomationForm : Form
                     (job.RequiresReview ? " · 추가 확인 필요" : ""));
             }
         }
+        catch (OwnedListCoveragePendingException ex) when (!submitted)
+        {
+            // A visible ten-page window is not proof that an older listing was
+            // deleted. Retry the SAME ID later, without submitting, alarming
+            // on each miss, or disabling a valid job permanently.
+            job.NextDueUtc = DateTime.UtcNow.AddMinutes(30);
+            job.LastStatus = "관리목록에서 미발견 · 30분 후 재확인 (미제출)";
+            AppendLog($"관리목록 미발견 · 안전 재조회 예약: {job.Server} · {job.ListingNumber} · " +
+                "30분 후 재조회 · 재등록 미제출 · 자동 OFF하지 않음");
+            AppendLog("검색 범위 진단: " + ex.Message);
+        }
         catch (OwnedListLoginPendingException ex) when (!submitted)
         {
             // This failure happened during read-only navigation, before any
@@ -3249,9 +3266,10 @@ internal sealed partial class AutomationForm : Form
             }
             if (missingOwnedListing && !submitted)
             {
-                job.Enabled = false;
-                job.NextDueUtc = DateTime.MaxValue;
-                job.LastStatus = "관리목록에 없음 · 자동 OFF";
+                // Do not mistake an incomplete set of pagination links for a
+                // deleted site listing. Recheck the same ID without a POST.
+                job.NextDueUtc = DateTime.UtcNow.AddMinutes(30);
+                job.LastStatus = "관리목록 미발견 · 30분 후 재확인 (미제출)";
             }
             else
             {
@@ -3262,7 +3280,7 @@ internal sealed partial class AutomationForm : Form
             AppendLog("작업 오류: " + ex.Message);
             AppendLog($"{(flow.Operation == "재등록" ? "재등록 실패 요약:" : "등록 실패 요약:")} " +
                 $"{job.Server} · {job.ListingNumber} · {ex.Message}");
-            if (!dryRun) NotifyAutomationIssue(missingOwnedListing && !submitted ? "관리목록에 없음 · 자동 OFF" :
+            if (!dryRun && !missingOwnedListing) NotifyAutomationIssue(
                 submitted ? "제출 결과 확인 필요" : "등록 작업 오류", ex.Message, job);
             if (_schedulerRunning && submitted && !_repostLoginRejected)
                 AppendLog("결과 확인이 필요한 물품 1건만 보류했습니다. 다른 정상 물품은 계속 등록하며 " +
@@ -3354,6 +3372,7 @@ internal sealed partial class AutomationForm : Form
         const int maxPages = 25;
         int loadedPages = 0, unrenderedPages = 0, visibleListings = 0;
         int numberRows = 0, titleRows = 0;
+        bool javascriptOnlyNextPager = false;
         while (queue.Count > 0 && visited.Count < maxPages)
         {
             token.ThrowIfCancellationRequested();
@@ -3400,6 +3419,7 @@ internal sealed partial class AutomationForm : Form
             if (page.Listings.Count > 0 || page.IsEmptyList) loadedPages++;
             else unrenderedPages++;
             visibleListings += page.Listings.Count;
+            javascriptOnlyNextPager |= page.HasUnresolvedPagination;
             numberRows += row.NumberRows;
             titleRows += row.TitleRows;
             foreach (string link in page.NextPageUrls.Take(30))
@@ -3416,7 +3436,8 @@ internal sealed partial class AutomationForm : Form
         AppendLog($"관리 목록 {visited.Count}페이지 검사: 표시 확인 {loadedPages}페이지, " +
             $"물품 {visibleListings}건, 미표시 {unrenderedPages}페이지, " +
             $"등록번호 일치 행 {numberRows}건, 제목 일치 행 {titleRows}건. " +
-            $"첫 페이지 최신 목록 재확인: {job.ListingNumber}");
+            $"검색 대상 {job.ListingNumber} · 공식 첫 페이지 재조회 시작" +
+            (javascriptOnlyNextPager ? " · URL 없는 사이트 페이지 이동 버튼 감지" : ""));
         try
         {
             await NavigateOwnedListAsync(baseUrl, token);
@@ -3433,20 +3454,26 @@ internal sealed partial class AutomationForm : Form
             }
             if (updated.Status != "not-found") return updated;
             firstPageRechecked = updated.NumberRows == 0 &&
-                (updatedPage.Listings.Count > 0 || updatedPage.IsEmptyList) &&
-                updatedPage.NextPageUrls.All(link => visited.Contains(link));
+                (updatedPage.Listings.Count > 0 || updatedPage.IsEmptyList);
+            // The site may show only 10 links while more groups exist.
+            // Do not confuse an exhausted link queue with full-site coverage.
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception ex) { AppendLog("최신 첫 페이지 재확인 실패: " + ex.GetType().Name); }
         return new OwnedListRepostResult
         {
             Status = "not-found",
-            MissingAfterCompleteScan = firstPageRechecked && queue.Count == 0 && loadedPages > 0 &&
-                visited.Count < maxPages && unrenderedPages == 0 && numberRows == 0,
+            // A complete read of *discovered* pages is not proof all server
+            // pages or trading/hidden statuses were inspected.
+            MissingAfterCompleteScan = false,
             Message =
-            $"관리 목록 {visited.Count}페이지에서 등록번호 {job.ListingNumber}를 찾지 못했습니다 " +
-            $"(읽힌 물품 {visibleListings}건, 미표시 {unrenderedPages}페이지). " +
-            "원본 글이 다른 상태/페이지로 이동했거나 저장된 등록번호가 변경됐을 수 있습니다"
+            $"현재 노출된 관리목록 {visited.Count}페이지에서 등록번호 {job.ListingNumber}를 찾지 못했습니다 " +
+            $"(읽힌 물품 {visibleListings}건, 미표시 {unrenderedPages}페이지, " +
+            $"최신 1페이지 재조회 {(firstPageRechecked ? "완료" : "불확실")}). " +
+            (javascriptOnlyNextPager
+                ? "사이트에 URL 없는 다음 페이지 버튼이 있어 조회 범위가 완전하지 않을 수 있습니다. "
+                : "추가 페이지 또는 다른 거래 상태에 있을 수 있습니다. ") +
+            "등록번호 삭제로 확정하지 않고 30분 후 재조회합니다."
         };
     }
 

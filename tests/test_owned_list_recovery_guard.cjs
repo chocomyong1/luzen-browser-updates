@@ -41,7 +41,16 @@ assert(scheduler.indexOf('_ownedListRecoveryUtc != DateTime.MinValue') < schedul
   'A/C must check recovery before running the next job');
 assert.match(runner, /_ownedListRecoveryRun\?\.Cancel\(\)/);
 assert.match(owned, /if \(expectOwnedList && sawTransportFailure\)/);
-assert.match(runner, /MissingAfterCompleteScan = firstPageRechecked && queue\.Count == 0 && loadedPages > 0 &&\s*visited\.Count < maxPages && unrenderedPages == 0 && numberRows == 0/);
-assert.match(runner, /if \(missingOwnedListing && !submitted\)\s*\{\s*job\.Enabled = false;\s*job\.NextDueUtc = DateTime\.MaxValue;/);
+// A complete scan of *exposed* links must not permanently disable a valid
+// listing when the site only exposes the first pagination block.
+assert.match(runner, /MissingAfterCompleteScan = false/);
+assert.match(runner, /throw new OwnedListCoveragePendingException/);
+assert.match(runner, /catch \(OwnedListCoveragePendingException ex\) when \(!submitted\)/);
+const coverage = runner.split('catch (OwnedListCoveragePendingException ex) when (!submitted)')[1]
+  ?.split('catch (OwnedListLoginPendingException ex)')[0] || '';
+assert.match(coverage, /job\.NextDueUtc = DateTime\.UtcNow\.AddMinutes\(30\)/);
+assert.match(coverage, /관리목록에서 미발견 · 30분 후 재확인 \(미제출\)/);
+assert.doesNotMatch(coverage, /job\.Enabled = false|NotifyAutomationIssue|Submit|\.click\(/);
+assert.doesNotMatch(runner, /"관리목록에 없음 · 자동 OFF"/);
 assert.match(split, /관리목록 복구 대기/);
 console.log('PASS system-wide unrendered-list cooldown, B VPN + DOM probe, manual stop and zero-submit recovery');
