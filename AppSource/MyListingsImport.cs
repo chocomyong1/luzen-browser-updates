@@ -41,6 +41,7 @@ internal sealed class ExistingListingPage
     public bool IsEmptyList { get; set; }
     public List<ExistingListingRecord> Listings { get; set; } = new();
     public List<string> NextPageUrls { get; set; } = new();
+    public bool HasUnresolvedPagination { get; set; }
 }
 
 internal sealed class ExistingListingMergeSummary
@@ -730,19 +731,45 @@ internal static class MyListingsImport
     }
   }
   const nextPageUrls=[];
-  for(const d of docs)for(const a of d.querySelectorAll('a[href]')) {
+  const pagerSelector='[class*="paging"],[class*="pagination"],[id*="paging"],[id*="pagination"],.paginate';
+  const pagerLabel=e=>clean([e.innerText||e.textContent,e.getAttribute?.('title'),
+    e.getAttribute?.('aria-label'),e.getAttribute?.('data-desc'),e.getAttribute?.('rel')].filter(Boolean).join(' '));
+  const nextText=s=>/(^|\s)(?:다음(?:\s*페이지)?|next|forward|more|[>›»]{1,2})(?:\s|$)/i.test(s);
+  const pagerLink=e=>{
+    const cls=String(e.className||'');
+    return !!e.closest(pagerSelector)||/paging|pagination|page|next|pager/i.test(cls);
+  };
+  // Include icon-only and accessible-name pager anchors, not only links
+  // whose visible text literally says 'next'. Never invent page URLs.
+  for(const d of docs)for(const a of d.querySelectorAll('a[href],area[href]')) {
     let u; try {u=new URL(a.getAttribute('href'),pageUrl);}catch{continue;}
     if(!official(u.href)||!ownPath(u.pathname)||u.href===pageUrl)continue;
-    const txt=clean(a.innerText||a.textContent), cls=(a.className||'').toString();
-    const paging=!!a.closest('[class*="paging"],[class*="pagination"],[id*="paging"],[id*="pagination"],.paginate') ||
-      /page|pag|pg=/i.test(u.search) || /paging|page/i.test(cls);
-    if(paging && (/^(다음|next|>|»|[0-9]{1,3})$/i.test(txt) || /next/i.test(cls)) &&
-       !nextPageUrls.includes(u.href)) nextPageUrls.push(u.href);
+    const txt=clean(a.innerText||a.textContent);
+    const label=pagerLabel(a), cls=String(a.className||'');
+    const paging=pagerLink(a)||/page|pag|pg=/i.test(u.search);
+    const next=nextText(label)||/^(?:[0-9]{1,4}|[>›»]{1,2})$/.test(txt)||
+      /(?:^|[\s_-])next(?:[\s_-]|$)/i.test(cls);
+    if(paging&&next&&!nextPageUrls.includes(u.href))nextPageUrls.push(u.href);
   }
+  // JavaScript-only 'next group' controls cannot be visited by URL. Report
+  // that the currently exposed links are incomplete rather than assuming
+  // a full 10-page scan proves that the listing was removed.
+  const hasUnresolvedPagination=docs.some(d=>[...d.querySelectorAll('a[onclick],button[onclick],a[href]')]
+    .some(e=>{
+      if(!pagerLink(e)||!nextText(pagerLabel(e)))return false;
+      const raw=String(e.getAttribute?.('href')||'').trim();
+      if(raw) {
+        try {
+          const u=new URL(raw,pageUrl);
+          if(official(u.href)&&ownPath(u.pathname))return false;
+        } catch {}
+      }
+      return /\b(page|paging|next|move|go)\b|\d/i.test(String(e.getAttribute?.('onclick')||raw));
+    }));
   const isEmptyList=docs.some(d=>/등록(된|한)?\s*(판매|구매|물품|상품)?.{0,8}(없습니다|없어요)|등록\s*내역이\s*없|검색\s*결과가\s*없/.test(clip(d.body?.innerText||'',7000)));
   return {pageUrl,loginRequired:false,isEmptyList,
     error:listings.length ? '' : (isEmptyList?'등록된 물품이 없습니다.':'목록 형식이 확인되지 않았습니다. 입력값 또는 URL을 요구하지 않습니다.'),
-    listings,nextPageUrls:nextPageUrls.slice(0,30)};
+    listings,nextPageUrls:nextPageUrls.slice(0,60),hasUnresolvedPagination};
 })()
 """;
 

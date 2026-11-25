@@ -676,6 +676,14 @@ internal sealed partial class AutomationForm
         public OwnedListLoginPendingException(string message) : base(message) { }
     }
 
+    // A listing missing from the pages currently exposed by My Room is not
+    // proof it was deleted. Older/hidden/trading rows or another pager group
+    // may be outside the scanned window. Do not submit or permanently disable.
+    private sealed class OwnedListCoveragePendingException : Exception
+    {
+        public OwnedListCoveragePendingException(string message) : base(message) { }
+    }
+
     // A management page that cannot be reached is a pre-submit network
     // condition, not evidence that the listing ID/title is wrong. B gets a
     // circuit-breaker and an independent proxy/IP recheck before more jobs.
