@@ -63,5 +63,5 @@ assert.match(schedule, /ApplySitePriceAsync\(job, bulkApproval: true, fromSchedu
 assert.match(schedule, /job\.RequiresReview = true;/);
 assert.match(planner, /ApplyCheckedSitePricesNowAsync\(\)/);
 assert.match(planner, /nativeSingleApproval: true,[\s\S]*?backgroundApproved: true/);
-assert.match(bulk, /사이트에는 아직 반영되지 않습니다/);
+assert.match(bulk, /기존 본인 구매글은 저장 후 순차적으로 사이트 가격 수정을 시도합니다/);
 console.log('PASS one-click price apply: new posts, verified BUY posts, A/B/C bulk and paced safety');
