@@ -33,7 +33,7 @@ internal sealed partial class MainForm
         }
         var targets = rows.Where(row =>
             !string.IsNullOrWhiteSpace(row.Job.PendingSitePriceTarget) &&
-            row.Job.ListingNumber.Length == 16).ToList();
+            row.Job.ListingNumber is { Length: 16 }).ToList();
         if (targets.Count == 0)
         {
             _status.Text = "  저장 완료 · 사이트에 반영할 가격 변경이 없습니다.";

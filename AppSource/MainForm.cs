@@ -147,6 +147,7 @@ internal sealed partial class MainForm : Form
     }
 
     private bool CanInstallUpdateAcrossSystems =>
+        !_integratedPriceQueueRunning &&
         _moduleA.CanInstallSoftwareUpdate && _moduleB.CanInstallSoftwareUpdate && _moduleC.CanInstallSoftwareUpdate;
 
     private void RefreshSystemLabel()

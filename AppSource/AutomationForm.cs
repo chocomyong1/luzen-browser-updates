@@ -1444,7 +1444,7 @@ internal sealed partial class AutomationForm : Form
 
     // Updates must never interrupt an in-flight site action or queued import.
     public bool CanInstallSoftwareUpdate =>
-        !_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport;
+        !_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport && !_sitePriceBatchRunning;
     // Each network keeps its own job list and login, but the SAME ItemMania
     // account/server quota must be shared. Otherwise A and B could both spend
     // the same remaining ID allocation in the same hour.
