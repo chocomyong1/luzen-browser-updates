@@ -833,7 +833,7 @@ internal sealed partial class AutomationForm : Form
         AppendLog($"같은 가격 선택: {reference.SiteId} · {amount:N0}원 · {matched.Count}건 (본인 구매글만)");
         MessageBox.Show(this,
             $"{reference.SiteId} · {amount:N0}원인 본인 구매글 {matched.Count}건을 체크했습니다.\n\n" +
-            "[일괄수정]에서 새 금액을 저장한 뒤 [선택 가격 일괄 반영]을 눌러 사이트에 수정합니다.\n" +
+            "[일괄수정]의 가격 [저장]을 누르면 등록번호별로 순서대로 사이트에 반영합니다.\n" +
             "확인 대기·판매글·다른 계정 물품은 제외됩니다.\n",
             "같은 가격 선택 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
@@ -1234,7 +1234,7 @@ internal sealed partial class AutomationForm : Form
             FitText();
             return b;
         }
-        FooterButton("저장", 86, () => { SaveSelectedJob(); RefreshFilterChoices(); RefreshFilteredLists(); }, true);
+        FooterButton("저장 · 가격 순차 반영", 177, () => _ = SaveSingleEditorAndApplyPriceAsync(), true);
         FooterButton("1건 즉시 가격 수정", 156,
             () => _ = ApplySelectedSitePriceAsync(_selected), true);
         FooterButton("선택 가격 일괄 반영", 170,
@@ -1444,7 +1444,7 @@ internal sealed partial class AutomationForm : Form
 
     // Updates must never interrupt an in-flight site action or queued import.
     public bool CanInstallSoftwareUpdate =>
-        !_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport;
+        !_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport && !_sitePriceBatchRunning;
     // Each network keeps its own job list and login, but the SAME ItemMania
     // account/server quota must be shared. Otherwise A and B could both spend
     // the same remaining ID allocation in the same hour.

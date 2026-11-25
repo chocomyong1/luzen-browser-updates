@@ -199,13 +199,15 @@ internal sealed partial class MainForm
         actions.Controls.Add(IntegratedButton("같은 가격 선택", 126, SelectIntegratedSamePrice));
         actions.Controls.Add(IntegratedButton("선택 해제", 95, () => MarkIntegratedVisible(false)));
         actions.Controls.Add(IntegratedButton("선택 일괄수정", 134, ShowIntegratedBulkDialog, primary: true));
+        actions.Controls.Add(IntegratedButton("저장 · 가격 순차 반영", 177,
+            () => _ = SaveIntegratedCheckedPricesAsync(), primary: true));
         actions.Controls.Add(IntegratedButton("가격 예약 현황", 125, ShowPriceReservationsDialog));
         _integratedUndoButton = IntegratedButton("마지막 수정 되돌리기", 161, UndoIntegratedBatchEdit);
         _integratedUndoButton.Visible = _integratedLastUndo.Count > 0;
         actions.Controls.Add(_integratedUndoButton);
         actions.Controls.Add(new Label
         {
-            Text = "※ 가격 저장만으로 사이트 가격은 바뀌지 않습니다 · A/B/C 각 시스템에서 선택 가격 일괄 반영 필요",
+            Text = "※ 가격 저장 시 A→B→C 순차 반영 · 각 등록번호의 실제 가격 확인 후 다음 글 진행",
             AutoSize = true, Padding = new Padding(10, 12, 0, 0), ForeColor = UiTheme.Muted
         });
         toolsArea.Controls.Add(actions, 0, 1);
@@ -497,16 +499,16 @@ internal sealed partial class MainForm
         var note = new Label
         {
             Left = 23, Top = 160, Width = 489, Height = 69,
-            Text = "기존 본인 구매글의 새 가격을 로컬에 저장합니다. 사이트 수정은 A/B/C 각 시스템에서 별도 승인해야 합니다.\n" +
-                   "신규글은 첫 등록 금액으로 저장합니다. 진행 중인 글은 완료 후 변경됩니다.",
+            Text = "기존 본인 구매글은 [저장]을 누르면 A→B→C 순서로 사이트 가격을 반영합니다.\n" +
+                   "신규글은 첫 등록 가격으로 저장하고, 사이트 실패 시 다음 글은 제출하지 않습니다.",
             ForeColor = UiTheme.Muted
         };
         fieldInput.SelectedIndexChanged += (_, _) =>
         {
             var field = fields[fieldInput.SelectedIndex].Field;
             note.Text = field == IntegratedEditField.Price
-                ? "기존 본인 구매글의 새 가격을 로컬에 저장합니다. 사이트 수정은 A/B/C 각 시스템에서 별도 승인해야 합니다.\n" +
-                  "신규글은 첫 등록 금액으로 저장합니다. 진행 중인 글은 완료 후 변경됩니다."
+                ? "기존 본인 구매글은 [저장]을 누르면 A→B→C 순서로 사이트 가격을 반영합니다.\n" +
+                  "신규글은 첫 등록 가격으로 저장하고, 사이트 실패 시 다음 글은 제출하지 않습니다."
                 : "선택한 물품의 로컬 설정만 변경합니다. 사이트에 즉시 제출하지 않습니다.\n" +
                   "자동등록 진행 중인 물품은 현재 작업 완료 후 적용합니다.";
             valueInput.PlaceholderText = field switch
@@ -519,11 +521,11 @@ internal sealed partial class MainForm
             };
         };
         var cancel = new Button { Text = "취소", Left = 290, Top = 241, Width = 98, Height = 36 };
-        var apply = new Button { Text = "변경 적용", Left = 401, Top = 241, Width = 109, Height = 36 };
+        var apply = new Button { Text = "저장", Left = 401, Top = 241, Width = 109, Height = 36 };
         UiTheme.StyleButton(cancel);
         UiTheme.StyleButton(apply, UiTheme.ButtonTone.Primary);
         cancel.Click += (_, _) => dialog.Close();
-        apply.Click += (_, _) =>
+        apply.Click += async (_, _) =>
         {
             var field = fields[fieldInput.SelectedIndex].Field;
             string value = valueInput.Text.Trim();
@@ -543,7 +545,7 @@ internal sealed partial class MainForm
             if (MessageBox.Show(dialog,
                 $"{counts}에 '{fields[fieldInput.SelectedIndex].Label}'을(를) 적용할까요?\n\n" +
                 (field == IntegratedEditField.Price
-                    ? "기존 구매글은 가격만 저장하고 사이트에는 아직 제출하지 않습니다. A/B/C 각 시스템에서 [선택 가격 일괄 반영]을 별도로 승인해야 합니다."
+                    ? "기존 구매글은 저장 직후 A→B→C 순서로 사이트 가격 수정을 시도합니다. 각 글의 실제 가격 확인 후 다음으로 진행하며 실패하면 중단합니다."
                     : "사이트의 기존 게시글은 즉시 바꾸지 않습니다. 로컬 목록만 변경합니다.") +
                 "\n\nA/B/C의 작업 순번과 시간당 제한은 그대로 유지됩니다.",
                 "통합 일괄수정", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
@@ -579,9 +581,16 @@ internal sealed partial class MainForm
             RebuildIntegratedRows();
             _status.Text = $"  A/B/C 통합 수정 완료 · {immediate}건 저장" +
                 (deferred > 0 ? $" · 실행 중 {deferred}건은 작업 종료 후 적용" : "") +
-                (field == IntegratedEditField.Price ? " · 기존글 사이트 반영은 별도 승인 필요" : " · 사이트 즉시 제출 없음");
+                (field == IntegratedEditField.Price ? " · 기존글 사이트 순차 반영 시작" : " · 사이트 즉시 제출 없음");
             dialog.DialogResult = DialogResult.OK;
             dialog.Close();
+            if (field == IntegratedEditField.Price)
+            {
+                // Local undo is not a reversal of a submitted site price.
+                _integratedLastUndo.Clear();
+                if (_integratedUndoButton is not null) _integratedUndoButton.Visible = false;
+                await ApplyIntegratedSavedPricesAsync(targets);
+            }
         };
         dialog.Controls.Add(fieldLabel); dialog.Controls.Add(fieldInput);
         dialog.Controls.Add(valueLabel); dialog.Controls.Add(valueInput);

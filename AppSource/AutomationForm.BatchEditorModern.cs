@@ -56,7 +56,7 @@ internal sealed partial class AutomationForm
         });
         header.Controls.Add(new Label
         {
-            Text = "가격을 적용하면 기존 본인 구매글은 다음 등록 순번에 반영하고 신규글은 첫 등록에 사용합니다.",
+            Text = "가격 [저장]을 누르면 기존 본인 구매글은 등록번호별 순차 반영, 신규글은 로컬에 저장합니다.",
             Dock = DockStyle.Bottom, Height = 38, ForeColor = UiTheme.Muted,
             Padding = new Padding(19, 8, 0, 0)
         });
@@ -122,7 +122,7 @@ internal sealed partial class AutomationForm
             input.Margin = new Padding(5, 5, 8, 5);
             var apply = new Button
             {
-                Text = "적용", Dock = DockStyle.Fill, Margin = new Padding(5, 5, 3, 5),
+                Text = labelText == "개당 가격 (원)" ? "저장" : "적용", Dock = DockStyle.Fill, Margin = new Padding(5, 5, 3, 5),
                 BackColor = UiTheme.SurfaceAlt, Cursor = Cursors.Hand
             };
             apply.Click += (_, _) => callback();
@@ -216,7 +216,7 @@ internal sealed partial class AutomationForm
 
         Section("가격 및 거래 수량");
         var priceBox = Input("예: 11,300");
-        Row("개당 가격 (원)", priceBox, () =>
+        Row("개당 가격 (원)", priceBox, async () =>
         {
             string s = priceBox.Text.Trim().Replace(",", "").Replace("원", "");
             if (!long.TryParse(s, out long price) || price < 1000 || price % 10 != 0)
@@ -231,9 +231,9 @@ internal sealed partial class AutomationForm
             if (activePriceTargets.Count > 8) preview += $"\n외 {activePriceTargets.Count - 8}건";
             if (MessageBox.Show(window,
                 $"선택 {activePriceTargets.Count}건을 {price:N0}원으로 변경합니다.\n\n{preview}\n\n" +
-                "기존 본인 구매글은 가격만 저장되며 사이트에는 아직 반영되지 않습니다.\n" +
+                "기존 본인 구매글은 저장 후 순차적으로 사이트 가격 수정을 시도합니다.\n" +
                 "신규 판매·구매글은 첫 등록 가격으로 저장합니다.\n" +
-                "실제 사이트 수정은 [선택 가격 일괄 반영]을 별도로 눌러 한 번 승인하세요. " +
+                "건별 재확인창 없이 등록번호마다 실제 변경 가격을 확인합니다. " +
                 "등록번호로 확인하며 결과가 불분명하면 뒤의 글은 제출하지 않습니다.",
                 "가격 일괄수정", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
@@ -242,8 +242,11 @@ internal sealed partial class AutomationForm
                 pendingForJob: job => pendingByJob[job]))
             {
                 int existingCount = activePriceTargets.Count(job => !IsUnsubmittedNewListing(job));
-                result.Text = $"✓ {activePriceTargets.Count}건 저장 · 기존 구매글 {existingCount}건은 사이트 반영 대기";
-                AppendLog($"가격 저장: {activePriceTargets.Count}건 · 기존 구매글 사이트 제출 없음, 별도 일괄 반영 필요");
+                result.Text = $"✓ {activePriceTargets.Count}건 저장 · 기존 구매글 {existingCount}건 순차 반영 시작";
+                AppendLog($"가격 저장: {activePriceTargets.Count}건 · 사이트에 한 건씩 순차 적용");
+                undo.Enabled = false; // Submitted site changes cannot be undone as local-only edits.
+                window.Close();
+                await ApplySavedPricesSequentialAsync(activePriceTargets);
             }
         });
         var quantityBox = Input("예: 3");
