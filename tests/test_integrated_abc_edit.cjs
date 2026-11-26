@@ -44,7 +44,7 @@ assert.match(panel, /if \(row\.System is \("B" or "C"\) && !DualSystemNetwork\.I
 assert.match(edits, /internal IReadOnlyList<ListingJob> IntegratedEditJobs => _jobs\.ToList\(\)/);
 assert.match(edits, /ValidateIntegratedEdit\(IReadOnlyList<ListingJob> items/);
 assert.match(edits, /items\.Any\(item => !_jobs\.Contains\(item\)\)/);
-assert.match(edits, /_myListingsImportRunning \|\| _sitePriceBatchRunning/);
+assert.match(edits, /\(_sitePriceBatchRunning && !editingPendingPrices\)/);
 assert.match(edits, /_currentlyExecutingJob is null/);
 const pricePlan = read('AutomationForm.SitePriceEdit.cs');
 assert.match(edits, /TryPlanAutomaticPriceApply\(items, value, out _, out problem\)/);

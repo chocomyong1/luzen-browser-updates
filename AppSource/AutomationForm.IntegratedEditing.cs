@@ -34,8 +34,9 @@ internal sealed partial class AutomationForm
         // in flight, defer edits to that one listing until its readback ends.
         // Other rows are editable now; none start an independent site request.
         bool editingPendingPrices = command.Field == IntegratedEditField.Price &&
-            _activeSitePriceJob is not null;
-        if (_myListingsImportRunning || _sitePriceBatchRunning ||
+            (_activeSitePriceJob is not null || _sitePriceBatchRunning);
+        if (_myListingsImportRunning ||
+            (_sitePriceBatchRunning && !editingPendingPrices) ||
             (_busy && _currentlyExecutingJob is null && !editingPendingPrices))
         {
             problem = "사이트 조회·가격 제출·기존 작업이 끝난 뒤 편집할 수 있습니다.";
