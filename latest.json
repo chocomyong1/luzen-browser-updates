@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.42",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.42/LuzenBrowser_22.3.42_BinaryUpdate.zip",
-  "sha256": "6caa976c5f6e0c460e3dc63c86c7c42fc7ed2c8776bc4a3f6874282162d90860",
+  "version": "22.3.43",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.43/LuzenBrowser_22.3.43_BinaryUpdate.zip",
+  "sha256": "80d5a9332d3ebd5c5590f4f41b8649a7abaaa523465e2d9b4a2e403f93426640",
   "format": "binary",
-  "releaseNotes": "v22.3.42 관리목록에서 등록번호 미발견 시 자동 OFF하지 않고 30분 후 읽기 전용 재조회합니다. 다음 페이지 링크 인식을 확대하고 JS 전용 페이저는 조회 불확실로 진단합니다. 기존 재등록의 등록번호·버튼 검증은 유지합니다."
+  "releaseNotes": "v22.3.43 통합편집 가격 저장 중 새 변경은 기존 A/B/C 순차 대기열에 병합하고 동일 등록번호·금액은 중복 제출하지 않습니다. 남은 건 중지 버튼과 진행 상태를 개선하고 실행 중 가격 변경을 다음 차례로 예약합니다. 실제 계정 적용은 미검증입니다."
 }
