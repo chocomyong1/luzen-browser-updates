@@ -15,7 +15,7 @@ const panel = source('MainForm.IntegratedEditor.cs');
 const updater = source('AppUpdateService.cs');
 
 // A site-price request for ONE listing doesn't block other pending edits.
-assert.match(integrated, /command\.Field == IntegratedEditField\.Price &&\s*_activeSitePriceJob is not null/);
+assert.match(integrated, /command\.Field == IntegratedEditField\.Price &&\s*\(_activeSitePriceJob is not null \|\| _sitePriceBatchRunning\)/);
 assert.match(integrated, /_busy && _currentlyExecutingJob is null && !editingPendingPrices/);
 assert.match(integrated, /\(_sitePriceBatchRunning && !editingPendingPrices\)/);
 assert.match(integrated, /ReferenceEquals\(job, _activeSitePriceJob\)/);
