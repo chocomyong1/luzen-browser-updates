@@ -201,6 +201,7 @@ internal sealed partial class MainForm
         actions.Controls.Add(IntegratedButton("선택 일괄수정", 134, ShowIntegratedBulkDialog, primary: true));
         actions.Controls.Add(IntegratedButton("저장 · 가격 순차 반영", 177,
             () => _ = SaveIntegratedCheckedPricesAsync(), primary: true));
+        actions.Controls.Add(IntegratedButton("순차 반영 중지", 122, StopIntegratedPriceQueue));
         actions.Controls.Add(IntegratedButton("가격 예약 현황", 125, ShowPriceReservationsDialog));
         _integratedUndoButton = IntegratedButton("마지막 수정 되돌리기", 161, UndoIntegratedBatchEdit);
         _integratedUndoButton.Visible = _integratedLastUndo.Count > 0;
@@ -589,7 +590,7 @@ internal sealed partial class MainForm
                 // Local undo is not a reversal of a submitted site price.
                 _integratedLastUndo.Clear();
                 if (_integratedUndoButton is not null) _integratedUndoButton.Visible = false;
-                await ApplyIntegratedSavedPricesAsync(targets);
+                await ApplyIntegratedSavedPricesAsync(targets, value);
             }
         };
         dialog.Controls.Add(fieldLabel); dialog.Controls.Add(fieldInput);

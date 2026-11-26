@@ -17,7 +17,7 @@ const updater = source('AppUpdateService.cs');
 // A site-price request for ONE listing doesn't block other pending edits.
 assert.match(integrated, /command\.Field == IntegratedEditField\.Price &&\s*_activeSitePriceJob is not null/);
 assert.match(integrated, /_busy && _currentlyExecutingJob is null && !editingPendingPrices/);
-assert.match(integrated, /_myListingsImportRunning \|\| _sitePriceBatchRunning/);
+assert.match(integrated, /\(_sitePriceBatchRunning && !editingPendingPrices\)/);
 assert.match(integrated, /ReferenceEquals\(job, _activeSitePriceJob\)/);
 assert.match(integrated, /Action afterSubmission = \(\) => ApplyBatchUndoChange\(change\)/);
 assert.match(integrated, /_deferredExecutingJobEdits\.Add\(afterSubmission\)/);
@@ -41,5 +41,5 @@ assert.match(scheduler, /if \(!_submissionVerificationPending\) _currentRun\?\.C
 assert.match(scheduler, /!_busy && !_schedulerRunning && !_myListingsImportRunning && !_pendingMyListingsImport/);
 assert.match(main, /if \(!CanInstallUpdateAcrossSystems\)/);
 assert.match(main, /_moduleA\.SaveListings\(\); _moduleB\.SaveListings\(\); _moduleC\.SaveListings\(\)/);
-assert.match(updater, /public const string CurrentVersion = "22\.3\.42"/);
+assert.match(updater, /public const string CurrentVersion = "22\.3\.43"/);
 console.log('PASS re-edit queued prices, defer active submission edits, preserve latest request across stop/update');
