@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "version": "22.3.43",
-  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.43/LuzenBrowser_22.3.43_BinaryUpdate.zip",
-  "sha256": "80d5a9332d3ebd5c5590f4f41b8649a7abaaa523465e2d9b4a2e403f93426640",
+  "version": "22.3.44",
+  "packageUrl": "https://raw.githubusercontent.com/chocomyong1/luzen-browser-updates/main/releases/v22.3.44/LuzenBrowser_22.3.44_BinaryUpdate.zip",
+  "sha256": "ddf1906351ed3e13018e43c670d9428c30727392efb7c583b928ad2782018866",
   "format": "binary",
-  "releaseNotes": "v22.3.43 통합편집 가격 저장 중 새 변경은 기존 A/B/C 순차 대기열에 병합하고 동일 등록번호·금액은 중복 제출하지 않습니다. 남은 건 중지 버튼과 진행 상태를 개선하고 실행 중 가격 변경을 다음 차례로 예약합니다. 실제 계정 적용은 미검증입니다."
+  "releaseNotes": "v22.3.44 B VPN 로그인 복구 대기 중 독립 IP 확인이 풀리면 VPN/IP 재검증 절차로 넘기고, VPN은 정상인데 로그인으로 되돌아가면 로그인 복구로 분리합니다. 확인 전 사이트 제출은 계속 차단하며 A 시스템에는 영향이 없습니다."
 }
