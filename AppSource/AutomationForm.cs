@@ -2542,12 +2542,24 @@ internal sealed partial class AutomationForm : Form
             _ownedListRecoveryRun = loginCheck;
             try
             {
-                if ((_system is "B" or "C") && !DualSystemNetwork.IsRouteVerified(_system))
+                if (_system == "B" && !DualSystemNetwork.IsRouteVerified("B"))
                 {
-                    AppendLog($"{_system} 로그인 복구: 독립 IP 미확인, 제출 보류 유지");
+                    // The login lane takes priority over B's network-recovery
+                    // lane. Without this handoff an invalidated VPN route is
+                    // never reverified: every login probe simply fails again.
+                    // No account credentials or repost buttons are touched here.
+                    _loginRecoveryPauseUntilUtc = DateTime.MinValue;
+                    _bConnectionRecoveryUtc = DateTime.UtcNow.AddSeconds(30);
+                    _bRepairProxyOnRecovery = false; // No transport failure proven yet.
+                    BeginConnectionRecovery("B VPN");
+                    AppendLog("B 로그인 복구 중 독립 IP 미확인 · B VPN/IP 재확인 절차로 전환 (미제출)");
+                }
+                else if (_system == "C" && !DualSystemNetwork.IsRouteVerified("C"))
+                {
+                    AppendLog("C 로그인 복구: 독립 IP 미확인 · 제출 보류");
                     if (_schedulerRunning)
-                        ConnectionRecoveryProbeFailed("login", _system == "B" ? "B VPN 연결 장애" : "사이트 로그인 복구 대기",
-                            "독립 IP 검증이 완료되지 않았습니다.");
+                        ConnectionRecoveryProbeFailed("login", "사이트 로그인 복구 대기",
+                            "C 독립 IP 검증이 완료되지 않았습니다.");
                 }
                 else if (await VerifyOwnedListReadableAsync(loginCheck.Token) && _schedulerRunning)
                 {
@@ -2560,6 +2572,26 @@ internal sealed partial class AutomationForm : Form
                     AppendLog($"{_system} 사이트 로그인 확인이 끝나지 않았습니다. 2분 후 읽기 전용 재확인합니다. 제출 없음.");
                     ConnectionRecoveryProbeFailed("login", "사이트 로그인 복구 대기", "로그인한 관리목록 표시를 확인하지 못했습니다.");
                 }
+            }
+            catch (OwnedListConnectivityPendingException ex) when (_system == "B" && ex.TransportFailure && _schedulerRunning)
+            {
+                // B's WebView could not reach My Room through its configured
+                // proxy. Reverify the route in B's dedicated recovery lane;
+                // do not label a transport failure as a wrong login.
+                _loginRecoveryPauseUntilUtc = DateTime.MinValue;
+                _bConnectionRecoveryUtc = DateTime.UtcNow.AddSeconds(30);
+                _bRepairProxyOnRecovery = true;
+                BeginConnectionRecovery("B VPN");
+                AppendLog("B 로그인 복구의 관리목록 전송 오류 · B VPN 연결 검사로 전환 (미제출)");
+            }
+            catch (OwnedListLoginPendingException ex) when (_schedulerRunning)
+            {
+                // The site's own page still requires sign-in. The background
+                // login may have been attempted; its result is not yet proof
+                // of an authenticated own-list page.
+                AppendLog($"{_system} 로그인 페이지 재확인: {ex.GetType().Name} · 등록 미제출");
+                ConnectionRecoveryProbeFailed("login", "사이트 로그인 복구 대기",
+                    "아이템매니아가 로그인 화면으로 다시 이동했습니다.");
             }
             catch (OperationCanceledException) when (loginCheck.IsCancellationRequested)
             {
@@ -2624,6 +2656,17 @@ internal sealed partial class AutomationForm : Form
                     AppendLog("B VPN IP는 확인됐지만 관리목록이 표시되지 않아 2분 더 대기합니다. 제출 없음.");
                     ConnectionRecoveryProbeFailed("B VPN", "B VPN 접속 대기", "관리목록 표시를 확인하지 못했습니다.");
                 }
+            }
+            catch (OwnedListLoginPendingException) when (verifiedBRoute && _schedulerRunning)
+            {
+                // The VPN path is verified; a redirect to a login page is
+                // authentication, not a proxy disconnection. Transfer to the
+                // normal throttled login lane without restarting WARP.
+                _bConnectionRecoveryUtc = DateTime.MinValue;
+                _bRepairProxyOnRecovery = false;
+                _loginRecoveryPauseUntilUtc = DateTime.UtcNow.AddSeconds(30);
+                BeginConnectionRecovery("login");
+                AppendLog("B VPN 독립 IP 확인 완료 · 사이트 로그인 화면 감지 · 로그인 복구 대기 전환 (미제출)");
             }
             catch (OperationCanceledException) when (check.IsCancellationRequested)
             {
